@@ -36,7 +36,6 @@ export type { ProviderTrackCandidate };
 export type PreparedProviderImport = {
   candidate: ProviderTrackCandidate;
   file: File;
-  objectUrl: string;
   draft: Omit<TrackMeta, "id"> & { id?: string };
   localArtworkUrl: string | null;
   lyrics: string | null;
@@ -261,7 +260,6 @@ export async function importProviderTracks(input: {
             throw new Error("服务端未返回已注册的曲目信息");
           }
         } catch (singleError) {
-          URL.revokeObjectURL(item.objectUrl);
           failures.push(singleError);
           const itemKey = `${item.candidate.provider}:${item.candidate.providerTrackId}`;
           importTaskStore.failItem(
@@ -280,7 +278,6 @@ export async function importProviderTracks(input: {
     }
 
     const chunkUploadEntries: Record<string, UploadedTrack> = {};
-    const persistedObjectUrls = new Set<string>();
     const persistFailures: Array<{ track: TrackMeta; item: PreparedProviderImport; error: unknown }> = [];
 
     for (let i = 0; i < registeredItems.length; i++) {
@@ -309,8 +306,7 @@ export async function importProviderTracks(input: {
           lyrics: item.lyrics,
           refreshCache: false
         });
-        chunkUploadEntries[track.id] = { file: item.file, objectUrl: item.objectUrl, origin: input.origin };
-        persistedObjectUrls.add(item.objectUrl);
+        chunkUploadEntries[track.id] = { origin: input.origin };
 
         const itemKey = `${item.candidate.provider}:${item.candidate.providerTrackId}`;
         importTaskStore.completeItem(taskId, itemKey, [item.candidate.providerTrackId]);
@@ -328,9 +324,6 @@ export async function importProviderTracks(input: {
         ])
       );
       for (const failure of persistFailures) {
-        if (!persistedObjectUrls.has(failure.item.objectUrl)) {
-          URL.revokeObjectURL(failure.item.objectUrl);
-        }
         failures.push(failure.error);
         const itemKey = `${failure.item.candidate.provider}:${failure.item.candidate.providerTrackId}`;
         importTaskStore.failItem(
@@ -347,7 +340,6 @@ export async function importProviderTracks(input: {
       totalSuccessfulCount += chunkSuccessfulCount;
       input.setUploadedTracks((current) => ({ ...current, ...chunkUploadEntries }));
       await input.syncRoomSnapshot(roomSnapshot.room.id).catch(() => undefined);
-      void input.refreshCacheLibrary().catch(() => undefined);
     }
 
     for (const key of batchHeldKeys) {
@@ -538,6 +530,8 @@ export async function importProviderTracks(input: {
           metadata: { ...candidate, artworkUrl: localArtworkUrl },
           sourceRef
         });
+        URL.revokeObjectURL(createdObjectUrl);
+        objectUrl = null;
         const lyricsPayload = await lyricsPayloadPromise;
         const lyrics = lyricsPayload?.lyrics?.trim() || null;
         const translatedLyrics = lyricsPayload?.translatedLyrics?.trim() || null;
@@ -554,7 +548,6 @@ export async function importProviderTracks(input: {
         currentBatch.push({
           candidate,
           file: prefetched.file,
-          objectUrl: createdObjectUrl,
           draft: {
             ...draft,
             lyrics,
@@ -582,7 +575,11 @@ export async function importProviderTracks(input: {
         currentBatch.length = 0;
         currentBatchHeldKeys.length = 0;
         await commitBatch(batchToCommit, batchKeysToCommit, index + 1);
+        batchToCommit.length = 0;
+        batchKeysToCommit.length = 0;
       }
+      // 让出宏任务队列，让浏览器 GC 和 UI 渲染及时回收内存与刷新帧
+      await new Promise((resolve) => setTimeout(resolve, 30));
     }
 
     if (totalSuccessfulCount === 0) {
@@ -598,6 +595,9 @@ export async function importProviderTracks(input: {
   } finally {
     for (const key of pendingCandidateKeys) {
       inFlightUploadHashesRef.current.delete(key);
+    }
+    if (totalSuccessfulCount > 0) {
+      void input.refreshCacheLibrary().catch(() => undefined);
     }
     const errorMsg = pipelineError instanceof Error ? pipelineError.message : pipelineError ? String(pipelineError) : undefined;
     importTaskStore.finishTask(taskId, {

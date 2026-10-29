@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   buildMerkleTree,
@@ -203,6 +203,7 @@ export async function prepareAudioAssets(input: {
               payload: unit.payload
             }))
           });
+          delete playback.encodedUnits;
           for (let unitIndex = 0; unitIndex < encodedUnits.length; unitIndex += 1) {
             input.onProgress?.({
               stage: "persisting-playback",
@@ -265,6 +266,7 @@ export async function prepareAudioAssets(input: {
             })),
             complete: true
           });
+          delete playback.encodedUnits;
           for (let unitIndex = 0; unitIndex < encodedUnits.length; unitIndex += 1) {
             input.onProgress?.({
               stage: "persisting-playback",
@@ -1435,7 +1437,7 @@ async function decodeAudioFile(file: File) {
     context = new AudioContext();
   }
   try {
-    return await context.decodeAudioData(buffer.slice(0));
+    return await context.decodeAudioData(buffer);
   } catch (error) {
     try {
       const fallbackContext = new AudioContext();

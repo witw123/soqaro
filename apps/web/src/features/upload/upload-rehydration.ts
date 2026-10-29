@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   CachedLibraryTrackRecord,
   CachedLibraryTrackSummaryRecord
 } from "@/features/library/indexeddb";
@@ -30,7 +30,7 @@ export async function rehydrateOwnedUploadedTracksFromCache(input: {
   ) => Promise<CachedLibraryTrackRecord | null | undefined>;
   getLocalAudioCacheFile?: (fileHash: string) => Promise<File | null | undefined>;
   getLocalAudioFile?: (fileHash: string) => Promise<File | null | undefined>;
-  createObjectUrl: (file: File) => string;
+  createObjectUrl?: (file: File) => string;
 }): Promise<{
   uploads: Record<string, UploadedTrack>;
   createdObjectUrls: string[];
@@ -48,6 +48,19 @@ export async function rehydrateOwnedUploadedTracksFromCache(input: {
         roomTrack: track
       })
     ) {
+      continue;
+    }
+
+    if (!input.createObjectUrl) {
+      uploads[track.id] = {
+        origin: track.sourceType === "netease"
+          ? "netease-import"
+          : track.sourceType === "local_upload"
+            ? "live-upload"
+            : track.sourceType === "bilibili"
+              ? "bilibili-import"
+              : "qqmusic-import"
+      };
       continue;
     }
 
@@ -111,7 +124,9 @@ export function applyOwnedUploadRehydrationResult(input: {
     const next = { ...current };
     for (const [trackId, upload] of Object.entries(input.result.uploads)) {
       if (next[trackId]) {
-        input.revokeObjectUrl(upload.objectUrl);
+        if (upload.objectUrl) {
+          input.revokeObjectUrl(upload.objectUrl);
+        }
         continue;
       }
       next[trackId] = upload;

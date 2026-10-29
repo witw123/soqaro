@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import type {
@@ -185,6 +185,7 @@ export function useTrackUploads(options: {
     activeSession,
     cacheLibraryVersion,
     cacheLibraryTracksRef,
+    inFlightUploadHashesRef,
     roomCatalogKey,
     roomSnapshot,
     roomTrackIdsKey,

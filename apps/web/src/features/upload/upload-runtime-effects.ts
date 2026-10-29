@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, type MutableRefObject, type SetStateAction, type Dispatch } from "react";
+import { useEffect, useRef, type MutableRefObject, type SetStateAction, type Dispatch } from "react";
 import type { GuestSession, RoomSnapshot } from "@soqaro/shared";
 import {
   getCachedLibraryTrack,
@@ -21,6 +21,7 @@ type UploadRuntimeEffectsInput = {
   activeSession: GuestSession | null;
   cacheLibraryVersion: number;
   cacheLibraryTracksRef: MutableRefObject<Map<string, CachedLibraryTrack>>;
+  inFlightUploadHashesRef?: MutableRefObject<Set<string>>;
   roomSnapshot: RoomSnapshot | null;
   roomCatalogKey: string;
   roomTrackIdsKey: string;
@@ -33,6 +34,7 @@ export function useUploadRuntimeEffects({
   activeSession,
   cacheLibraryVersion,
   cacheLibraryTracksRef,
+  inFlightUploadHashesRef,
   roomSnapshot,
   roomCatalogKey,
   roomTrackIdsKey,
@@ -68,6 +70,10 @@ export function useUploadRuntimeEffects({
       return;
     }
 
+    if (inFlightUploadHashesRef && inFlightUploadHashesRef.current.size > 0) {
+      return;
+    }
+
     const missingOwnedTracks = roomSnapshot.tracks.filter(
       (track) =>
         track.ownerSessionId === activeSession.userId &&
@@ -85,8 +91,7 @@ export function useUploadRuntimeEffects({
         getCachedLibraryTrackSummary,
         getCachedLibraryTrack,
         getLocalAudioCacheFile,
-        getLocalAudioFile,
-        createObjectUrl: (file) => URL.createObjectURL(file)
+        getLocalAudioFile
       });
 
       applyOwnedUploadRehydrationResult({
@@ -104,6 +109,7 @@ export function useUploadRuntimeEffects({
     activeSession,
     cacheLibraryVersion,
     cacheLibraryTracksRef,
+    inFlightUploadHashesRef,
     roomSnapshot?.room.id,
     roomSnapshot?.tracks,
     setUploadedTracks,

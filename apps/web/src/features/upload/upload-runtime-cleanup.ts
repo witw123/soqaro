@@ -5,11 +5,13 @@ type RuntimeRef<TValue> = {
 
 export function syncUploadedTrackObjectUrls(input: {
   currentUrls: Map<string, string>;
-  uploadedTracks: Record<string, { objectUrl: string }>;
+  uploadedTracks: Record<string, { objectUrl?: string }>;
   revokeObjectUrl: (objectUrl: string) => void;
 }) {
   const nextUrls = new Map(
-    Object.entries(input.uploadedTracks).map(([trackId, upload]) => [trackId, upload.objectUrl])
+    Object.entries(input.uploadedTracks)
+      .filter(([, upload]) => Boolean(upload?.objectUrl))
+      .map(([trackId, upload]) => [trackId, upload.objectUrl!])
   );
 
   for (const [trackId, objectUrl] of input.currentUrls.entries()) {

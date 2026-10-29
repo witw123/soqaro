@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type {
   GuestSession,
@@ -21,8 +21,8 @@ type CapturedAudioGraph = {
 const capturedAudioGraphs = new WeakMap<HTMLAudioElement, CapturedAudioGraph>();
 
 export type UploadedTrack = {
-  file: File;
-  objectUrl: string;
+  file?: File;
+  objectUrl?: string;
   origin: "live-upload" | "netease-import" | "qqmusic-import" | "bilibili-import" | "alist-import";
 };
 

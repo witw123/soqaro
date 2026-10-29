@@ -8,6 +8,7 @@ import type {
 } from "@soqaro/shared";
 import {
   getCachedLibraryTrackByProviderTrack,
+  getCachedLibraryTrackSummaryByProviderTrack,
   linkTrackAssets
 } from "@/features/library/indexeddb";
 import { soqaroApi } from "@/lib/network/soqaro-api";
@@ -75,26 +76,27 @@ export async function prefetchProviderAudio(
   outerSignal?.addEventListener("abort", abortHandler, { once: true });
 
   try {
-    const localRepository = await getConfiguredLocalRepository().catch(() => null);
-    if (localRepository) {
-      const tracks = await localRepository.listTracks().catch(() => []);
-      const matchingTrack = tracks.find((t) =>
-        t.sourceRef?.provider === sourceType &&
-        t.sourceRef?.trackId === candidate.providerTrackId
-      );
-      if (matchingTrack?.source?.relativePath) {
-        const file = await localRepository.readPath(matchingTrack.source.relativePath).catch(() => null);
-        if (file) {
-          const assets = await getReusableAudioAssets({
-            fileHash: matchingTrack.fileHash,
-            sizeBytes: matchingTrack.sizeBytes
-          }).catch(() => null);
-          onProgress?.({ loaded: 1, total: 1, percent: 100 });
-          return {
-            cachedTrack: null,
-            file,
-            assets
-          };
+    const cachedSummary = typeof getCachedLibraryTrackSummaryByProviderTrack === "function"
+      ? await getCachedLibraryTrackSummaryByProviderTrack(sourceType, candidate.providerTrackId).catch(() => null)
+      : null;
+    if (cachedSummary) {
+      const localRepository = await getConfiguredLocalRepository().catch(() => null);
+      if (localRepository) {
+        const matchingTrack = await localRepository.readTrack(cachedSummary.fileHash).catch(() => null);
+        if (matchingTrack?.source?.relativePath) {
+          const file = await localRepository.readPath(matchingTrack.source.relativePath).catch(() => null);
+          if (file) {
+            const assets = await getReusableAudioAssets({
+              fileHash: matchingTrack.fileHash,
+              sizeBytes: matchingTrack.sizeBytes
+            }).catch(() => null);
+            onProgress?.({ loaded: 1, total: 1, percent: 100 });
+            return {
+              cachedTrack: null,
+              file,
+              assets
+            };
+          }
         }
       }
     }
@@ -339,7 +341,12 @@ export async function importProviderTracks(input: {
     if (chunkSuccessfulCount > 0) {
       totalSuccessfulCount += chunkSuccessfulCount;
       input.setUploadedTracks((current) => ({ ...current, ...chunkUploadEntries }));
-      await input.syncRoomSnapshot(roomSnapshot.room.id).catch(() => undefined);
+      if (
+        currentProcessedCount >= pendingCandidates.length ||
+        currentProcessedCount % 5 === 0
+      ) {
+        await input.syncRoomSnapshot(roomSnapshot.room.id).catch(() => undefined);
+      }
     }
 
     for (const key of batchHeldKeys) {
@@ -463,7 +470,7 @@ export async function importProviderTracks(input: {
           clearInterval(downloadTimer);
         }
         prefetchedAudio.delete(index);
-        fillPrefetchWindow(index + 2);
+        fillPrefetchWindow(index + 1);
         if (!prefetchResult.ok) throw prefetchResult.error;
         const prefetched = prefetchResult.audio;
         if (!prefetched) throw new Error(`歌曲预取结果无效：${candidate.title}`);
@@ -509,12 +516,19 @@ export async function importProviderTracks(input: {
           await new Promise((r) => setTimeout(r, 60));
         }
 
+        let lastPrepProgressTime = 0;
+        let lastPrepStage = "";
         const assets = prefetched.assets ?? await prepareAudioAssets({
           file: prefetched.file,
           expectedDurationMs: candidate.durationMs,
           onProgress: ({ stage, completed, total }) => {
+            const now = Date.now();
+            if (stage === lastPrepStage && completed < total && now - lastPrepProgressTime < 150) {
+              return;
+            }
+            lastPrepProgressTime = now;
+            lastPrepStage = stage;
             const { stageLabel, percent } = mapAssetPreparationProgress(stage, completed, total);
-            input.setStatusMessage(`${index + 1} / ${pendingCandidates.length} 《${candidate.title}》 ${stageLabel} ${percent}%`);
             importTaskStore.updateTaskProgress(taskId, {
               currentTitle: candidate.title,
               currentStage: stageLabel,
@@ -593,10 +607,12 @@ export async function importProviderTracks(input: {
     pipelineError = error;
     throw error;
   } finally {
+    prefetchedAudio.clear();
     for (const key of pendingCandidateKeys) {
       inFlightUploadHashesRef.current.delete(key);
     }
     if (totalSuccessfulCount > 0) {
+      await input.syncRoomSnapshot(roomSnapshot.room.id).catch(() => undefined);
       void input.refreshCacheLibrary().catch(() => undefined);
     }
     const errorMsg = pipelineError instanceof Error ? pipelineError.message : pipelineError ? String(pipelineError) : undefined;

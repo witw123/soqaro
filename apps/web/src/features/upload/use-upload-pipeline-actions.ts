@@ -1,8 +1,9 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type {
   BilibiliTrackCandidate,
   GuestSession,
   NeteaseTrackCandidate,
+  ProviderTrackCandidate,
   QqMusicTrackCandidate,
   RemoteTrackSourceRef,
   RoomSnapshot,
@@ -13,7 +14,9 @@ import type { RoomStateEvent } from "@/features/room/room-state-reducer";
 import {
   deleteLocalTrackDataForTracks,
   linkTrackAssets,
-  upsertCachedLibraryTrack
+  toCachedLibraryTrackSummaryRecord,
+  upsertCachedLibraryTrack,
+  upsertCachedLibraryTrackSummary
 } from "@/features/library/indexeddb";
 import {
   soqaroApi
@@ -66,6 +69,21 @@ export function useUploadPipelineActions({
   setStatusMessage,
   setUploadedTracks
 }: UploadPipelineActionsInput) {
+  const latestActiveSessionRef = useRef(activeSession);
+  latestActiveSessionRef.current = activeSession;
+  const latestRoomSnapshotRef = useRef(roomSnapshot);
+  latestRoomSnapshotRef.current = roomSnapshot;
+  const uploadTaskChainRef = useRef<Promise<void>>(Promise.resolve());
+
+  const enqueueUploadTask = useCallback(<T>(task: () => Promise<T>): Promise<T> => {
+    const next = uploadTaskChainRef.current.then(task, task);
+    uploadTaskChainRef.current = next.then(
+      () => undefined,
+      () => undefined
+    );
+    return next;
+  }, []);
+
   const syncRoomSnapshot = useCallback(
     async (roomId: string) => {
       try {
@@ -111,10 +129,16 @@ export function useUploadPipelineActions({
           lyrics: input.lyrics ?? null
         }
       });
-      await upsertCachedLibraryTrack(cachedRecord);
 
       const localRepository = await getConfiguredLocalRepository();
       if (localRepository) {
+        const cachedAt = new Date().toISOString();
+        await upsertCachedLibraryTrackSummary(
+          toCachedLibraryTrackSummaryRecord({
+            ...cachedRecord,
+            cachedAt
+          })
+        );
         const providerSource = resolveProviderTrackSource(input.track);
         const provider = providerSource?.provider ?? (
           input.track.sourceType === "netease" || input.track.sourceType === "qqmusic" || input.track.sourceType === "bilibili" || input.track.sourceType === "alist"
@@ -122,7 +146,7 @@ export function useUploadPipelineActions({
             : "local_upload"
         );
 
-        await saveCachedAudioFileToLocalDirectory({
+        const savedToRepo = await saveCachedAudioFileToLocalDirectory({
           file: input.file,
           fileHash: input.track.fileHash,
           title: input.track.title,
@@ -131,23 +155,29 @@ export function useUploadPipelineActions({
           originalAsset: input.track.originalAsset,
           playbackAsset: input.track.playbackAsset
         }).catch(() => null);
+        if (!savedToRepo) {
+          await upsertCachedLibraryTrack(cachedRecord);
+        }
+      } else {
+        await upsertCachedLibraryTrack(cachedRecord);
       }
 
       if (input.refreshCache !== false) {
         await refreshCacheLibrary();
       }
 
-      if (input.refreshCache !== false && roomSnapshot?.room.id === input.roomId) {
-        const tracks = roomSnapshot.tracks.some((track) => track.id === input.track.id)
-          ? roomSnapshot.tracks
-          : [...roomSnapshot.tracks, input.track as TrackMeta];
+      const currentSnapshot = latestRoomSnapshotRef.current;
+      if (input.refreshCache !== false && currentSnapshot?.room.id === input.roomId) {
+        const tracks = currentSnapshot.tracks.some((track) => track.id === input.track.id)
+          ? currentSnapshot.tracks
+          : [...currentSnapshot.tracks, input.track as TrackMeta];
         void persistRoomSnapshotToLocalRepository({
-          ...roomSnapshot,
+          ...currentSnapshot,
           tracks
         }).catch(() => undefined);
       }
     },
-    [refreshCacheLibrary, roomSnapshot]
+    [refreshCacheLibrary]
   );
 
   const handleFilesSelected = useCallback(
@@ -155,84 +185,97 @@ export function useUploadPipelineActions({
       files: FileList | File[] | null,
       metadataByFileHash?: ReadonlyMap<string, CachedLibraryTrack>
     ) => {
-      if (!files || !activeSession || !roomSnapshot) {
-        return;
-      }
-      if (!hasRoomPermission(roomSnapshot, activeSession.userId, "library")) {
-        setStatusMessage("你没有修改房间曲库的权限。请联系房主。");
-        return;
-      }
-
+      if (!files) return;
       const selectedFiles = Array.from(files);
       if (selectedFiles.length === 0) return;
 
-      const isCachedImport = Boolean(metadataByFileHash && metadataByFileHash.size > 0);
-      const firstCachedTitle = metadataByFileHash?.values().next().value?.title;
-      const taskTitle = isCachedImport && firstCachedTitle
-        ? `导入缓存音频《${firstCachedTitle}》`
-        : selectedFiles.length === 1
-          ? `导入本地音频《${selectedFiles[0].name}》`
-          : `导入本地音频 (${selectedFiles.length} 个文件)`;
+      return enqueueUploadTask(async () => {
+        const currentSession = latestActiveSessionRef.current;
+        const currentSnapshot = latestRoomSnapshotRef.current;
+        if (!currentSession || !currentSnapshot) {
+          return;
+        }
+        if (!hasRoomPermission(currentSnapshot, currentSession.userId, "library")) {
+          setStatusMessage("你没有修改房间曲库的权限。请联系房主。");
+          return;
+        }
 
-      const itemKeys = selectedFiles.flatMap((f) => [
-        f.name,
-        ...(metadataByFileHash ? Array.from(metadataByFileHash.keys()) : []),
-        ...(metadataByFileHash ? Array.from(metadataByFileHash.values()).map((v) => v.title) : [])
-      ]);
+        const isCachedImport = Boolean(metadataByFileHash && metadataByFileHash.size > 0);
+        const firstCachedTitle = metadataByFileHash?.values().next().value?.title;
+        const taskTitle = isCachedImport && firstCachedTitle
+          ? `导入缓存音频《${firstCachedTitle}》`
+          : selectedFiles.length === 1
+            ? `导入本地音频《${selectedFiles[0].name}》`
+            : `导入本地音频 (${selectedFiles.length} 个文件)`;
 
-      const taskId = importTaskStore.startTask({
-        type: isCachedImport ? "cached_track" : "local_files",
-        title: taskTitle,
-        totalCount: selectedFiles.length,
-        itemKeys,
-        currentTitle: firstCachedTitle ?? selectedFiles[0].name,
-        currentStage: "正在校验源文件"
-      });
+        const itemKeys = selectedFiles.flatMap((f) => [
+          f.name,
+          ...(metadataByFileHash ? Array.from(metadataByFileHash.keys()) : []),
+          ...(metadataByFileHash ? Array.from(metadataByFileHash.values()).map((v) => v.title) : [])
+        ]);
 
-      const roomId = roomSnapshot.room.id;
-      let hasError = false;
-      try {
-        const result = await processSelectedTrackFiles({
-          files: selectedFiles,
-          activeSession,
-          roomId,
-          roomTracks: roomSnapshot.tracks,
-          inFlightUploadHashes: inFlightUploadHashesRef.current,
-          createObjectUrl: (file) => URL.createObjectURL(file),
-          revokeObjectUrl: (objectUrl) => URL.revokeObjectURL(objectUrl),
-          onTrackStart: (file, index) => {
-            const cachedMetadata = metadataByFileHash?.get(file.name);
-            importTaskStore.updateTaskProgress(taskId, {
-              currentTitle: cachedMetadata?.title ?? file.name,
-              currentStage: "正在校验源文件",
-              currentStagePercent: 0,
-              completedCount: index,
-              activeItemKey: file.name
-            });
-          },
-          buildTrackMeta: async (file, objectUrl) => {
-            const cachedMetadata = selectedFiles.length === 1 && metadataByFileHash?.size === 1
-              ? metadataByFileHash.values().next().value
-              : undefined;
-            const reusedAssets = cachedMetadata
-              ? await getReusableAudioAssets({
-                  fileHash: cachedMetadata.fileHash,
-                  sizeBytes: cachedMetadata.sizeBytes
-                })
-              : null;
-            if (reusedAssets) {
+        const taskId = importTaskStore.startTask({
+          type: isCachedImport ? "cached_track" : "local_files",
+          title: taskTitle,
+          totalCount: selectedFiles.length,
+          itemKeys,
+          currentTitle: firstCachedTitle ?? selectedFiles[0].name,
+          currentStage: "正在校验源文件"
+        });
+
+        const roomId = currentSnapshot.room.id;
+        let hasError = false;
+        let readyCount = 0;
+        try {
+          const result = await processSelectedTrackFiles({
+            files: selectedFiles,
+            activeSession: currentSession,
+            roomId,
+            roomTracks: currentSnapshot.tracks,
+            inFlightUploadHashes: inFlightUploadHashesRef.current,
+            createObjectUrl: (file) => URL.createObjectURL(file),
+            revokeObjectUrl: (objectUrl) => URL.revokeObjectURL(objectUrl),
+            onTrackStart: (file, index) => {
+              const cachedMetadata = metadataByFileHash?.get(file.name);
               importTaskStore.updateTaskProgress(taskId, {
                 currentTitle: cachedMetadata?.title ?? file.name,
-                currentStage: "音频资源已就绪",
-                currentStagePercent: 87,
+                currentStage: "正在校验源文件",
+                currentStagePercent: 0,
+                completedCount: index,
                 activeItemKey: file.name
               });
-            }
-            const assets = reusedAssets ?? await prepareAudioAssets({
+            },
+            buildTrackMeta: async (file, objectUrl) => {
+              const cachedMetadata = selectedFiles.length === 1 && metadataByFileHash?.size === 1
+                ? metadataByFileHash.values().next().value
+                : undefined;
+              const reusedAssets = cachedMetadata
+                ? await getReusableAudioAssets({
+                    fileHash: cachedMetadata.fileHash,
+                    sizeBytes: cachedMetadata.sizeBytes
+                  })
+                : null;
+              if (reusedAssets) {
+                importTaskStore.updateTaskProgress(taskId, {
+                  currentTitle: cachedMetadata?.title ?? file.name,
+                  currentStage: "音频资源已就绪",
+                  currentStagePercent: 87,
+                  activeItemKey: file.name
+                });
+              }
+              let lastProgressTime = 0;
+              let lastStage = "";
+              const assets = reusedAssets ?? await prepareAudioAssets({
                 file,
+                expectedDurationMs: cachedMetadata?.durationMs,
                 onProgress: ({ stage, completed, total }) => {
+                  const now = Date.now();
+                  if (stage === lastStage && completed < total && now - lastProgressTime < 150) {
+                    return;
+                  }
+                  lastProgressTime = now;
+                  lastStage = stage;
                   const { stageLabel, percent } = mapAssetPreparationProgress(stage, completed, total, "local");
-                  setStatusMessage(`${stageLabel} ${percent}%`);
                   importTaskStore.updateTaskProgress(taskId, {
                     currentTitle: cachedMetadata?.title ?? file.name,
                     currentStage: stageLabel,
@@ -240,174 +283,163 @@ export function useUploadPipelineActions({
                     activeItemKey: file.name
                   });
                 }
-            });
-            const resolvedCachedMetadata = metadataByFileHash?.get(assets.fileHash);
-            const provider = resolvedCachedMetadata?.provider;
-            const providerTrackId = resolvedCachedMetadata?.providerTrackId;
-            let sourceType: TrackSourceType = "local_upload";
-            let sourceRef: RemoteTrackSourceRef | undefined;
-            if (
-              (provider === "netease" || provider === "qqmusic") &&
-              providerTrackId
-            ) {
-              sourceType = provider;
-              sourceRef = { provider, trackId: providerTrackId };
-            }
-            const draft = await buildTrackMeta(file, objectUrl, activeSession, assets, resolvedCachedMetadata
-              ? {
-                  type: sourceType,
-                  metadata: {
-                    title: resolvedCachedMetadata.title,
-                    artist: resolvedCachedMetadata.artist,
-                    album: resolvedCachedMetadata.album ?? null,
-                    artworkUrl: resolvedCachedMetadata.artworkUrl ?? null
-                  },
-                  ...(sourceRef ? { sourceRef } : {}),
-                  ...(resolvedCachedMetadata?.loudness
-                    ? { loudness: resolvedCachedMetadata.loudness }
-                    : {})
-                }
-              : undefined);
-            const lyrics = draft.lyrics?.trim()
-              || resolvedCachedMetadata?.lyrics?.trim()
-              || await resolveImportedLyrics({
-                title: draft.title,
-                artist: draft.artist,
-                sourceType,
-                sourceTrackId: sourceRef?.trackId
               });
-            return {
-              ...draft,
-              lyrics: lyrics || null,
-              translatedLyrics: resolvedCachedMetadata?.translatedLyrics ?? null,
-              romanizedLyrics: resolvedCachedMetadata?.romanizedLyrics ?? null
-            };
-          },
-          buildRegisterTrackPayload,
-          registerTrack: (registerRoomId, payload) =>
-            soqaroApi.registerTrack(
-              registerRoomId,
-              payload as Parameters<typeof soqaroApi.registerTrack>[1]
-            ),
-          deleteTrack: (registerRoomId, trackId) =>
-            soqaroApi.deleteTrack(registerRoomId, trackId),
-          deleteLocalTrackData: deleteLocalTrackDataForTracks,
-          persistTrackIntoLibrary,
-          onTrackReady: async (trackId, upload, registeredTrack) => {
-            setUploadedTracks((current) => ({
-              ...current,
-              [trackId]: upload
-            }));
-            if (registeredTrack.originalAsset && registeredTrack.playbackAsset) {
-              void linkTrackAssets({
-                trackId,
-                originalAssetId: registeredTrack.originalAsset.assetId,
-                playbackAssetId: registeredTrack.playbackAsset.assetId
-              });
+              const resolvedCachedMetadata = metadataByFileHash?.get(assets.fileHash);
+              const provider = resolvedCachedMetadata?.provider;
+              const providerTrackId = resolvedCachedMetadata?.providerTrackId;
+              let sourceType: TrackSourceType = "local_upload";
+              let sourceRef: RemoteTrackSourceRef | undefined;
+              if (
+                (provider === "netease" || provider === "qqmusic") &&
+                providerTrackId
+              ) {
+                sourceType = provider;
+                sourceRef = { provider, trackId: providerTrackId };
+              }
+              const draft = await buildTrackMeta(file, objectUrl, currentSession, assets, resolvedCachedMetadata
+                ? {
+                    type: sourceType,
+                    metadata: {
+                      title: resolvedCachedMetadata.title,
+                      artist: resolvedCachedMetadata.artist,
+                      album: resolvedCachedMetadata.album ?? null,
+                      artworkUrl: resolvedCachedMetadata.artworkUrl ?? null
+                    },
+                    ...(sourceRef ? { sourceRef } : {}),
+                    ...(resolvedCachedMetadata?.loudness
+                      ? { loudness: resolvedCachedMetadata.loudness }
+                      : {})
+                  }
+                : undefined);
+              const lyrics = draft.lyrics?.trim()
+                || resolvedCachedMetadata?.lyrics?.trim()
+                || await resolveImportedLyrics({
+                  title: draft.title,
+                  artist: draft.artist,
+                  sourceType,
+                  sourceTrackId: sourceRef?.trackId
+                });
+              return {
+                ...draft,
+                lyrics: lyrics || null,
+                translatedLyrics: resolvedCachedMetadata?.translatedLyrics ?? null,
+                romanizedLyrics: resolvedCachedMetadata?.romanizedLyrics ?? null
+              };
+            },
+            buildRegisterTrackPayload,
+            registerTrack: (registerRoomId, payload) =>
+              soqaroApi.registerTrack(
+                registerRoomId,
+                payload as Parameters<typeof soqaroApi.registerTrack>[1]
+              ),
+            deleteTrack: (registerRoomId, trackId) =>
+              soqaroApi.deleteTrack(registerRoomId, trackId),
+            deleteLocalTrackData: deleteLocalTrackDataForTracks,
+            persistTrackIntoLibrary: (persistInput) =>
+              persistTrackIntoLibrary({ ...persistInput, refreshCache: false }),
+            onTrackReady: async (trackId, upload, registeredTrack) => {
+              readyCount += 1;
+              setUploadedTracks((current) => ({
+                ...current,
+                [trackId]: upload
+              }));
+              if (registeredTrack.originalAsset && registeredTrack.playbackAsset) {
+                void linkTrackAssets({
+                  trackId,
+                  originalAssetId: registeredTrack.originalAsset.assetId,
+                  playbackAssetId: registeredTrack.playbackAsset.assetId
+                });
+              }
+              importTaskStore.completeItem(
+                taskId,
+                registeredTrack.title || registeredTrack.id,
+                [registeredTrack.fileHash, registeredTrack.id]
+              );
+              if (readyCount % 5 === 0) {
+                await syncRoomSnapshot(roomId);
+              }
             }
-            importTaskStore.completeItem(
-              taskId,
-              registeredTrack.title || registeredTrack.id,
-              [registeredTrack.fileHash, registeredTrack.id]
-            );
-            await syncRoomSnapshot(roomId);
-            void refreshCacheLibrary();
-          }
-        });
+          });
 
-        await applySelectedTrackFilesResult({
-          roomId,
-          result,
-          setUploadedTracks,
-          syncRoomSnapshot,
-          setStatusMessage
-        });
-        void refreshCacheLibrary();
-        if (result.importedCount === 0 && selectedFiles.length > 0) {
+          await applySelectedTrackFilesResult({
+            roomId,
+            result,
+            setUploadedTracks,
+            syncRoomSnapshot,
+            setStatusMessage
+          });
+          void refreshCacheLibrary().catch(() => undefined);
+          if (result.importedCount === 0 && selectedFiles.length > 0) {
+            hasError = true;
+          }
+        } catch (error) {
           hasError = true;
+          throw error;
+        } finally {
+          importTaskStore.finishTask(taskId, {
+            error: hasError ? "导入失败" : undefined
+          });
         }
-      } catch (error) {
-        hasError = true;
-        throw error;
-      } finally {
-        importTaskStore.finishTask(taskId, {
-          error: hasError ? "导入失败" : undefined
-        });
-      }
+      });
     },
     [
-      activeSession,
+      enqueueUploadTask,
       inFlightUploadHashesRef,
       persistTrackIntoLibrary,
-      roomSnapshot,
       setStatusMessage,
       setUploadedTracks,
       syncRoomSnapshot,
       refreshCacheLibrary
+    ]
+  );
+
+  const runProviderImport = useCallback(
+    (
+      candidates: ProviderTrackCandidate[],
+      origin: UploadedTrack["origin"],
+      sourceType: Exclude<TrackSourceType, "local_upload">
+    ) =>
+      enqueueUploadTask(() =>
+        importProviderTracks({
+          activeSession: latestActiveSessionRef.current,
+          candidates,
+          inFlightUploadHashesRef,
+          origin,
+          persistTrackIntoLibrary,
+          roomSnapshot: latestRoomSnapshotRef.current,
+          deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
+          deleteLocalTrackData: deleteLocalTrackDataForTracks,
+          setStatusMessage,
+          setUploadedTracks,
+          sourceType,
+          syncRoomSnapshot,
+          refreshCacheLibrary
+        })
+      ),
+    [
+      enqueueUploadTask,
+      inFlightUploadHashesRef,
+      persistTrackIntoLibrary,
+      refreshCacheLibrary,
+      setStatusMessage,
+      setUploadedTracks,
+      syncRoomSnapshot
     ]
   );
 
   const handleNeteaseTrackImport = useCallback(
-    (candidate: NeteaseTrackCandidate) => importProviderTracks({
-      activeSession, candidates: [candidate], inFlightUploadHashesRef,
-      origin: "netease-import", persistTrackIntoLibrary, roomSnapshot,
-      deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
-      deleteLocalTrackData: deleteLocalTrackDataForTracks,
-      setStatusMessage, setUploadedTracks, sourceType: "netease",
-      syncRoomSnapshot, refreshCacheLibrary
-    }),
-    [
-      activeSession,
-      inFlightUploadHashesRef,
-      persistTrackIntoLibrary,
-      roomSnapshot,
-      setStatusMessage,
-      setUploadedTracks,
-      syncRoomSnapshot,
-      refreshCacheLibrary
-    ]
+    (candidate: NeteaseTrackCandidate) => runProviderImport([candidate], "netease-import", "netease"),
+    [runProviderImport]
   );
 
   const handleQqMusicTrackImport = useCallback(
-    (candidate: QqMusicTrackCandidate) => importProviderTracks({
-      activeSession, candidates: [candidate], inFlightUploadHashesRef,
-      origin: "qqmusic-import", persistTrackIntoLibrary, roomSnapshot,
-      deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
-      deleteLocalTrackData: deleteLocalTrackDataForTracks,
-      setStatusMessage, setUploadedTracks, sourceType: "qqmusic",
-      syncRoomSnapshot, refreshCacheLibrary
-    }),
-    [
-      activeSession,
-      inFlightUploadHashesRef,
-      persistTrackIntoLibrary,
-      roomSnapshot,
-      setStatusMessage,
-      setUploadedTracks,
-      syncRoomSnapshot,
-      refreshCacheLibrary
-    ]
+    (candidate: QqMusicTrackCandidate) => runProviderImport([candidate], "qqmusic-import", "qqmusic"),
+    [runProviderImport]
   );
 
   const handleBilibiliTrackImport = useCallback(
-    (candidate: BilibiliTrackCandidate) => importProviderTracks({
-      activeSession, candidates: [candidate], inFlightUploadHashesRef,
-      origin: "bilibili-import", persistTrackIntoLibrary, roomSnapshot,
-      deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
-      deleteLocalTrackData: deleteLocalTrackDataForTracks,
-      setStatusMessage, setUploadedTracks, sourceType: "bilibili",
-      syncRoomSnapshot, refreshCacheLibrary
-    }),
-    [
-      activeSession,
-      inFlightUploadHashesRef,
-      persistTrackIntoLibrary,
-      roomSnapshot,
-      setStatusMessage,
-      setUploadedTracks,
-      syncRoomSnapshot,
-      refreshCacheLibrary
-    ]
+    (candidate: BilibiliTrackCandidate) => runProviderImport([candidate], "bilibili-import", "bilibili"),
+    [runProviderImport]
   );
 
   return {
@@ -417,27 +449,12 @@ export function useUploadPipelineActions({
     handleNeteaseTrackImport,
     handleQqMusicTrackImport,
     handleBilibiliTrackImport,
-    handleNeteaseTrackImports: (candidates: NeteaseTrackCandidate[]) => importProviderTracks({
-      activeSession, candidates, inFlightUploadHashesRef, origin: "netease-import",
-      persistTrackIntoLibrary, roomSnapshot, setStatusMessage, setUploadedTracks,
-      deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
-      deleteLocalTrackData: deleteLocalTrackDataForTracks,
-      sourceType: "netease", syncRoomSnapshot, refreshCacheLibrary
-    }),
-    handleQqMusicTrackImports: (candidates: QqMusicTrackCandidate[]) => importProviderTracks({
-      activeSession, candidates, inFlightUploadHashesRef, origin: "qqmusic-import",
-      persistTrackIntoLibrary, roomSnapshot, setStatusMessage, setUploadedTracks,
-      deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
-      deleteLocalTrackData: deleteLocalTrackDataForTracks,
-      sourceType: "qqmusic", syncRoomSnapshot, refreshCacheLibrary
-    }),
-    handleBilibiliTrackImports: (candidates: BilibiliTrackCandidate[]) => importProviderTracks({
-      activeSession, candidates, inFlightUploadHashesRef, origin: "bilibili-import",
-      persistTrackIntoLibrary, roomSnapshot, setStatusMessage, setUploadedTracks,
-      deleteTrack: (roomId, trackId) => soqaroApi.deleteTrack(roomId, trackId),
-      deleteLocalTrackData: deleteLocalTrackDataForTracks,
-      sourceType: "bilibili", syncRoomSnapshot, refreshCacheLibrary
-    })
+    handleNeteaseTrackImports: (candidates: NeteaseTrackCandidate[]) =>
+      runProviderImport(candidates, "netease-import", "netease"),
+    handleQqMusicTrackImports: (candidates: QqMusicTrackCandidate[]) =>
+      runProviderImport(candidates, "qqmusic-import", "qqmusic"),
+    handleBilibiliTrackImports: (candidates: BilibiliTrackCandidate[]) =>
+      runProviderImport(candidates, "bilibili-import", "bilibili")
   };
 }
 export { importProviderTracks, prefetchProviderAudio, type ProviderTrackCandidate } from "./provider-import-pipeline";

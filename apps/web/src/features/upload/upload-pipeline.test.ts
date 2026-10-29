@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { TrackMeta } from "@soqaro/shared";
 import type { UploadedTrack } from "@/features/library/audio-utils";
 import {
@@ -128,8 +128,6 @@ describe("processSelectedTrackFiles", () => {
 
     expect(Object.keys(result.uploads)).toEqual(["track_new"]);
     expect(result.uploads.track_new).toEqual({
-      file: newFile,
-      objectUrl: "blob:new.flac",
       origin: "live-upload"
     });
     expect(result.registeredTracks).toEqual([registeredTrack]);
@@ -137,7 +135,7 @@ describe("processSelectedTrackFiles", () => {
     expect(registeredPayloads).toEqual(["room_1:hash_new"]);
     expect(persistedTracks).toEqual(["room_1:track_new"]);
     expect(readyTracks).toEqual(["track_new"]);
-    expect(revokedUrls).toEqual(["blob:existing.flac", "blob:busy.flac"]);
+    expect(revokedUrls).toEqual(["blob:new.flac", "blob:existing.flac", "blob:busy.flac"]);
     expect([...inFlightUploadHashes]).toEqual(["user_1:hash_busy"]);
   });
 

@@ -22,6 +22,7 @@ import {
   getLocalAudioCacheFileRecord,
   getCachedLibraryTrack,
   getCachedLibraryTrackByProviderTrack,
+  getCachedLibraryTrackSummaryByProviderTrack,
   getAssetManifest,
   getAssetUnits,
   getTrackAssetLink,
@@ -47,6 +48,7 @@ import {
 // exposing the low-level IndexedDB storage module directly.
 export {
   getCachedLibraryTrackByProviderTrack,
+  getCachedLibraryTrackSummaryByProviderTrack,
   getCachedLibraryTrackSummary
 } from "./indexeddb";
 import { enqueueLocalRepositoryWrite } from "./local-repository-queue";
@@ -418,28 +420,28 @@ export async function getRoomLocalAudioFile(input: {
   // have been registered from a different provider download and carry another
   // file hash. Match the member's own cache by provider identity as well.
   if (input.provider && input.providerTrackId) {
-    const providerCache = await getCachedLibraryTrackByProviderTrack(
-      input.provider,
-      input.providerTrackId
-    ).catch(() => null);
-    if (providerCache?.file) return providerCache.file;
-
-    const providerSummary = await listCachedLibraryTrackSummaries()
-      .then((summaries) => summaries.find((summary) =>
-        summary.provider === input.provider &&
-        summary.providerTrackId === input.providerTrackId
-      ) ?? null)
-      .catch(() => null);
+    const providerSummary = typeof getCachedLibraryTrackSummaryByProviderTrack === "function"
+      ? await getCachedLibraryTrackSummaryByProviderTrack(
+          input.provider,
+          input.providerTrackId
+        ).catch(() => null)
+      : null;
     if (providerSummary) {
       const [localProviderCache, localProviderFile, browserProviderFile] = await Promise.all([
-        getLocalAudioCacheFile(providerSummary.fileHash).catch(() => null),
-        getLocalAudioFile(providerSummary.fileHash).catch(() => null),
+        getLocalAudioCacheFile(providerSummary.fileHash, repository).catch(() => null),
+        getLocalAudioFile(providerSummary.fileHash, null, null, repository).catch(() => null),
         getCachedLibraryTrack(providerSummary.fileHash).catch(() => null)
       ]);
       if (localProviderCache) return localProviderCache;
       if (localProviderFile) return localProviderFile;
       if (browserProviderFile?.file) return browserProviderFile.file;
     }
+
+    const providerCache = await getCachedLibraryTrackByProviderTrack(
+      input.provider,
+      input.providerTrackId
+    ).catch(() => null);
+    if (providerCache?.file) return providerCache.file;
   }
 
   return null;

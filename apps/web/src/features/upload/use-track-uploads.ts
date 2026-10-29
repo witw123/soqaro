@@ -428,6 +428,9 @@ export function useTrackUploads(options: {
   useEffect(() => {
     void refreshCacheLibrary();
     const refreshWhenActive = () => {
+      if (inFlightUploadHashesRef.current.size > 0) {
+        return;
+      }
       if (document.visibilityState === "visible") {
         void refreshCacheLibrary();
       }

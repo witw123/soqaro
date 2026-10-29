@@ -72,11 +72,26 @@ export class OpusSegmentEncoder {
     });
   }
 
+  get isDisposed() {
+    return this.disposed;
+  }
+
+  get hasPendingWork() {
+    return this.pending.size > 0;
+  }
+
   dispose() {
     if (this.disposed) {
       return;
     }
-    this.fail(new Error("Opus encoding was cancelled."));
+    this.disposed = true;
+    try {
+      this.worker.postMessage({ type: "dispose" });
+    } catch {
+      // Fall through to hard termination below.
+    }
+    this.worker.terminate();
+    this.rejectAll(new Error("Opus encoding was cancelled."));
   }
 
   private rejectAll(error: Error) {
@@ -94,4 +109,67 @@ export class OpusSegmentEncoder {
     }
     this.rejectAll(error);
   }
+}
+
+const MAX_POOLED_ENCODERS = 4;
+const IDLE_ENCODER_TTL_MS = 15_000;
+const idleEncoders: OpusSegmentEncoder[] = [];
+let activePoolLeases = 0;
+let idleCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleIdleEncoderCleanup() {
+  if (idleCleanupTimer) {
+    clearTimeout(idleCleanupTimer);
+    idleCleanupTimer = null;
+  }
+  if (activePoolLeases > 0 || idleEncoders.length === 0) {
+    return;
+  }
+  idleCleanupTimer = setTimeout(() => {
+    idleCleanupTimer = null;
+    if (activePoolLeases > 0) return;
+    while (idleEncoders.length > 0) {
+      idleEncoders.pop()?.dispose();
+    }
+  }, IDLE_ENCODER_TTL_MS);
+}
+
+export function acquireOpusEncoderPool(count: number) {
+  const desiredCount = Math.max(1, Math.min(MAX_POOLED_ENCODERS, Math.floor(count)));
+  if (idleCleanupTimer) {
+    clearTimeout(idleCleanupTimer);
+    idleCleanupTimer = null;
+  }
+  activePoolLeases += 1;
+
+  const encoders: OpusSegmentEncoder[] = [];
+  while (encoders.length < desiredCount && idleEncoders.length > 0) {
+    const candidate = idleEncoders.pop()!;
+    if (!candidate.isDisposed && !candidate.hasPendingWork) {
+      encoders.push(candidate);
+    } else {
+      candidate.dispose();
+    }
+  }
+  while (encoders.length < desiredCount) {
+    encoders.push(new OpusSegmentEncoder());
+  }
+
+  let released = false;
+  return {
+    encoders,
+    release() {
+      if (released) return;
+      released = true;
+      activePoolLeases = Math.max(0, activePoolLeases - 1);
+      for (const encoder of encoders) {
+        if (!encoder.isDisposed && !encoder.hasPendingWork && idleEncoders.length < MAX_POOLED_ENCODERS) {
+          idleEncoders.push(encoder);
+        } else {
+          encoder.dispose();
+        }
+      }
+      scheduleIdleEncoderCleanup();
+    }
+  };
 }

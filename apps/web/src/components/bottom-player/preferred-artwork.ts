@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import type { TrackMeta } from "@soqaro/shared";
 import {
-  getCachedLibraryTrackByProviderTrack,
-  getCachedLibraryTrackSummary
+  getCachedLibraryTrackSummary,
+  getCachedLibraryTrackSummaryByProviderTrack
 } from "@/features/library/local-audio-storage";
 
 type ArtworkTrack = Pick<TrackMeta, "id" | "fileHash" | "artworkUrl" | "sourceRef"> | null;
@@ -57,7 +57,7 @@ export function usePreferredArtworkUrl(track: ArtworkTrack) {
         ? getCachedLibraryTrackSummary(fileHash).catch(() => null)
         : Promise.resolve(null),
       provider && providerTrackId
-        ? getCachedLibraryTrackByProviderTrack(provider, providerTrackId).catch(() => null)
+        ? getCachedLibraryTrackSummaryByProviderTrack(provider, providerTrackId).catch(() => null)
         : Promise.resolve(null)
     ]).then((records) => {
       if (cancelled) return;

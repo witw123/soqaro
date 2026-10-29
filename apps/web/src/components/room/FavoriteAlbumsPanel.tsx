@@ -437,11 +437,15 @@ function FavoriteAlbumDetail({
     setPendingTrackIds(new Set(pendingTrackIdsRef.current));
 
     try {
-      await Promise.allSettled([
-        neteaseTracks.length > 0 && onImportNeteaseTracks ? onImportNeteaseTracks(neteaseTracks) : Promise.resolve(),
-        qqTracks.length > 0 && onImportQqMusicTracks ? onImportQqMusicTracks(qqTracks) : Promise.resolve(),
-        biliTracks.length > 0 && onImportBilibiliTracks ? onImportBilibiliTracks(biliTracks) : Promise.resolve()
-      ]);
+      if (neteaseTracks.length > 0 && onImportNeteaseTracks) {
+        await onImportNeteaseTracks(neteaseTracks).catch(() => undefined);
+      }
+      if (qqTracks.length > 0 && onImportQqMusicTracks) {
+        await onImportQqMusicTracks(qqTracks).catch(() => undefined);
+      }
+      if (biliTracks.length > 0 && onImportBilibiliTracks) {
+        await onImportBilibiliTracks(biliTracks).catch(() => undefined);
+      }
       if (onRefreshRoom) {
         await onRefreshRoom();
       }

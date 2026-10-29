@@ -168,15 +168,29 @@ export async function getCachedLibraryTrack(fileHash: string) {
   return soqaroDatabase.cachedTrackLibrary.get(fileHash);
 }
 
+export async function getCachedLibraryTrackSummaryByProviderTrack(
+  provider: string,
+  providerTrackId: string
+) {
+  if (!provider || !providerTrackId) {
+    return undefined;
+  }
+  await backfillCachedLibraryTrackMetadataIfNeeded();
+  return soqaroDatabase.cachedTrackLibraryMetadata
+    .where("[provider+providerTrackId]")
+    .equals([provider, providerTrackId])
+    .first();
+}
+
 export async function getCachedLibraryTrackByProviderTrack(
   provider: string,
   providerTrackId: string
 ) {
-  return soqaroDatabase.cachedTrackLibrary
-    .filter((record) =>
-      record.provider === provider && record.providerTrackId === providerTrackId
-    )
-    .first();
+  const summary = await getCachedLibraryTrackSummaryByProviderTrack(provider, providerTrackId);
+  if (!summary) {
+    return undefined;
+  }
+  return soqaroDatabase.cachedTrackLibrary.get(summary.fileHash);
 }
 
 export async function deleteCachedLibraryTrackFile(fileHash: string) {

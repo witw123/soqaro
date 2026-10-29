@@ -441,20 +441,47 @@ export class LocalRepository {
     );
 
     const tracks = await this.listTracks();
+    const tracksByHash = new Map(tracks.map((record) => [record.fileHash, record]));
+    const activeTrackIdsByHash = new Map<string, Set<string>>();
+    for (const track of snapshot.tracks) {
+      let ids = activeTrackIdsByHash.get(track.fileHash);
+      if (!ids) {
+        ids = new Set();
+        activeTrackIdsByHash.set(track.fileHash, ids);
+      }
+      ids.add(track.id);
+    }
+
     for (const record of tracks) {
-      const roomRefs = record.roomRefs?.filter((ref) => ref.roomId !== snapshot.room.id) ?? [];
-      if (roomRefs.length !== (record.roomRefs?.length ?? 0)) {
+      const existingRefs = record.roomRefs;
+      if (!existingRefs || existingRefs.length === 0) continue;
+      const activeIds = activeTrackIdsByHash.get(record.fileHash);
+      const roomRefs = existingRefs.filter(
+        (ref) => ref.roomId !== snapshot.room.id || Boolean(activeIds?.has(ref.trackId))
+      );
+      if (roomRefs.length !== existingRefs.length) {
         await this.writeTrack({ ...record, roomRefs }, { touchManifest: false });
+        const nextCached: LocalRepositoryTrackRecord = { ...record };
+        if (roomRefs.length > 0) {
+          nextCached.roomRefs = roomRefs;
+        } else {
+          delete nextCached.roomRefs;
+        }
+        tracksByHash.set(record.fileHash, nextCached);
       }
       // Room membership is metadata, not cache ownership. Cached audio stays
       // available after a room snapshot no longer references the track.
     }
 
     for (const track of snapshot.tracks) {
-      const existing = await this.readTrack(track.fileHash);
+      const existing = tracksByHash.get(track.fileHash);
       const existingRoomRefs = existing?.roomRefs ?? [];
       const hasCurrentRoomRef = existingRoomRefs.some(
-        (ref) => ref.roomId === snapshot.room.id && ref.trackId === track.id
+        (ref) =>
+          ref.roomId === snapshot.room.id &&
+          ref.trackId === track.id &&
+          ref.ownerSessionId === track.ownerSessionId &&
+          ref.ownerNickname === track.ownerNickname
       );
       if (existing && hasCurrentRoomRef) {
         continue;
@@ -474,7 +501,7 @@ export class LocalRepository {
       if (!lyricsPath && existing?.lyricsPath) {
         await this.removePath(existing.lyricsPath);
       }
-      await this.writeTrack({
+      const nextTrackRecord: LocalRepositoryTrackRecord = {
         schemaVersion: 1,
         fileHash: track.fileHash,
         title: track.title,
@@ -506,7 +533,9 @@ export class LocalRepository {
         roomRefs,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
-      }, { touchManifest: false });
+      };
+      await this.writeTrack(nextTrackRecord, { touchManifest: false });
+      tracksByHash.set(track.fileHash, nextTrackRecord);
     }
     await this.touch();
   }
@@ -1071,6 +1100,7 @@ async function listJsonFilesFromDirectory<T>(directory: FileSystemDirectoryHandl
       continue;
     }
     if (entry.kind === "directory") {
+      if (entry.name === "units") continue;
       records.push(...await listJsonFilesFromDirectory<T>(entry));
     }
   }

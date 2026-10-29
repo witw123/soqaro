@@ -88,7 +88,7 @@ export async function processSelectedTrackFiles(input: {
     const file = input.files[fileIndex];
     input.onTrackStart?.(file, fileIndex, input.files.length);
     const objectUrl = input.createObjectUrl(file);
-    let retainObjectUrl = false;
+    let objectUrlRevoked = false;
     // Cheap file-identity marker claimed before the expensive decode/encode:
     // two concurrent imports of the same file (double submit, cached-library
     // refresh racing a manual pick) must not both run through buildTrackMeta
@@ -103,6 +103,8 @@ export async function processSelectedTrackFiles(input: {
       claimedFileSlot = true;
 
       const track = await input.buildTrackMeta(file, objectUrl);
+      input.revokeObjectUrl(objectUrl);
+      objectUrlRevoked = true;
       const uploadHashKey = `${input.activeSession.userId}:${track.fileHash}`;
 
       if (input.inFlightUploadHashes.has(uploadHashKey)) {
@@ -126,8 +128,6 @@ export async function processSelectedTrackFiles(input: {
       }
 
       const upload = {
-        file,
-        objectUrl,
         origin: "live-upload"
       } satisfies UploadedTrack;
       try {
@@ -149,7 +149,6 @@ export async function processSelectedTrackFiles(input: {
         ]);
         throw error;
       }
-      retainObjectUrl = true;
       uploads[registered.id] = upload;
       await input.onTrackReady?.(registered.id, upload, registered);
       registeredTracks.push(registered);
@@ -158,7 +157,7 @@ export async function processSelectedTrackFiles(input: {
       if (claimedFileSlot) {
         input.inFlightUploadHashes.delete(fileIdentityKey);
       }
-      if (!retainObjectUrl) {
+      if (!objectUrlRevoked) {
         input.revokeObjectUrl(objectUrl);
       }
     }

@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RoomSnapshot, TrackMeta } from "@soqaro/shared";
 import {
   createRepositoryTrackRecord,
@@ -282,5 +282,73 @@ describe("LocalRepository", () => {
     const file = await repository.readPath(path!);
     expect(file).not.toBeNull();
     fetchSpy.mockRestore();
+  });
+
+  it("does not rewrite unchanged track records when appending a track to a room snapshot", async () => {
+    const root = new MemoryDirectoryHandle("Soqaro");
+    const repository = await LocalRepository.initialize(root as unknown as FileSystemDirectoryHandle);
+    const firstTrack = buildTrack("track-a", "a".repeat(64), "owner-a");
+    const secondTrack = buildTrack("track-b", "b".repeat(64), "owner-b");
+
+    await repository.writeRoomSnapshot(buildRoomSnapshot([firstTrack]));
+    const writeTrackSpy = vi.spyOn(repository, "writeTrack");
+
+    await repository.writeRoomSnapshot(buildRoomSnapshot([firstTrack, secondTrack]));
+
+    expect(writeTrackSpy).toHaveBeenCalledTimes(1);
+    expect(writeTrackSpy.mock.calls[0]?.[0]?.fileHash).toBe(secondTrack.fileHash);
+  });
+
+  it("skips playback unit directories when listing playback manifests", async () => {
+    const root = new MemoryDirectoryHandle("Soqaro");
+    const repository = await LocalRepository.initialize(root as unknown as FileSystemDirectoryHandle);
+    const assetId = "b".repeat(64);
+    await repository.writePlaybackAsset({
+      manifest: {
+        assetId,
+        kind: "playback",
+        sourceFileHash: "c".repeat(64),
+        profileId: "opus-music-v4",
+        codec: "opus",
+        container: "audio/ogg",
+        sampleRate: 48_000,
+        channels: 1,
+        bitrate: 128_000,
+        durationMs: 2_000,
+        segmentDurationMs: 2_000,
+        seekPrerollMs: 80,
+        unitCount: 1,
+        merkleRoot: "d".repeat(64),
+        encoder: { name: "@audio/opus-encode", version: "3.4.0" }
+      },
+      units: [{
+        descriptor: {
+          assetId,
+          kind: "playback",
+          unitIndex: 0,
+          payloadBytes: 3,
+          contentHash: "e".repeat(64),
+          proof: [],
+          startMs: 0,
+          durationMs: 2_000,
+          trimStartSamples: 0,
+          trimEndSamples: 0
+        },
+        payload: new Uint8Array([1, 2, 3]).buffer
+      }]
+    });
+
+    const unitsDir = await (
+      await (
+        await (
+          await (await root.getDirectoryHandle(".soqaro")).getDirectoryHandle("assets")
+        ).getDirectoryHandle("playback")
+      ).getDirectoryHandle("opus-music-v4")
+    ).getDirectoryHandle(assetId).then((dir) => dir.getDirectoryHandle("units"));
+    const unitsValuesSpy = vi.spyOn(unitsDir, "values");
+
+    const assets = await repository.listPlaybackAssets();
+    expect(assets).toHaveLength(1);
+    expect(unitsValuesSpy).not.toHaveBeenCalled();
   });
 });

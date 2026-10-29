@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeAudioBuffer, LoudnessAnalyzer } from "./loudness-analysis";
+import { analyzeAudioBuffer, analyzeAudioBufferAsync, LoudnessAnalyzer } from "./loudness-analysis";
 
 describe("loudness analysis", () => {
   it("derives a stable gain from integrated loudness", () => {
@@ -27,6 +27,22 @@ describe("loudness analysis", () => {
     });
 
     expect(analyzer.finish()).toEqual(analyzeAudioBuffer(toAudioBufferInput(channels)));
+  });
+
+  it("matches synchronous loudness analysis when slicing asynchronously across yield boundaries", async () => {
+    const samples = new Float32Array(48_000 * 10);
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] = 0.3 * Math.sin(2 * Math.PI * 440 * index / 48_000);
+    }
+    const input = toAudioBufferInput([samples]);
+
+    await expect(analyzeAudioBufferAsync(input)).resolves.toEqual(analyzeAudioBuffer(input));
+
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(analyzeAudioBufferAsync(input, aborted.signal)).rejects.toMatchObject({
+      name: "AbortError"
+    });
   });
 });
 

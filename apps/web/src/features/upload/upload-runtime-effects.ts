@@ -121,9 +121,24 @@ export function useUploadRuntimeEffects({
     if (!snapshot?.room.id || !roomCatalogKey) {
       return;
     }
+    if (inFlightUploadHashesRef && inFlightUploadHashesRef.current.size > 0) {
+      return;
+    }
 
-    void persistRoomSnapshotToLocalRepository(snapshot).catch(() => undefined);
-  }, [roomCatalogKey]);
+    const timer = setTimeout(() => {
+      if (inFlightUploadHashesRef && inFlightUploadHashesRef.current.size > 0) {
+        return;
+      }
+      const latestSnapshot = latestRoomSnapshotRef.current;
+      if (latestSnapshot?.room.id) {
+        void persistRoomSnapshotToLocalRepository(latestSnapshot).catch(() => undefined);
+      }
+    }, 800);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [cacheLibraryVersion, inFlightUploadHashesRef, roomCatalogKey]);
 
   useEffect(() => {
     return () => {

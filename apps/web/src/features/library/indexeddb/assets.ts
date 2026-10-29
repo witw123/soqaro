@@ -1,4 +1,4 @@
-﻿import {
+import {
   assetUnitDescriptorSchema,
   playbackProfileId,
   verifyAssetUnit,
@@ -103,25 +103,29 @@ export async function getCompleteAssetPairForSourceFileHash(fileHash: string) {
 
   const repository = await getLocalRepositoryForAssetRead();
   if (!repository) return null;
-  const [localOriginal, localPlayback] = await Promise.all([
-    repository.listOriginalAssets(),
-    repository.listPlaybackAssets()
-  ]);
-  const originalManifest = localOriginal.find(
-    (record) => record.manifest.kind === "original" && record.manifest.fileHash === fileHash
-  )?.manifest;
-  const playbackManifest = localPlayback.find(
-    (record) =>
-      record.manifest.kind === "playback" &&
-      record.manifest.profileId === playbackProfileId &&
-      record.manifest.sourceFileHash === fileHash
-  )?.manifest;
-  return originalManifest && playbackManifest
-    ? {
-        original: createLocalAssetManifestRecord(repository, originalManifest),
-        playback: createLocalAssetManifestRecord(repository, playbackManifest)
-      }
-    : null;
+
+  const localTrack = await repository.readTrack(fileHash);
+  if (localTrack?.originalAsset?.assetId && localTrack?.playbackAsset?.assetId) {
+    const [originalRecord, playbackRecord] = await Promise.all([
+      repository.readOriginalManifest(localTrack.originalAsset.assetId),
+      repository.readPlaybackAsset(localTrack.playbackAsset.assetId, playbackProfileId)
+    ]);
+    if (
+      originalRecord?.manifest.kind === "original" &&
+      originalRecord.manifest.fileHash === fileHash &&
+      playbackRecord?.manifest.kind === "playback" &&
+      playbackRecord.manifest.profileId === playbackProfileId &&
+      playbackRecord.manifest.sourceFileHash === fileHash &&
+      playbackRecord.units.length === playbackRecord.manifest.unitCount
+    ) {
+      return {
+        original: createLocalAssetManifestRecord(repository, originalRecord.manifest),
+        playback: createLocalAssetManifestRecord(repository, playbackRecord.manifest)
+      };
+    }
+  }
+
+  return null;
 }
 
 export async function deleteAudioAsset(assetId: string) {

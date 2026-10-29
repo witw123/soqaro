@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OpusSegmentEncoder } from "./opus-segment-encoder";
+import { acquireOpusEncoderPool, OpusSegmentEncoder } from "./opus-segment-encoder";
 
 class FakeWorker {
   static latest: FakeWorker | null = null;
+  static instances: FakeWorker[] = [];
 
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
@@ -12,17 +13,21 @@ class FakeWorker {
 
   constructor() {
     FakeWorker.latest = this;
+    FakeWorker.instances.push(this);
   }
 }
 
 describe("OpusSegmentEncoder", () => {
   beforeEach(() => {
+    FakeWorker.instances = [];
     vi.useFakeTimers();
     vi.stubGlobal("Worker", FakeWorker);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
     FakeWorker.latest = null;
+    FakeWorker.instances = [];
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -52,5 +57,21 @@ describe("OpusSegmentEncoder", () => {
     FakeWorker.latest?.onmessageerror?.({} as MessageEvent);
     await expect(encodePromise).rejects.toThrow("unreadable response");
     expect(FakeWorker.latest?.terminate).toHaveBeenCalledOnce();
+  });
+
+  it("reuses pooled workers across leases and disposes them after the idle timeout", async () => {
+    const firstLease = acquireOpusEncoderPool(2);
+    expect(firstLease.encoders).toHaveLength(2);
+    expect(FakeWorker.instances).toHaveLength(2);
+    firstLease.release();
+
+    const secondLease = acquireOpusEncoderPool(2);
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(new Set(secondLease.encoders)).toEqual(new Set(firstLease.encoders));
+    secondLease.release();
+
+    expect(FakeWorker.instances.every((worker) => worker.terminate.mock.calls.length === 0)).toBe(true);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(FakeWorker.instances.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true);
   });
 });

@@ -2,12 +2,17 @@
 
 import createOpusEncoder from "@audio/opus-encode";
 
-type EncodeRequest = {
-  id: number;
-  sampleRate: number;
-  channels: Float32Array[];
-  bitrateKbps: 128 | 256;
-};
+type EncodeRequest =
+  | {
+      type?: "encode";
+      id: number;
+      sampleRate: number;
+      channels: Float32Array[];
+      bitrateKbps: 128 | 256;
+    }
+  | {
+      type: "dispose";
+    };
 
 type EncodeResponse =
   | { id: number; ok: true; payload: ArrayBuffer }
@@ -18,7 +23,7 @@ type OpusEncoder = Awaited<ReturnType<typeof createOpusEncoder>>;
 let encoder: OpusEncoder | null = null;
 let encoderConfig: string | null = null;
 
-async function getEncoder(request: EncodeRequest) {
+async function getEncoder(request: Extract<EncodeRequest, { id: number }>) {
   const nextConfig = `${request.sampleRate}:${request.channels.length}:${request.bitrateKbps}`;
   if (encoder && encoderConfig === nextConfig) {
     return encoder;
@@ -40,6 +45,13 @@ async function getEncoder(request: EncodeRequest) {
 
 self.onmessage = async (event: MessageEvent<EncodeRequest>) => {
   const request = event.data;
+  if (request.type === "dispose") {
+    encoder?.free();
+    encoder = null;
+    encoderConfig = null;
+    self.close();
+    return;
+  }
   try {
     const opusEncoder = await getEncoder(request);
     const encoded = await opusEncoder.encodeIndependent(request.channels);

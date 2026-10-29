@@ -419,6 +419,10 @@ export class SoqaroDatabase extends Dexie {
       recommendationEvents: "&id, userId, candidateKey, artistKey, occurredAt, [userId+occurredAt]"
     });
     this.version(21).stores({ recommendationEvents: null });
+    this.version(22).stores({
+      cachedTrackLibraryMetadata:
+        "&fileHash, cachedAt, [provider+providerTrackId], *sourceTrackIds, *sourceRoomIds"
+    });
   }
 }
 export const soqaroDatabase = new SoqaroDatabase();

@@ -26,26 +26,38 @@ const emptyEmbeddedAudioMetadata: EmbeddedAudioMetadata = {
   lyrics: null
 };
 
-export async function readEmbeddedAudioMetadata(file: Blob): Promise<EmbeddedAudioMetadata> {
-  try {
-    const { parseBlob, selectCover } = await import("music-metadata");
-    const metadata = await parseBlob(file, { duration: true, skipCovers: false });
-    const cover = selectCover(metadata.common.picture);
+const metadataCache = new WeakMap<Blob, Promise<EmbeddedAudioMetadata>>();
 
-    return {
-      title: normalizeText(metadata.common.title),
-      artist: normalizeText(metadata.common.artist)
-        ?? normalizeText(metadata.common.artists?.join(" / ")),
-      album: normalizeText(metadata.common.album),
-      durationMs: toDurationMs(metadata.format.duration),
-      bitrate: toBitrate(metadata.format.bitrate),
-      codec: normalizeText(metadata.format.codec),
-      artworkUrl: await pictureToDataUrl(cover),
-      lyrics: readLyrics(metadata.common.lyrics)
-    };
-  } catch {
-    return emptyEmbeddedAudioMetadata;
+export async function readEmbeddedAudioMetadata(file: Blob): Promise<EmbeddedAudioMetadata> {
+  const cached = metadataCache.get(file);
+  if (cached) {
+    return cached;
   }
+
+  const task = (async (): Promise<EmbeddedAudioMetadata> => {
+    try {
+      const { parseBlob, selectCover } = await import("music-metadata");
+      const metadata = await parseBlob(file, { duration: true, skipCovers: false });
+      const cover = selectCover(metadata.common.picture);
+
+      return {
+        title: normalizeText(metadata.common.title),
+        artist: normalizeText(metadata.common.artist)
+          ?? normalizeText(metadata.common.artists?.join(" / ")),
+        album: normalizeText(metadata.common.album),
+        durationMs: toDurationMs(metadata.format.duration),
+        bitrate: toBitrate(metadata.format.bitrate),
+        codec: normalizeText(metadata.format.codec),
+        artworkUrl: await pictureToDataUrl(cover),
+        lyrics: readLyrics(metadata.common.lyrics)
+      };
+    } catch {
+      return emptyEmbeddedAudioMetadata;
+    }
+  })();
+
+  metadataCache.set(file, task);
+  return task;
 }
 
 /** Prefer a cover embedded in a downloaded audio file over a remote URL. */
@@ -170,11 +182,16 @@ async function pictureToDataUrl(picture: IPicture | null) {
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
-      for (const quality of artworkQualities) {
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        if (dataUrl.length <= maxArtworkDataUrlLength) {
-          return dataUrl;
+      try {
+        for (const quality of artworkQualities) {
+          const dataUrl = canvas.toDataURL("image/jpeg", quality);
+          if (dataUrl.length <= maxArtworkDataUrlLength) {
+            return dataUrl;
+          }
         }
+      } finally {
+        canvas.width = 0;
+        canvas.height = 0;
       }
     }
   } catch {

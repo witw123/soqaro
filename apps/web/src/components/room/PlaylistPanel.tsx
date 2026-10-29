@@ -690,17 +690,15 @@ function PlaylistDetail({
       .filter((track: PlaylistTrackInfo) => track.providerTrack?.provider === "bilibili")
       .map((track: PlaylistTrackInfo) => track.providerTrack) as BilibiliTrackCandidate[];
     try {
-      await Promise.allSettled([
-        neteaseTracks.length > 0
-          ? onImportNeteaseTracks(neteaseTracks)
-          : Promise.resolve(),
-        qqMusicTracks.length > 0
-          ? onImportQqMusicTracks(qqMusicTracks)
-          : Promise.resolve(),
-        bilibiliTracks.length > 0 && onImportBilibiliTracks
-          ? onImportBilibiliTracks(bilibiliTracks)
-          : Promise.resolve()
-      ]);
+      if (neteaseTracks.length > 0) {
+        await onImportNeteaseTracks(neteaseTracks).catch(() => undefined);
+      }
+      if (qqMusicTracks.length > 0) {
+        await onImportQqMusicTracks(qqMusicTracks).catch(() => undefined);
+      }
+      if (bilibiliTracks.length > 0 && onImportBilibiliTracks) {
+        await onImportBilibiliTracks(bilibiliTracks).catch(() => undefined);
+      }
       if (onRefreshRoom) {
         await onRefreshRoom();
       }

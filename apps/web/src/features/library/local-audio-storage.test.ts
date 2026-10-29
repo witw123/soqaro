@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const indexedDbMocks = vi.hoisted(() => ({
   deleteCachedLibraryTrack: vi.fn(),
@@ -9,6 +9,7 @@ const indexedDbMocks = vi.hoisted(() => ({
   getAssetUnits: vi.fn(),
   getCachedLibraryTrack: vi.fn(),
   getCachedLibraryTrackByProviderTrack: vi.fn(),
+  getCachedLibraryTrackSummaryByProviderTrack: vi.fn(),
   getCachedLibraryTrackSummary: vi.fn(),
   getLocalAudioDirectory: vi.fn(),
   getLocalAudioFileRecord: vi.fn(),
@@ -333,6 +334,7 @@ describe("local audio cache persistence", () => {
     indexedDbMocks.getLocalAudioFileRecord.mockResolvedValue(null);
     indexedDbMocks.getCachedLibraryTrack.mockResolvedValue(null);
     indexedDbMocks.getCachedLibraryTrackByProviderTrack.mockResolvedValue(null);
+    indexedDbMocks.getCachedLibraryTrackSummaryByProviderTrack.mockResolvedValue(undefined);
     indexedDbMocks.listCachedLibraryTrackHashes.mockResolvedValue([]);
     indexedDbMocks.listCachedLibraryTrackSummaries.mockResolvedValue([]);
     indexedDbMocks.listLocalAudioFiles.mockResolvedValue([]);

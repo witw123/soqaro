@@ -32,13 +32,6 @@ export default async function opus(opts) {
 	let nch = opts.channels || 1
 	let bitrate = (opts.bitrate || 64) * 1000
 
-	const nativeEncoder = await createNativeWebCodecsEncoder({
-		rate,
-		channels: nch,
-		bitrate
-	})
-	if (nativeEncoder) return nativeEncoder
-
 	let mod = await import('opusscript')
 	let OpusScript = mod.default || mod
 	let app = opts.application || 'audio'
@@ -299,141 +292,6 @@ export default async function opus(opts) {
 	}
 }
 
-async function createNativeWebCodecsEncoder({ rate, channels, bitrate }) {
-	if (rate !== opusSampleRate || typeof globalThis === "undefined") return null
-
-	const AudioEncoderConstructor = globalThis.AudioEncoder
-	const AudioDataConstructor = globalThis.AudioData
-	if (
-		typeof AudioEncoderConstructor !== "function" ||
-		typeof AudioDataConstructor !== "function" ||
-		typeof AudioEncoderConstructor.isConfigSupported !== "function"
-	) {
-		return null
-	}
-
-	const config = {
-		codec: "opus",
-		sampleRate: opusSampleRate,
-		numberOfChannels: channels,
-		bitrate
-	}
-	try {
-		const support = await AudioEncoderConstructor.isConfigSupported(config)
-		if (support.supported === false) return null
-		return new NativeWebCodecsEncoder(
-			AudioEncoderConstructor,
-			AudioDataConstructor,
-			config
-		)
-	} catch {
-		return null
-	}
-}
-
-class NativeWebCodecsEncoder {
-	constructor(AudioEncoderConstructor, AudioDataConstructor, config) {
-		this.AudioDataConstructor = AudioDataConstructor
-		this.config = config
-		this.outputChunks = null
-		this.encoderError = null
-		this.configured = false
-		this.encoder = new AudioEncoderConstructor({
-			output: (chunk) => {
-				if (!this.outputChunks) return
-				const data = new Uint8Array(chunk.byteLength)
-				chunk.copyTo(data)
-				this.outputChunks.push({
-					data,
-					durationUs: Number.isFinite(chunk.duration) && chunk.duration > 0
-						? chunk.duration
-						: 20_000
-				})
-			},
-			error: (error) => {
-				this.encoderError = error instanceof Error ? error : new Error("Native Opus encoding failed.")
-			}
-		})
-	}
-
-	async encodeIndependent(channels) {
-		const inputLength = channels[0]?.length ?? 0
-		if (inputLength <= 0) throw new Error("Cannot encode an empty audio segment.")
-
-		const frameCount = Math.max(opusFrameSize, Math.ceil(inputLength / opusFrameSize) * opusFrameSize)
-		const planarPcm = new Float32Array(frameCount * this.config.numberOfChannels)
-		for (let channelIndex = 0; channelIndex < this.config.numberOfChannels; channelIndex += 1) {
-			const channel = channels[channelIndex] || channels[0]
-			planarPcm.set(channel.subarray(0, Math.min(inputLength, frameCount)), channelIndex * frameCount)
-		}
-
-		this.outputChunks = []
-		this.encoderError = null
-		if (this.configured) this.encoder.reset()
-		this.encoder.configure(this.config)
-		this.configured = true
-
-		const audioData = new this.AudioDataConstructor({
-			format: "f32-planar",
-			sampleRate: opusSampleRate,
-			numberOfFrames: frameCount,
-			numberOfChannels: this.config.numberOfChannels,
-			timestamp: 0,
-			data: planarPcm
-		})
-		try {
-			this.encoder.encode(audioData, { keyFrame: true })
-		} finally {
-			audioData.close()
-		}
-		await this.encoder.flush()
-		if (this.encoderError) throw this.encoderError
-
-		const chunks = this.outputChunks
-		this.outputChunks = null
-		if (!chunks || chunks.length === 0) {
-			throw new Error("Native Opus encoder returned no packets.")
-		}
-
-		const serial = (Math.random() * 0xFFFFFFFF) >>> 0
-		let pageSequence = 0
-		let granule = 0n
-		const pages = [
-			oggPage(opusHead(this.config.numberOfChannels, opusPreSkipSamples, opusSampleRate), serial, pageSequence++, 0n, 0x02),
-			oggPage(opusTags(), serial, pageSequence++, 0n, 0x00)
-		]
-		for (let index = 0; index < chunks.length; index += 1) {
-			const chunk = chunks[index]
-			const durationSamples = Math.max(1, Math.round((chunk.durationUs / 1_000_000) * opusSampleRate))
-			granule += BigInt(durationSamples)
-			pages.push(oggPage(
-				chunk.data,
-				serial,
-				pageSequence++,
-				granule,
-				index === chunks.length - 1 ? 0x04 : 0x00
-			))
-		}
-		return concat(pages)
-	}
-
-	encode() {
-		throw new Error("Native WebCodecs encoder only supports independent segments.")
-	}
-
-	flush() {
-		return new Uint8Array(0)
-	}
-
-	free() {
-		if (this.encoder) {
-			this.encoder.close()
-			this.encoder = null
-		}
-		this.outputChunks = null
-	}
-}
-
 let browserWasmModulePromise = null
 
 async function createOpusScript(OpusScript, samplingRate, channels, application) {
@@ -447,7 +305,10 @@ async function createOpusScript(OpusScript, samplingRate, channels, application)
 					const response = await fetch(new URL("./opusscript_native_wasm.wasm", import.meta.url))
 					if (!response.ok) throw new Error(`Unable to load Opus WASM (${response.status}).`)
 					return createWasmModule({ wasmBinary: await response.arrayBuffer() })
-				})()
+				})().catch((error) => {
+					browserWasmModulePromise = null
+					throw error
+				})
 			}
 			return new BrowserOpusScript(
 				await browserWasmModulePromise,

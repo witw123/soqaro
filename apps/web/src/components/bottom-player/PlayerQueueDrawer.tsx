@@ -9,6 +9,7 @@ import { useBackHandler } from "@/lib/desktop/use-back-handler";
 import { getArtworkSourceUrl } from "./artwork-colors";
 import { TrackDistributionBadge } from "@/components/room/TrackDistributionBadge";
 import { findScrollableContainer, useDragAutoScroll } from "@/features/room/hooks/use-drag-auto-scroll";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export type PlayerQueueListProps = {
   roomId?: string | null;
@@ -282,6 +283,7 @@ export function PlayerQueueList({
   } | null>(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedQueueItemIds, setSelectedQueueItemIds] = useState<Set<string>>(new Set());
+  const [showBatchRemoveConfirm, setShowBatchRemoveConfirm] = useState(false);
   const [isPending, startTransition] = useTransition();
   const touchReorderRef = useRef<TouchReorderState | null>(null);
   const touchReorderTimerRef = useRef<number | null>(null);
@@ -507,7 +509,6 @@ export function PlayerQueueList({
   const handleBatchRemove = async () => {
     if (selectedQueueItemIds.size === 0 || !canRemoveQueue) return;
     const ids = Array.from(selectedQueueItemIds);
-    if (!window.confirm(`确定将选中的 ${ids.length} 首歌曲移出播放队列吗？`)) return;
 
     startTransition(async () => {
       if (onRemoveQueueItems) {
@@ -562,7 +563,7 @@ export function PlayerQueueList({
                   type="button"
                   data-testid="queue-batch-remove-button"
                   disabled={selectedQueueItemIds.size === 0 || isPending}
-                  onClick={() => void handleBatchRemove()}
+                  onClick={() => setShowBatchRemoveConfirm(true)}
                   className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <Trash2 size={12} />
@@ -848,6 +849,20 @@ export function PlayerQueueList({
               </div>
             ) : null}
       </div>
+
+      <ConfirmDialog
+        open={showBatchRemoveConfirm}
+        title="移出播放队列"
+        description={`确定将选中的 ${selectedQueueItemIds.size} 首歌曲移出播放队列吗？`}
+        confirmLabel="移出"
+        destructive
+        pending={isPending}
+        onCancel={() => setShowBatchRemoveConfirm(false)}
+        onConfirm={async () => {
+          await handleBatchRemove();
+          setShowBatchRemoveConfirm(false);
+        }}
+      />
     </div>
   );
 }

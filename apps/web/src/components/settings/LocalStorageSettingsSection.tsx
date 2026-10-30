@@ -17,6 +17,7 @@ import {
   syncSelectedLocalDirectoryTracks
 } from "@/features/playlist/local-playlist";
 import { useWorkspacePageActive } from "@/features/workspace/page-activity";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function LocalStorageManagementCard() {
   const pageActive = useWorkspacePageActive();
@@ -31,6 +32,12 @@ export function LocalStorageManagementCard() {
   const [otherFileCount, setOtherFileCount] = useState(0);
   const [pendingAction, setPendingAction] = useState<"choose" | "scan" | "authorize" | "clean-cache" | "clean-saved" | "clean-other" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
   const pending = pendingAction !== null;
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -105,9 +112,7 @@ export function LocalStorageManagementCard() {
     }
   };
 
-  const cleanCache = async () => {
-    if (pending) return;
-    if (!window.confirm("确定清理全部缓存音频吗？已保存歌曲和本地歌单不会被删除。")) return;
+  const executeCleanCache = async () => {
     setPendingAction("clean-cache");
     setMessage(null);
     try {
@@ -127,9 +132,17 @@ export function LocalStorageManagementCard() {
     }
   };
 
-  const cleanSaved = async () => {
+  const cleanCache = () => {
     if (pending) return;
-    if (!window.confirm("确定清理已保存的本地歌曲吗？选择目录中的原始文件不会被删除。")) return;
+    setConfirmDialog({
+      title: "清理缓存音频",
+      description: "确定清理全部缓存音频吗？已保存歌曲和本地歌单不会被删除。",
+      confirmLabel: "清理",
+      onConfirm: executeCleanCache
+    });
+  };
+
+  const executeCleanSaved = async () => {
     setPendingAction("clean-saved");
     setMessage(null);
     try {
@@ -151,9 +164,17 @@ export function LocalStorageManagementCard() {
     }
   };
 
-  const cleanOther = async () => {
+  const cleanSaved = () => {
     if (pending) return;
-    if (!window.confirm("确定清理封面、歌词和其他辅助文件吗？本地歌曲和歌单不会被删除。")) return;
+    setConfirmDialog({
+      title: "清理本地歌曲",
+      description: "确定清理已保存的本地歌曲吗？选择目录中的原始文件不会被删除。",
+      confirmLabel: "清理",
+      onConfirm: executeCleanSaved
+    });
+  };
+
+  const executeCleanOther = async () => {
     setPendingAction("clean-other");
     setMessage(null);
     try {
@@ -171,6 +192,16 @@ export function LocalStorageManagementCard() {
     } finally {
       setPendingAction(null);
     }
+  };
+
+  const cleanOther = () => {
+    if (pending) return;
+    setConfirmDialog({
+      title: "清理辅助文件",
+      description: "确定清理封面、歌词和其他辅助文件吗？本地歌曲和歌单不会被删除。",
+      confirmLabel: "清理",
+      onConfirm: executeCleanOther
+    });
   };
 
   return (
@@ -242,6 +273,22 @@ export function LocalStorageManagementCard() {
       </div>
       {state?.supported === false && !state.fixedRoot ? <p className="mt-3 text-xs text-amber-300">当前浏览器不支持选择本地文件夹，请使用 Chrome 或 Edge。</p> : null}
       {message ? <p className="mt-3 text-xs text-foreground-muted" role="status">{message}</p> : null}
+      {confirmDialog ? (
+        <ConfirmDialog
+          confirmLabel={confirmDialog.confirmLabel}
+          description={confirmDialog.description}
+          destructive
+          onCancel={() => setConfirmDialog(null)}
+          onConfirm={async () => {
+            const action = confirmDialog.onConfirm;
+            setConfirmDialog(null);
+            await action();
+          }}
+          open
+          pending={pending}
+          title={confirmDialog.title}
+        />
+      ) : null}
     </section>
   );
 }

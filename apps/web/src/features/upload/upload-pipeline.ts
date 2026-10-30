@@ -65,6 +65,7 @@ export async function processSelectedTrackFiles(input: {
   }) => Promise<void>;
   deleteTrack?: (roomId: string, trackId: string) => Promise<unknown>;
   deleteLocalTrackData?: (trackIds: readonly string[]) => Promise<void>;
+  signal?: AbortSignal;
   onTrackStart?: (file: File, index: number, total: number) => void;
   onTrackReady?: (trackId: string, upload: UploadedTrack, track: TrackMeta) => Promise<void> | void;
 }) {
@@ -85,6 +86,9 @@ export async function processSelectedTrackFiles(input: {
   );
 
   for (let fileIndex = 0; fileIndex < input.files.length; fileIndex++) {
+    if (input.signal?.aborted) {
+      break;
+    }
     const file = input.files[fileIndex];
     input.onTrackStart?.(file, fileIndex, input.files.length);
     const objectUrl = input.createObjectUrl(file);

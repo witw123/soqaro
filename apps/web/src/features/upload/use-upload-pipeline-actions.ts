@@ -222,6 +222,7 @@ export function useUploadPipelineActions({
           currentTitle: firstCachedTitle ?? selectedFiles[0].name,
           currentStage: "正在校验源文件"
         });
+        const cancelSignal = importTaskStore.getAbortSignal(taskId);
 
         const roomId = currentSnapshot.room.id;
         let hasError = false;
@@ -229,6 +230,7 @@ export function useUploadPipelineActions({
         try {
           const result = await processSelectedTrackFiles({
             files: selectedFiles,
+            signal: cancelSignal,
             activeSession: currentSession,
             roomId,
             roomTracks: currentSnapshot.tracks,
@@ -268,6 +270,7 @@ export function useUploadPipelineActions({
               const assets = reusedAssets ?? await prepareAudioAssets({
                 file,
                 expectedDurationMs: cachedMetadata?.durationMs,
+                signal: cancelSignal,
                 onProgress: ({ stage, completed, total }) => {
                   const now = Date.now();
                   if (stage === lastStage && completed < total && now - lastProgressTime < 150) {
@@ -369,16 +372,27 @@ export function useUploadPipelineActions({
             setStatusMessage
           });
           void refreshCacheLibrary().catch(() => undefined);
+          if (cancelSignal?.aborted) {
+            setStatusMessage("已取消导入。");
+            return;
+          }
           if (result.importedCount === 0 && selectedFiles.length > 0) {
             hasError = true;
           }
         } catch (error) {
+          if (cancelSignal?.aborted) {
+            return;
+          }
           hasError = true;
           throw error;
         } finally {
-          importTaskStore.finishTask(taskId, {
-            error: hasError ? "导入失败" : undefined
-          });
+          if (cancelSignal?.aborted) {
+            importTaskStore.cancelTask(taskId);
+          } else {
+            importTaskStore.finishTask(taskId, {
+              error: hasError ? "导入失败" : undefined
+            });
+          }
         }
       });
     },

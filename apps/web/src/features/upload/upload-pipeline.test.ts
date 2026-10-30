@@ -198,6 +198,35 @@ describe("processSelectedTrackFiles", () => {
 
     expect(revokedUrls).toEqual(["blob:broken.wav"]);
   });
+
+  it("stops processing remaining files when signal is aborted", async () => {
+    const file1 = new File(["1"], "1.flac", { type: "audio/flac" });
+    const file2 = new File(["2"], "2.flac", { type: "audio/flac" });
+    const controller = new AbortController();
+    const processedFiles: string[] = [];
+
+    const result = await processSelectedTrackFiles({
+      files: [file1, file2],
+      signal: controller.signal,
+      activeSession: { userId: "user_1", nickname: "Host" },
+      roomId: "room_1",
+      roomTracks: [],
+      inFlightUploadHashes: new Set(),
+      createObjectUrl: () => "blob:test",
+      revokeObjectUrl: () => undefined,
+      buildTrackMeta: async (file) => {
+        processedFiles.push(file.name);
+        controller.abort(); // cancel immediately after first
+        return { ...buildTrack("track_1", "hash_1"), artworkUrl: null };
+      },
+      buildRegisterTrackPayload: () => ({}),
+      registerTrack: async () => buildTrack("track_1", "hash_1"),
+      persistTrackIntoLibrary: async () => undefined
+    });
+
+    expect(processedFiles).toEqual(["1.flac"]);
+    expect(result.importedCount).toBe(1);
+  });
 });
 
 describe("applySelectedTrackFilesResult", () => {

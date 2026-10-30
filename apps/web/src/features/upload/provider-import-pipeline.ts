@@ -217,6 +217,7 @@ export async function importProviderTracks(input: {
     currentTitle: pendingCandidates[0].title,
     currentStage: "正在准备获取音频"
   });
+  const cancelSignal = importTaskStore.getAbortSignal(taskId);
 
   const CHUNK_SIZE = 1;
   const currentBatch: PreparedProviderImport[] = [];
@@ -363,6 +364,7 @@ export async function importProviderTracks(input: {
 
   const fillPrefetchWindow = (lastIndex: number) => {
     while (nextPrefetchIndex < pendingCandidates.length && nextPrefetchIndex <= lastIndex) {
+      if (cancelSignal?.aborted) break;
       const index = nextPrefetchIndex++;
       const candidate = pendingCandidates[index];
       prefetchedAudio.set(
@@ -397,7 +399,7 @@ export async function importProviderTracks(input: {
               activeItemAliasKeys: [candidate.providerTrackId]
             });
           }
-        }).then(
+        }, cancelSignal).then(
           (audio) => ({ ok: true as const, audio }),
           (error: unknown) => ({ ok: false as const, error })
         )
@@ -408,6 +410,7 @@ export async function importProviderTracks(input: {
   let pipelineError: unknown = null;
   try {
     for (let index = 0; index < pendingCandidates.length; index += 1) {
+      if (cancelSignal?.aborted) break;
       currentProcessingIndex = index;
       lastProgressUpdateTime = 0;
       maxReportedLoaded = 0;
@@ -521,6 +524,7 @@ export async function importProviderTracks(input: {
         const assets = prefetched.assets ?? await prepareAudioAssets({
           file: prefetched.file,
           expectedDurationMs: candidate.durationMs,
+          signal: cancelSignal,
           onProgress: ({ stage, completed, total }) => {
             const now = Date.now();
             if (stage === lastPrepStage && completed < total && now - lastPrepProgressTime < 150) {
@@ -575,10 +579,17 @@ export async function importProviderTracks(input: {
         currentBatchHeldKeys.push(key);
       } catch (error) {
         if (objectUrl) URL.revokeObjectURL(objectUrl);
-        failures.push(error);
         inFlightUploadHashesRef.current.delete(key);
+        if (cancelSignal?.aborted) {
+          break;
+        }
+        failures.push(error);
         const errDetail = error instanceof Error ? error.message : "获取音频失败";
         importTaskStore.failItem(taskId, activeItemKey, errDetail, aliasKeys);
+      }
+
+      if (cancelSignal?.aborted) {
+        break;
       }
 
       // 当本批攒满 CHUNK_SIZE 或到达最后一首时，立即将本批入库并释放内存
@@ -596,6 +607,15 @@ export async function importProviderTracks(input: {
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
 
+    if (cancelSignal?.aborted) {
+      input.setStatusMessage(
+        totalSuccessfulCount > 0
+          ? `已取消导入（已完成 ${totalSuccessfulCount} 首）。`
+          : "已取消导入。"
+      );
+      return;
+    }
+
     if (totalSuccessfulCount === 0) {
       throw failures[0] ?? new Error("未能成功导入任何歌曲。");
     }
@@ -604,6 +624,9 @@ export async function importProviderTracks(input: {
       `已导入 ${totalSuccessfulCount} 首歌曲${failures.length > 0 ? `，${failures.length} 首失败` : ""}。`
     );
   } catch (error) {
+    if (cancelSignal?.aborted) {
+      return;
+    }
     pipelineError = error;
     throw error;
   } finally {
@@ -615,9 +638,13 @@ export async function importProviderTracks(input: {
       await input.syncRoomSnapshot(roomSnapshot.room.id).catch(() => undefined);
       void input.refreshCacheLibrary().catch(() => undefined);
     }
-    const errorMsg = pipelineError instanceof Error ? pipelineError.message : pipelineError ? String(pipelineError) : undefined;
-    importTaskStore.finishTask(taskId, {
-      error: errorMsg
-    });
+    if (cancelSignal?.aborted) {
+      importTaskStore.cancelTask(taskId);
+    } else {
+      const errorMsg = pipelineError instanceof Error ? pipelineError.message : pipelineError ? String(pipelineError) : undefined;
+      importTaskStore.finishTask(taskId, {
+        error: errorMsg
+      });
+    }
   }
 }

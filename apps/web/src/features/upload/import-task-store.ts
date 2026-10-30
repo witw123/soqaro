@@ -7,7 +7,7 @@ export type ImportTaskType =
   | "cached_track"
   | "playlist_load";
 
-export type ImportTaskStatus = "running" | "completed" | "failed";
+export type ImportTaskStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface ImportTaskItemInfo {
   key: string;
@@ -51,6 +51,7 @@ const IDLE_ITEM_STATUS: ItemImportStatus = Object.freeze({ isImporting: false })
 class ImportTaskStore {
   private tasks = new Map<string, ImportTaskGroup>();
   private itemKeyIndex = new Map<string, ImportTaskItemInfo>();
+  private abortControllers = new Map<string, AbortController>();
   private listeners = new Set<TaskListener>();
   private cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private visibleSnapshot: ImportTaskGroup[] = [];
@@ -135,6 +136,7 @@ class ImportTaskStore {
     itemKeys?: string[];
     currentTitle?: string;
     currentStage?: string;
+    signal?: AbortSignal;
   }): string {
     const id = input.id ?? `import_task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const totalCount = Math.max(1, input.totalCount);
@@ -145,6 +147,16 @@ class ImportTaskStore {
       clearTimeout(existingTimer);
       this.cleanupTimers.delete(id);
     }
+
+    const controller = new AbortController();
+    if (input.signal) {
+      if (input.signal.aborted) {
+        controller.abort(input.signal.reason);
+      } else {
+        input.signal.addEventListener("abort", () => controller.abort(input.signal?.reason), { once: true });
+      }
+    }
+    this.abortControllers.set(id, controller);
 
     const task: ImportTaskGroup = {
       id,
@@ -315,9 +327,56 @@ class ImportTaskStore {
     this.notify();
   }
 
+  public getAbortSignal(taskId: string): AbortSignal | undefined {
+    return this.abortControllers.get(taskId)?.signal;
+  }
+
+  public cancelTask(taskId: string): boolean {
+    const task = this.tasks.get(taskId);
+    if (!task || task.status !== "running") {
+      return false;
+    }
+
+    const controller = this.abortControllers.get(taskId);
+    if (controller && !controller.signal.aborted) {
+      controller.abort(new DOMException("Import task was cancelled.", "AbortError"));
+    }
+
+    const updatedTask: ImportTaskGroup = {
+      ...task,
+      status: "cancelled",
+      finishedAt: Date.now(),
+      currentStage: "已取消"
+    };
+    this.tasks.set(taskId, updatedTask);
+
+    for (const key of task.itemKeys) {
+      this.itemKeyIndex.delete(key);
+    }
+
+    const timer = setTimeout(() => {
+      this.tasks.delete(taskId);
+      this.cleanupTimers.delete(taskId);
+      this.abortControllers.delete(taskId);
+      this.notify();
+    }, this.finishCooldownMs);
+
+    this.cleanupTimers.set(taskId, timer);
+    this.notify();
+    return true;
+  }
+
+  public cancelAllTasks(): void {
+    for (const task of this.tasks.values()) {
+      if (task.status === "running") {
+        this.cancelTask(task.id);
+      }
+    }
+  }
+
   public finishTask(taskId: string, options?: { error?: string }) {
     const task = this.tasks.get(taskId);
-    if (!task) return;
+    if (!task || task.status === "cancelled") return;
 
     const finishedAt = Date.now();
     const isFailed = Boolean(options?.error || (task.failedCount > 0 && task.completedCount === 0));
@@ -359,6 +418,11 @@ class ImportTaskStore {
         this.itemKeyIndex.delete(key);
       }
     }
+    const controller = this.abortControllers.get(taskId);
+    if (controller && !controller.signal.aborted) {
+      controller.abort();
+    }
+    this.abortControllers.delete(taskId);
     const timer = this.cleanupTimers.get(taskId);
     if (timer) {
       clearTimeout(timer);
@@ -369,6 +433,12 @@ class ImportTaskStore {
   }
 
   public clearAll() {
+    for (const controller of this.abortControllers.values()) {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    }
+    this.abortControllers.clear();
     for (const timer of this.cleanupTimers.values()) {
       clearTimeout(timer);
     }

@@ -20,6 +20,7 @@ function RoomImportProgressBarBase() {
   const isRunning = activeTask.status === "running";
   const isCompleted = activeTask.status === "completed";
   const isFailed = activeTask.status === "failed";
+  const isCancelled = activeTask.status === "cancelled";
 
   const total = activeTask.totalCount;
   const current = Math.min(total, activeTask.completedCount + 1);
@@ -43,6 +44,11 @@ function RoomImportProgressBarBase() {
     }
   } else if (isCompleted) {
     label = `导入完成 (共 ${activeTask.completedCount} 首)`;
+  } else if (isCancelled) {
+    label =
+      activeTask.completedCount > 0
+        ? `已取消导入（已完成 ${activeTask.completedCount} 首）`
+        : "已取消导入";
   } else {
     label = activeTask.error ? `导入失败：${activeTask.error}` : "导入失败";
   }
@@ -72,6 +78,19 @@ function RoomImportProgressBarBase() {
             </svg>
           ) : isCompleted ? (
             <CheckIcon className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+          ) : isCancelled ? (
+            <svg
+              className="h-3.5 w-3.5 shrink-0 text-foreground-muted"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+            </svg>
           ) : (
             <svg
               className="h-3.5 w-3.5 shrink-0 text-red-500"
@@ -92,13 +111,22 @@ function RoomImportProgressBarBase() {
 
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="font-mono text-xs font-semibold text-accent tabular-nums">
-            {isCompleted ? "100%" : `${Math.min(99, activeTask.overallPercent)}%`}
+            {isCompleted ? "100%" : isCancelled ? `${activeTask.overallPercent}%` : `${Math.min(99, activeTask.overallPercent)}%`}
           </span>
-          {isFailed ? (
+          {isRunning ? (
+            <button
+              type="button"
+              onClick={() => importTaskStore.cancelTask(activeTask.id)}
+              className="rounded px-1.5 py-0.5 text-xs text-foreground-muted hover:bg-surface-border/40 hover:text-foreground active:opacity-80 transition-colors"
+              aria-label="取消导入"
+            >
+              取消
+            </button>
+          ) : isFailed || isCancelled ? (
             <button
               type="button"
               onClick={() => importTaskStore.removeTask(activeTask.id)}
-              className="text-foreground-muted hover:text-foreground p-0.5"
+              className="p-0.5 text-foreground-muted hover:text-foreground"
               aria-label="关闭提示"
             >
               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -113,7 +141,13 @@ function RoomImportProgressBarBase() {
       <div className="h-1 w-full overflow-hidden rounded-full bg-surface-border/40">
         <div
           className={`h-full rounded-full transition-all duration-300 ease-out ${
-            isFailed ? "bg-red-500" : isCompleted ? "bg-emerald-500" : "bg-accent"
+            isFailed
+              ? "bg-red-500"
+              : isCancelled
+                ? "bg-foreground-muted/40"
+                : isCompleted
+                  ? "bg-emerald-500"
+                  : "bg-accent"
           }`}
           style={{ width: `${Math.max(2, activeTask.overallPercent)}%` }}
         />

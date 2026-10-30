@@ -185,6 +185,7 @@ export function SettingsPage() {
     description: string;
     confirmLabel: string;
     destructive?: boolean;
+    hideCancel?: boolean;
     onConfirm: () => void | Promise<void>;
   } | null>(null);
 
@@ -795,7 +796,14 @@ export function SettingsPage() {
               if (checked) {
                 const status = await checkAnyProviderAccountBound();
                 if (!status.bound) {
-                  window.alert("开启缓存播放必须先绑定网易云音乐或 QQ 音乐账号。请前往「我的页 → 平台账号」完成绑定。");
+                  setConfirmAction({
+                    title: "未绑定平台账号",
+                    description: "开启缓存播放必须先绑定网易云音乐或 QQ 音乐账号。请前往「我的页 → 平台账号」完成绑定。",
+                    confirmLabel: "知道了",
+                    hideCancel: true,
+                    destructive: false,
+                    onConfirm: () => setConfirmAction(null)
+                  });
                   return;
                 }
                 patchSettings({
@@ -1494,6 +1502,7 @@ export function SettingsPage() {
           description={confirmAction.description}
           confirmLabel={confirmAction.confirmLabel}
           destructive={confirmAction.destructive}
+          hideCancel={confirmAction.hideCancel}
           onCancel={() => setConfirmAction(null)}
           onConfirm={() => void confirmAction.onConfirm()}
         />

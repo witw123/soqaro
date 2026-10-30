@@ -161,4 +161,34 @@ describe("importTaskStore", () => {
     const status2 = importTaskStore.getItemStatus("test-key");
     expect(status1).toBe(status2);
   });
+
+  it("cancels running task, aborts signal, and preserves cancelled state against finishTask", () => {
+    const taskId = importTaskStore.startTask({
+      type: "provider_batch",
+      title: "批量导入",
+      totalCount: 5,
+      itemKeys: ["track-1", "track-2"]
+    });
+
+    const signal = importTaskStore.getAbortSignal(taskId);
+    expect(signal).toBeDefined();
+    expect(signal?.aborted).toBe(false);
+
+    const cancelled = importTaskStore.cancelTask(taskId);
+    expect(cancelled).toBe(true);
+    expect(signal?.aborted).toBe(true);
+
+    const task = importTaskStore.getVisibleTasks()[0];
+    expect(task.status).toBe("cancelled");
+    expect(task.currentStage).toBe("已取消");
+    expect(importTaskStore.isItemImporting("track-1")).toBe(false);
+
+    // finishTask should not override cancelled status
+    importTaskStore.finishTask(taskId, { error: "something failed" });
+    expect(importTaskStore.getVisibleTasks()[0].status).toBe("cancelled");
+
+    // Cleaned up after cooldown
+    vi.advanceTimersByTime(2600);
+    expect(importTaskStore.getVisibleTasks()).toHaveLength(0);
+  });
 });

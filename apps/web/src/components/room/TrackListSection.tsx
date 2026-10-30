@@ -13,6 +13,7 @@ import { LocalAudioImport } from "./LocalAudioImport";
 import { TrackDistributionBadge } from "./TrackDistributionBadge";
 import { TrackContextMenu, type ContextMenuItem } from "@/components/ui/TrackContextMenu";
 import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type TrackListSectionProps = {
   roomId?: string | null;
@@ -82,6 +83,7 @@ function TrackListSectionBase({
   const [trackFilter, setTrackFilter] = useState<LibraryTrackFilter>("all");
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [cachedArtworkByTrackId, setCachedArtworkByTrackId] = useState<Map<string, string>>(new Map());
   const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<{
@@ -395,10 +397,6 @@ function TrackListSectionBase({
   const handleBatchDelete = async () => {
     if (deletableSelectedTracks.length === 0 || !canManageLibrary) return;
     const ids = deletableSelectedTracks.map((t) => t.id);
-    const confirmMessage = deletableSelectedTracks.length < selectedTrackIds.size
-      ? `选中的 ${selectedTrackIds.size} 首歌曲中，你有权删除 ${deletableSelectedTracks.length} 首。确定从房间曲库中移除吗？`
-      : `确定将选中的 ${deletableSelectedTracks.length} 首歌曲从房间曲库中移除吗？`;
-    if (!window.confirm(confirmMessage)) return;
 
     await runAction("batch-delete", async () => {
       if (onDeleteTracks) {
@@ -621,7 +619,7 @@ function TrackListSectionBase({
                   size="sm"
                   data-testid="library-batch-delete-button"
                   disabled={deletableSelectedTracks.length === 0 || pendingAction !== null}
-                  onClick={() => void handleBatchDelete()}
+                  onClick={() => setShowBatchDeleteConfirm(true)}
                   className="h-6.5 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                   title="将选中有权限的歌曲从曲库删除"
                 >
@@ -945,6 +943,24 @@ function TrackListSectionBase({
         subtitle={contextMenu?.track.artist}
         items={contextMenuItems}
         onClose={() => setContextMenu(null)}
+      />
+
+      <ConfirmDialog
+        open={showBatchDeleteConfirm}
+        title="移除歌曲"
+        description={
+          deletableSelectedTracks.length < selectedTrackIds.size
+            ? `选中的 ${selectedTrackIds.size} 首歌曲中，你有权删除 ${deletableSelectedTracks.length} 首。确定从房间曲库中移除吗？`
+            : `确定将选中的 ${deletableSelectedTracks.length} 首歌曲从房间曲库中移除吗？`
+        }
+        confirmLabel="移除"
+        destructive
+        pending={pendingAction === "batch-delete"}
+        onCancel={() => setShowBatchDeleteConfirm(false)}
+        onConfirm={async () => {
+          await handleBatchDelete();
+          setShowBatchDeleteConfirm(false);
+        }}
       />
     </section>
   );

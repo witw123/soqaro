@@ -16,6 +16,8 @@ type ConfirmDialogProps = {
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string;
+  hideCancel?: boolean;
   pending?: boolean;
   destructive?: boolean;
   onCancel: () => void;
@@ -27,6 +29,8 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "取消",
+  hideCancel = false,
   pending = false,
   destructive = false,
   onCancel,
@@ -40,9 +44,11 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending} onClick={onCancel}>
-            取消
-          </AlertDialogCancel>
+          {!hideCancel ? (
+            <AlertDialogCancel disabled={pending} onClick={onCancel}>
+              {cancelLabel}
+            </AlertDialogCancel>
+          ) : null}
           <AlertDialogAction
             destructive={destructive}
             disabled={pending}

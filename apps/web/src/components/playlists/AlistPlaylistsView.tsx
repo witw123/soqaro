@@ -159,7 +159,7 @@ export function AlistPlaylistsView() {
       const record = await buildTrackRecord(item);
       await player.playTrack(record);
     } catch (err) {
-      alert(`播放失败: ${err instanceof Error ? err.message : String(err)}`);
+      setError(err instanceof Error ? `播放失败: ${err.message}` : "播放失败，请检查网络或媒体文件。");
     } finally {
       setPlayingTrackPath(null);
     }
@@ -187,7 +187,7 @@ export function AlistPlaylistsView() {
         });
       }
     } catch (err) {
-      alert(`播放出错: ${err instanceof Error ? err.message : String(err)}`);
+      setError(err instanceof Error ? `播放出错: ${err.message}` : "播放出错，请检查网络或媒体文件。");
     } finally {
       setLoading(false);
       setPlayingTrackPath(null);

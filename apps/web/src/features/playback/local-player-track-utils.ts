@@ -157,7 +157,7 @@ export async function enrichTrackMetadata(
   ]);
   const loudness = track.loudness ?? cached?.loudness ?? null;
   if (!loudness && track.fileHash) {
-    void analyzeAudioBlobLoudness(file).then((result) => {
+    void Promise.resolve(analyzeAudioBlobLoudness(file, { cacheKey: track.fileHash })).then((result) => {
       if (result && track.fileHash) {
         getCachedLibraryTrack(track.fileHash).then((record) => {
           if (record) {

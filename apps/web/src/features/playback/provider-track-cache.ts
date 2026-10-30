@@ -126,7 +126,7 @@ async function completePlaybackMetadata(track: ProviderTrack, file: Blob, fileHa
         ? soqaroApi.getQqMusicLyrics(track.providerTrackId)
         : soqaroApi.getBilibiliLyrics(track.providerTrackId)
     ).catch(() => null),
-    analyzeAudioBlobLoudness(file).catch(() => null)
+    analyzeAudioBlobLoudness(file, { cacheKey: fileHash }).catch(() => null)
   ]);
   await updateCachedLibraryTrackMetadata(fileHash, {
     artworkUrl,

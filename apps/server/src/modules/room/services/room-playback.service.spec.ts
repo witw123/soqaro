@@ -1,4 +1,4 @@
-﻿import type { PlaybackSnapshot, TrackMeta } from "@soqaro/shared";
+import type { PlaybackSnapshot, TrackMeta } from "@soqaro/shared";
 import type { RoomRecord } from "../room.types";
 import { RoomPlaybackService } from "./room-playback.service";
 
@@ -289,5 +289,37 @@ describe("RoomPlaybackService gapless playback", () => {
     const nextCycleTrack = await service.updatePlayback(room, { action: "next" });
     expect(nextCycleTrack.currentTrackId).not.toBe(lastTrackId);
     expect(cycle).toContain(nextCycleTrack.currentTrackId);
+  });
+
+  it("defers pausing at track end while a candidate source owner is reconnecting", async () => {
+    const room = record(5_000);
+    let presenceState: "reconnecting" | "offline" = "reconnecting";
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map<string, string>(),
+      getPresenceSnapshot: async () =>
+        new Map([["owner", { peerId: null, presenceState }]])
+    } as never);
+
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(false);
+    expect(room.room.playback.status).toBe("playing");
+
+    presenceState = "offline";
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("paused");
+  });
+
+  it("advances to the next playable track when the active track is reported unavailable", async () => {
+    const room = record(1_000);
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map([["owner", "peer-owner"]])
+    } as never);
+
+    await expect(service.advanceAfterUnavailableTrack(room, "track_1")).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.currentTrackId).toBe("track_2");
+    expect(room.room.playback.currentQueueItemId).toBe("queue_2");
+
+    room.queue = [room.queue[1]!];
+    await expect(service.advanceAfterUnavailableTrack(room, "track_2")).resolves.toBe(false);
   });
 });

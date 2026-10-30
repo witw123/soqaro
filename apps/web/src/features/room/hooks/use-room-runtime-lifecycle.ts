@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   useEffect,
@@ -209,14 +209,7 @@ export function useRoomRuntimeLifecycle(input: {
   }, [activeSession, refreshAvailableRooms, refreshPlaylists]);
 
   useEffect(() => {
-    const handlePageVisible = () => {
-      if (document.hidden) {
-        setIsPageVisible(false);
-        return;
-      }
-
-      setIsPageVisible(true);
-      setSchedulerMode((current) => (current === "idle" ? "normal" : current));
+    const recoverRealtimeSession = () => {
       // visibilitychange, pageshow, focus and online can fire together when
       // a suspended tab is resumed. Coalesce them so one resume produces one
       // subscribe/resync round-trip instead of repeatedly replacing its own
@@ -238,15 +231,32 @@ export function useRoomRuntimeLifecycle(input: {
       );
     };
 
+    const handlePageVisible = () => {
+      if (document.hidden) {
+        setIsPageVisible(false);
+        return;
+      }
+
+      setIsPageVisible(true);
+      setSchedulerMode((current) => (current === "idle" ? "normal" : current));
+      recoverRealtimeSession();
+    };
+
+    const handleNetworkOnline = () => {
+      // Recover the room socket even while the tab is hidden so a brief network
+      // change during background playback does not exceed the server grace window.
+      recoverRealtimeSession();
+    };
+
     document.addEventListener("visibilitychange", handlePageVisible);
     window.addEventListener("pageshow", handlePageVisible);
     window.addEventListener("focus", handlePageVisible);
-    window.addEventListener("online", handlePageVisible);
+    window.addEventListener("online", handleNetworkOnline);
     return () => {
       document.removeEventListener("visibilitychange", handlePageVisible);
       window.removeEventListener("pageshow", handlePageVisible);
       window.removeEventListener("focus", handlePageVisible);
-      window.removeEventListener("online", handlePageVisible);
+      window.removeEventListener("online", handleNetworkOnline);
     };
   }, [
     currentRoomRef,

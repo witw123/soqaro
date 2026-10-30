@@ -1,4 +1,4 @@
-﻿import { computeAssetId, type Room, type RoomSnapshot } from "@soqaro/shared";
+import { computeAssetId, type Room, type RoomSnapshot } from "@soqaro/shared";
 import { RoomController } from "./room.controller";
 
 function buildSnapshot(overrides?: Partial<Room>): RoomSnapshot {
@@ -530,10 +530,16 @@ describe("RoomController", () => {
       originalAsset: reg.originalAsset,
       playbackAsset: reg.playbackAsset
     };
+    const preparedPlayback = {
+      status: "playing" as const,
+      currentTrackId: "track_1",
+      playbackAssetId: reg.playbackAsset.assetId
+    };
     const roomService = {
       prepareTrackAsset: jest.fn().mockResolvedValue({
         track: preparedTrack,
         playbackChanged: true,
+        playback: preparedPlayback,
         roomRevision: 5
       })
     };
@@ -569,6 +575,11 @@ describe("RoomController", () => {
       playbackAsset: reg.playbackAsset
     });
     expect(roomRealtimePublisher.emitLibrarySnapshot).toHaveBeenCalledWith("room_1");
+    expect(roomRealtimePublisher.emitPlaybackPatch).toHaveBeenCalledWith(
+      "room_1",
+      preparedPlayback,
+      5
+    );
     expect(roomRealtimePublisher.emitTrackAssetReady).toHaveBeenCalledWith("room_1", {
       trackId: "track_1",
       fileHash: reg.fileHash,

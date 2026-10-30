@@ -1,5 +1,5 @@
-﻿import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { TrackMeta } from "@soqaro/shared";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { RoomSnapshot, TrackMeta } from "@soqaro/shared";
 import {
   ensureRoomTrackDistributionAsset,
   getTrackAssetPreparationState,
@@ -7,7 +7,9 @@ import {
   verifyPlaybackAssetIntegrity,
   prepareTrackWithLocalFile,
   getTrackUnavailableReason,
-  setTrackUnavailableReason
+  setTrackUnavailableReason,
+  resetTrackAssetPreparationStateForTests,
+  selectUpcomingTracksForAutoPreparation
 } from "./room-track-asset-preparation";
 import { getRoomLocalAudioFile, hasDirectoryReadPermission } from "@/features/library/local-audio-storage";
 import {
@@ -69,6 +71,7 @@ vi.mock("@/features/settings/settings-store", () => ({
 describe("room-track-asset-preparation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetTrackAssetPreparationStateForTests();
   });
 
   const baseTrack: TrackMeta = {
@@ -410,6 +413,139 @@ describe("room-track-asset-preparation", () => {
       await expect(prepareTrackWithLocalFile("room_1", trackToRecover, mockFile)).rejects.toThrow("Transcode failed");
       expect(getTrackAssetPreparationState("track_fail_manual")).toBe("failed");
       expect(getTrackUnavailableReason("track_fail_manual")).toBe("asset-corrupt");
+    });
+  });
+
+  describe("selectUpcomingTracksForAutoPreparation", () => {
+    function makeQueueSnapshot(queueTracks: TrackMeta[], members = [
+      { id: "session_user", presenceState: "online" as const },
+      { id: "session_other", presenceState: "online" as const },
+      { id: "session_offline", presenceState: "offline" as const }
+    ]): RoomSnapshot {
+      return {
+        room: {
+          id: "room_1",
+          members,
+          playback: {
+            status: "playing",
+            currentTrackId: queueTracks[0]?.id ?? null,
+            currentQueueItemId: queueTracks[0] ? `q_${queueTracks[0].id}` : null,
+            playbackMode: "sequence",
+            nextQueueItemId: null,
+            shuffleBagTrackIds: []
+          }
+        },
+        tracks: queueTracks,
+        queue: queueTracks.map((track) => ({
+          id: `q_${track.id}`,
+          trackId: track.id
+        }))
+      } as unknown as RoomSnapshot;
+    }
+
+    it("skips consecutive failed tracks instead of stalling lookahead preparation", async () => {
+      vi.mocked(getRoomLocalAudioFile).mockResolvedValue(null);
+      vi.mocked(getCachedLibraryTrackByProviderTrack).mockResolvedValue(undefined);
+      vi.mocked(getCachedLibraryTrack).mockResolvedValue(undefined);
+      vi.mocked(soqaroApi.downloadNeteaseTrack).mockResolvedValue(null as never);
+
+      const queueTracks = ["t1", "t2", "t3", "t4", "t5"].map((id) => ({
+        ...baseTrack,
+        id,
+        sourceRef: { provider: "netease" as const, trackId: id }
+      }));
+
+      await ensureRoomTrackDistributionAsset("room_1", queueTracks[1]!);
+      await ensureRoomTrackDistributionAsset("room_1", queueTracks[2]!);
+
+      const selected = selectUpcomingTracksForAutoPreparation({
+        roomSnapshot: makeQueueSnapshot(queueTracks),
+        activeSessionId: "session_user"
+      });
+      expect(selected.map((track) => track.id)).toEqual(["t4", "t5"]);
+
+      // Transient failures get one retry after the 60s cooldown, then stop permanently.
+      const afterCooldown = selectUpcomingTracksForAutoPreparation({
+        roomSnapshot: makeQueueSnapshot(queueTracks),
+        activeSessionId: "session_user",
+        nowMs: Date.now() + 61_000
+      });
+      expect(afterCooldown.map((track) => track.id)).toEqual(["t2", "t3", "t4"]);
+
+      await ensureRoomTrackDistributionAsset("room_1", queueTracks[1]!);
+      const afterSecondFailure = selectUpcomingTracksForAutoPreparation({
+        roomSnapshot: makeQueueSnapshot(queueTracks),
+        activeSessionId: "session_user",
+        nowMs: Date.now() + 180_000
+      });
+      expect(afterSecondFailure.map((track) => track.id)).not.toContain("t2");
+    });
+
+    it("skips offline-member tracks and still prepares the active member's own upcoming tracks", () => {
+      const queueTracks: TrackMeta[] = [
+        { ...baseTrack, id: "t1", ownerSessionId: "session_user" },
+        { ...baseTrack, id: "t2", ownerSessionId: "session_offline" },
+        { ...baseTrack, id: "t3", ownerSessionId: "session_offline" },
+        { ...baseTrack, id: "t4", ownerSessionId: "session_other" },
+        { ...baseTrack, id: "t5", ownerSessionId: "session_other" },
+        { ...baseTrack, id: "t6", ownerSessionId: "session_other" },
+        { ...baseTrack, id: "t7", ownerSessionId: "session_user" },
+        { ...baseTrack, id: "t8", ownerSessionId: "session_user" },
+        { ...baseTrack, id: "t9", ownerSessionId: "session_user" }
+      ];
+
+      const selected = selectUpcomingTracksForAutoPreparation({
+        roomSnapshot: makeQueueSnapshot(queueTracks),
+        activeSessionId: "session_user"
+      });
+      expect(selected.map((track) => track.id)).toEqual(["t7", "t8"]);
+    });
+
+    it("stops selecting once 3 upcoming playable tracks are already prepared", () => {
+      const readyAsset = {
+        originalAsset: {
+          assetId: "1".repeat(64),
+          kind: "original" as const,
+          fileHash: "2".repeat(64),
+          mimeType: "audio/mp3",
+          sizeBytes: 1000,
+          unitSize: 1048576,
+          unitCount: 1,
+          merkleRoot: "3".repeat(64)
+        },
+        playbackAsset: {
+          assetId: "4".repeat(64),
+          kind: "playback" as const,
+          sourceFileHash: "2".repeat(64),
+          profileId: "opus-music-v4" as const,
+          codec: "opus" as const,
+          container: "audio/ogg" as const,
+          sampleRate: 48000 as const,
+          channels: 2 as const,
+          bitrate: 256000 as const,
+          durationMs: 180000,
+          segmentDurationMs: 2000 as const,
+          seekPrerollMs: 80 as const,
+          unitCount: 90,
+          merkleRoot: "5".repeat(64),
+          encoder: { name: "@audio/opus-encode" as const, version: "3.4.0" as const }
+        }
+      };
+
+      const queueTracks: TrackMeta[] = [
+        { ...baseTrack, id: "t1", ...readyAsset },
+        { ...baseTrack, id: "t2", ...readyAsset },
+        { ...baseTrack, id: "t3", ...readyAsset },
+        { ...baseTrack, id: "t4", ...readyAsset },
+        { ...baseTrack, id: "t5" },
+        { ...baseTrack, id: "t6" }
+      ];
+
+      const selected = selectUpcomingTracksForAutoPreparation({
+        roomSnapshot: makeQueueSnapshot(queueTracks),
+        activeSessionId: "session_user"
+      });
+      expect(selected).toEqual([]);
     });
   });
 });

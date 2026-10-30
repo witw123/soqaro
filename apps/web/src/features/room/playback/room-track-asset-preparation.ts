@@ -16,6 +16,7 @@ import {
 } from "@/features/library/indexeddb";
 import { notifyCacheLibraryChanged, toCachedLibraryFile } from "@/features/library/cache-library";
 import { prepareAudioAssets } from "@/features/library/audio-asset-builder";
+import type { AudioDecodeTaskPriority } from "@/features/library/audio-decode-queue";
 import { appSettingsChangeEvent, getAppSettings } from "@/features/settings/settings-store";
 import {
   extensionForImportedMimeType,
@@ -23,16 +24,22 @@ import {
   sanitizeFileName
 } from "@/features/upload/upload-import-helpers";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { getRoomQueuePreloadTracks } from "./room-queue-preload";
+import { getRoomUpcomingPreparationTracks } from "./room-queue-preload";
 
 export type TrackUnavailableReason = "source-missing" | "asset-corrupt" | "permission-denied";
+
+const autoPreparationRetryCooldownMs = 60_000;
+const maxAutoPreparationAttempts = 2;
 
 const inFlightPreparations = new Map<string, Promise<TrackMeta | null>>();
 const trackPreparationStates = new Map<string, RoomTrackDistributionState>();
 const trackUnavailableReasons = new Map<string, TrackUnavailableReason>();
+const autoPreparationFailures = new Map<string, { attempts: number; lastFailedAtMs: number }>();
 const listeners = new Set<() => void>();
+let preparationStoreRevision = 0;
 
 function notifyListeners() {
+  preparationStoreRevision += 1;
   for (const listener of listeners) {
     try {
       listener();
@@ -40,6 +47,73 @@ function notifyListeners() {
       // Ignore listener errors
     }
   }
+}
+
+function recordAutoPreparationFailure(trackId: string, nowMs = Date.now()) {
+  const previous = autoPreparationFailures.get(trackId);
+  autoPreparationFailures.set(trackId, {
+    attempts: (previous?.attempts ?? 0) + 1,
+    lastFailedAtMs: nowMs
+  });
+}
+
+function clearAutoPreparationFailure(trackId: string) {
+  autoPreparationFailures.delete(trackId);
+}
+
+export function shouldSkipBackgroundAssetPreparation(trackId: string, nowMs = Date.now()): boolean {
+  const failure = autoPreparationFailures.get(trackId);
+  if (!failure) return false;
+  if (failure.attempts >= maxAutoPreparationAttempts) return true;
+  return nowMs - failure.lastFailedAtMs < autoPreparationRetryCooldownMs;
+}
+
+export function getNextAutoPreparationRetryDelayMs(
+  trackIds: readonly string[],
+  nowMs = Date.now()
+): number | null {
+  let minDelayMs: number | null = null;
+  for (const trackId of trackIds) {
+    const failure = autoPreparationFailures.get(trackId);
+    if (!failure || failure.attempts >= maxAutoPreparationAttempts) continue;
+    const remainingMs = autoPreparationRetryCooldownMs - (nowMs - failure.lastFailedAtMs);
+    if (remainingMs > 0 && (minDelayMs === null || remainingMs < minDelayMs)) {
+      minDelayMs = remainingMs;
+    }
+  }
+  return minDelayMs;
+}
+
+export function pruneStaleTrackPreparationRecords(activeTrackIds: ReadonlySet<string>): void {
+  let changed = false;
+  for (const trackId of trackPreparationStates.keys()) {
+    if (!activeTrackIds.has(trackId) && !inFlightPreparations.has(trackId)) {
+      trackPreparationStates.delete(trackId);
+      changed = true;
+    }
+  }
+  for (const trackId of trackUnavailableReasons.keys()) {
+    if (!activeTrackIds.has(trackId) && !inFlightPreparations.has(trackId)) {
+      trackUnavailableReasons.delete(trackId);
+      changed = true;
+    }
+  }
+  for (const trackId of autoPreparationFailures.keys()) {
+    if (!activeTrackIds.has(trackId) && !inFlightPreparations.has(trackId)) {
+      autoPreparationFailures.delete(trackId);
+    }
+  }
+  if (changed) {
+    notifyListeners();
+  }
+}
+
+export function resetTrackAssetPreparationStateForTests(): void {
+  inFlightPreparations.clear();
+  trackPreparationStates.clear();
+  trackUnavailableReasons.clear();
+  autoPreparationFailures.clear();
+  notifyListeners();
 }
 
 export function getTrackAssetPreparationState(trackId: string): RoomTrackDistributionState | null {
@@ -60,6 +134,7 @@ export function setTrackUnavailableReason(trackId: string, reason: TrackUnavaila
     trackUnavailableReasons.set(trackId, reason);
   } else {
     trackUnavailableReasons.delete(trackId);
+    clearAutoPreparationFailure(trackId);
   }
   notifyListeners();
 }
@@ -207,16 +282,19 @@ export async function resolveTrackAudioFile(
 export async function ensureRoomTrackDistributionAsset(
   roomId: string,
   track: TrackMeta,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { priority?: AudioDecodeTaskPriority }
 ): Promise<TrackMeta | null> {
   if (track.playbackAsset?.assetId) {
     const isIntact = await verifyPlaybackAssetIntegrity(track.playbackAsset.assetId);
     if (isIntact) {
+      clearAutoPreparationFailure(track.id);
       trackPreparationStates.set(track.id, "ready");
       setTrackUnavailableReason(track.id, null);
       notifyListeners();
       return track;
     }
+    recordAutoPreparationFailure(track.id);
     trackPreparationStates.set(track.id, "failed");
     setTrackUnavailableReason(track.id, "asset-corrupt");
     notifyListeners();
@@ -253,6 +331,7 @@ export async function ensureRoomTrackDistributionAsset(
             // ignore
           }
         }
+        recordAutoPreparationFailure(track.id);
         trackPreparationStates.set(track.id, reason === "source-missing" ? "source-missing" : "failed");
         setTrackUnavailableReason(track.id, reason);
         notifyListeners();
@@ -268,7 +347,8 @@ export async function ensureRoomTrackDistributionAsset(
       // Transcode and prepare assets (computes genuine fileHash and writes to IndexedDB)
       const assets = await prepareAudioAssets({
         file,
-        signal
+        signal,
+        ...(options?.priority ? { priority: options.priority } : {})
       });
 
       signal?.throwIfAborted();
@@ -289,6 +369,7 @@ export async function ensureRoomTrackDistributionAsset(
       }).catch(() => undefined);
       notifyCacheLibraryChanged();
 
+      clearAutoPreparationFailure(track.id);
       trackPreparationStates.set(track.id, "ready");
       setTrackUnavailableReason(track.id, null);
       notifyListeners();
@@ -305,6 +386,7 @@ export async function ensureRoomTrackDistributionAsset(
         ) {
           reason = "permission-denied";
         }
+        recordAutoPreparationFailure(track.id);
         trackPreparationStates.set(track.id, "failed");
         setTrackUnavailableReason(track.id, reason);
         void soqaroApi.reportTrackAssetUnavailable(roomId, track.id, {
@@ -359,6 +441,7 @@ export async function prepareTrackWithLocalFile(
     }).catch(() => undefined);
     notifyCacheLibraryChanged();
 
+    clearAutoPreparationFailure(track.id);
     trackPreparationStates.set(track.id, "ready");
     setTrackUnavailableReason(track.id, null);
     notifyListeners();
@@ -372,10 +455,54 @@ export async function prepareTrackWithLocalFile(
   }
 }
 
+export function selectUpcomingTracksForAutoPreparation(input: {
+  roomSnapshot: RoomSnapshot;
+  activeSessionId: string;
+  nowMs?: number;
+}): TrackMeta[] {
+  const { roomSnapshot, activeSessionId, nowMs = Date.now() } = input;
+  const memberPresenceById = new Map(
+    roomSnapshot.room.members.map((member) => [member.id, member.presenceState])
+  );
+  const candidates = getRoomUpcomingPreparationTracks(roomSnapshot);
+  const selected: TrackMeta[] = [];
+  let playableLookaheadCount = 0;
+  let ownedAheadCount = 0;
+
+  for (const track of candidates) {
+    if (shouldSkipBackgroundAssetPreparation(track.id, nowMs)) {
+      continue;
+    }
+    const ownerPresence = memberPresenceById.get(track.ownerSessionId);
+    if (track.ownerSessionId !== activeSessionId && ownerPresence === "offline") {
+      continue;
+    }
+    playableLookaheadCount += 1;
+    const isOwnedByActiveMember = track.ownerSessionId === activeSessionId;
+    if (isOwnedByActiveMember) {
+      ownedAheadCount += 1;
+    }
+    const isReady = hasCompleteRoomAsset(track) || trackPreparationStates.get(track.id) === "ready";
+    if (
+      isOwnedByActiveMember &&
+      !isReady &&
+      (playableLookaheadCount <= 3 || ownedAheadCount <= 2)
+    ) {
+      selected.push(track);
+      if (selected.length >= 3) {
+        break;
+      }
+    }
+  }
+
+  return selected;
+}
+
 /**
  * React hook that automatically coordinates asset preparation for source members:
  * 1. Current track waiting for assets -> immediately prepared (high priority)
- * 2. Next 2 queue tracks -> sequentially prepared in background (background priority)
+ * 2. Upcoming playable queue tracks -> sequentially prepared in background without
+ *    stalling on failed or offline-owned items
  */
 export function useRoomTrackAssetAutoPreparation(input: {
   roomId: string | null | undefined;
@@ -386,6 +513,12 @@ export function useRoomTrackAssetAutoPreparation(input: {
   const { roomId, roomSnapshot, currentTrack, activeSessionId } = input;
   const [streamingOnlyPlayback, setStreamingOnlyPlayback] = useState(
     () => Boolean(getAppSettings().playback.streamingOnlyPlayback)
+  );
+  const [retryTick, setRetryTick] = useState(0);
+  const storeRevision = useSyncExternalStore(
+    subscribeTrackAssetPreparation,
+    () => preparationStoreRevision,
+    () => 0
   );
 
   useEffect(() => {
@@ -401,15 +534,35 @@ export function useRoomTrackAssetAutoPreparation(input: {
     };
   }, []);
 
-  const upcomingTracks = roomSnapshot && !streamingOnlyPlayback
-    ? getRoomQueuePreloadTracks(roomSnapshot).filter((track) =>
-        track.ownerSessionId === activeSessionId && !hasCompleteRoomAsset(track))
+  const upcomingTracks = roomSnapshot && activeSessionId && !streamingOnlyPlayback
+    ? selectUpcomingTracksForAutoPreparation({
+        roomSnapshot,
+        activeSessionId
+      })
     : [];
   const upcomingTracksRef = useRef(upcomingTracks);
   upcomingTracksRef.current = upcomingTracks;
   const upcomingPreparationKey = JSON.stringify(upcomingTracks.map((track) => [
     track.id, track.fileHash, track.originalAsset?.assetId, track.playbackAsset?.assetId
   ]));
+
+  useEffect(() => {
+    if (!roomSnapshot) return;
+    pruneStaleTrackPreparationRecords(new Set(roomSnapshot.tracks.map((track) => track.id)));
+  }, [roomSnapshot]);
+
+  useEffect(() => {
+    if (streamingOnlyPlayback || !roomSnapshot || !activeSessionId) return;
+    const ownedCandidateIds = getRoomUpcomingPreparationTracks(roomSnapshot)
+      .filter((track) => track.ownerSessionId === activeSessionId && !hasCompleteRoomAsset(track))
+      .map((track) => track.id);
+    const delayMs = getNextAutoPreparationRetryDelayMs(ownedCandidateIds);
+    if (delayMs === null) return;
+    const timer = window.setTimeout(() => {
+      setRetryTick((tick) => tick + 1);
+    }, delayMs + 50);
+    return () => window.clearTimeout(timer);
+  }, [roomSnapshot, activeSessionId, streamingOnlyPlayback, storeRevision, retryTick]);
 
   // 1. Current track auto-preparation (high priority)
   useEffect(() => {
@@ -443,7 +596,9 @@ export function useRoomTrackAssetAutoPreparation(input: {
       for (const track of upcomingTracksToPrepare) {
         if (controller.signal.aborted) break;
         try {
-          await ensureRoomTrackDistributionAsset(roomId, track, controller.signal);
+          await ensureRoomTrackDistributionAsset(roomId, track, controller.signal, {
+            priority: "low"
+          });
         } catch (err) {
           if (!controller.signal.aborted) {
             console.warn(`[AssetPreparation] Background preparation failed for "${track.title}":`, err);

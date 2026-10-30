@@ -172,7 +172,7 @@ async function importOfflineProviderTrack(input: {
     const lyrics = track.lyrics?.trim() || providerLyrics?.wordSyncedLyric || providerLyrics?.plainLyric || null;
     const loudness = track.loudness ?? null;
     if (!track.loudness) {
-      void analyzeAudioBlobLoudness(file).then((result) => {
+      void analyzeAudioBlobLoudness(file, { cacheKey: track.fileHash }).then((result) => {
         if (result) {
           getCachedLibraryTrack(track.fileHash).then((record) => {
             if (record) {

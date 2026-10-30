@@ -666,6 +666,107 @@ export class LocalRepository {
     );
   }
 
+  async beginPlaybackAssetWrite(manifest: PlaybackAssetManifest) {
+    const basePath = this.getPlaybackAssetPath(manifest.assetId, manifest.profileId);
+    const existing = await this.readPlaybackAsset(manifest.assetId, manifest.profileId);
+    if (existing && existing.units.length === manifest.unitCount) {
+      return null;
+    }
+
+    const journalId = `playback-${manifest.profileId}-${manifest.assetId}`;
+    const journalPath = `${localRepositoryDirectoryName}/tmp/${journalId}.json`;
+    await this.writeJson(journalPath, {
+      storageSchemaVersion: 1,
+      id: journalId,
+      kind: "playback-asset",
+      targetPath: basePath
+    } satisfies LocalRepositoryTempWrite);
+
+    const unitDescriptors: Array<LocalRepositoryPlaybackUnit | undefined> = new Array(
+      manifest.unitCount
+    );
+    let unitsDirectory: FileSystemDirectoryHandle;
+    try {
+      const resolvedUnitsDirectory = await getDirectoryByParts(
+        this.root,
+        splitSafePath(`${basePath}/units`),
+        true
+      );
+      if (!resolvedUnitsDirectory) throw new Error("无法创建播放分片目录。");
+      unitsDirectory = resolvedUnitsDirectory;
+    } catch (error) {
+      await this.removeDirectory(basePath).catch(() => undefined);
+      await this.removePath(journalPath).catch(() => undefined);
+      throw error;
+    }
+
+    const abort = async () => {
+      await this.removeDirectory(basePath).catch(() => undefined);
+      await this.removePath(journalPath).catch(() => undefined);
+    };
+
+    return {
+      writeUnits: async (
+        units: ReadonlyArray<{ descriptor: AssetUnitDescriptor; payload: ArrayBuffer }>
+      ) => {
+        if (units.length === 0) return;
+        let nextBatchOffset = 0;
+        await Promise.all(
+          Array.from(
+            { length: Math.min(playbackWriteConcurrency, units.length) },
+            async () => {
+              while (true) {
+                const batchOffset = nextBatchOffset++;
+                if (batchOffset >= units.length) return;
+                const unit = units[batchOffset]!;
+                const unitIndex = unit.descriptor.unitIndex;
+                if (unitIndex < 0 || unitIndex >= manifest.unitCount) {
+                  throw new Error("播放资产分片索引超出清单范围。");
+                }
+                const fileName = `${String(unitIndex).padStart(6, "0")}.opus`;
+                const relativePath = `${basePath}/units/${fileName}`;
+                const fileHandle = await unitsDirectory.getFileHandle(fileName, { create: true });
+                const writable = await fileHandle.createWritable();
+                try {
+                  await writable.write(
+                    new Blob([new Uint8Array(unit.payload)], {
+                      type: "audio/ogg"
+                    })
+                  );
+                  await writable.close();
+                } catch (err) {
+                  await writable.abort().catch(() => undefined);
+                  throw err;
+                }
+                unitDescriptors[unitIndex] = {
+                  descriptor: unit.descriptor,
+                  relativePath
+                };
+              }
+            }
+          )
+        );
+      },
+      commit: async () => {
+        const finalizedUnits = unitDescriptors.map((unit) => {
+          if (!unit) {
+            throw new Error("播放资产分片数量与清单不一致。");
+          }
+          return unit;
+        });
+        await this.writeJson(`${basePath}/manifest.json`, {
+          storageSchemaVersion: 1,
+          manifest,
+          units: finalizedUnits
+        } satisfies LocalRepositoryPlaybackManifest);
+        await this.removePath(journalPath);
+        await this.touch();
+        return `${basePath}/manifest.json`;
+      },
+      abort
+    };
+  }
+
   async writePlaybackAsset(input: {
     manifest: PlaybackAssetManifest;
     units: Array<{ descriptor: AssetUnitDescriptor; payload: ArrayBuffer }>;
@@ -674,70 +775,17 @@ export class LocalRepository {
       throw new Error("播放资产分片数量与清单不一致。");
     }
     const basePath = this.getPlaybackAssetPath(input.manifest.assetId, input.manifest.profileId);
-    const existing = await this.readPlaybackAsset(
-      input.manifest.assetId,
-      input.manifest.profileId
-    );
-    if (existing && existing.units.length === input.manifest.unitCount) {
+    const writer = await this.beginPlaybackAssetWrite(input.manifest);
+    if (!writer) {
       return `${basePath}/manifest.json`;
     }
-    const journalId = `playback-${input.manifest.profileId}-${input.manifest.assetId}`;
-    const journalPath = `${localRepositoryDirectoryName}/tmp/${journalId}.json`;
-    await this.writeJson(journalPath, {
-      storageSchemaVersion: 1,
-      id: journalId,
-      kind: "playback-asset",
-      targetPath: basePath
-    } satisfies LocalRepositoryTempWrite);
-    const unitDescriptors: LocalRepositoryPlaybackUnit[] = new Array(input.units.length);
     try {
-      const unitsDirectory = await getDirectoryByParts(
-        this.root,
-        splitSafePath(`${basePath}/units`),
-        true
-      );
-      if (!unitsDirectory) throw new Error("无法创建播放分片目录。");
-
-      let nextUnitIndex = 0;
-      await Promise.all(
-        Array.from({ length: Math.min(playbackWriteConcurrency, input.units.length) }, async () => {
-          while (true) {
-            const unitIndex = nextUnitIndex++;
-            if (unitIndex >= input.units.length) return;
-            const unit = input.units[unitIndex]!;
-            const fileName = `${String(unit.descriptor.unitIndex).padStart(6, "0")}.opus`;
-            const relativePath = `${basePath}/units/${fileName}`;
-            const fileHandle = await unitsDirectory.getFileHandle(fileName, { create: true });
-            const writable = await fileHandle.createWritable();
-            try {
-              await writable.write(new Blob([new Uint8Array(unit.payload)], {
-                type: "audio/ogg"
-              }));
-              await writable.close();
-            } catch (err) {
-              await writable.abort().catch(() => undefined);
-              throw err;
-            }
-            unitDescriptors[unitIndex] = {
-              descriptor: unit.descriptor,
-              relativePath
-            };
-          }
-        })
-      );
-      await this.writeJson(`${basePath}/manifest.json`, {
-        storageSchemaVersion: 1,
-        manifest: input.manifest,
-        units: unitDescriptors
-      } satisfies LocalRepositoryPlaybackManifest);
-      await this.removePath(journalPath);
+      await writer.writeUnits(input.units);
+      return await writer.commit();
     } catch (error) {
-      await this.removeDirectory(basePath).catch(() => undefined);
-      await this.removePath(journalPath).catch(() => undefined);
+      await writer.abort();
       throw error;
     }
-    await this.touch();
-    return `${basePath}/manifest.json`;
   }
 
   getPlaybackAssetPath(assetId: string, profileId: string) {

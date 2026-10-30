@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { AudioAssetUnitRecord } from "@/features/library/indexeddb";
 import type { GaplessTransition, PlaybackAssetManifest, PlaybackSnapshot } from "@soqaro/shared";
@@ -202,6 +202,7 @@ export class SegmentedOpusEngine {
       const canPromoteGapless = pendingTransition?.assetId === input.manifest.assetId &&
         pendingTransition.transitionAt === timelineId;
       if (canPromoteGapless) {
+        this.prunePromotedTimelineState(input.manifest.assetId, timelineId, timelineKey);
         this.timelineKey = timelineKey;
         this.contextAnchorTime = pendingTransition.contextTime;
         this.playbackAnchorPositionMs = 0;
@@ -749,6 +750,14 @@ export class SegmentedOpusEngine {
       }
     }).finally(() => {
       queue!.running = false;
+      if (this.destroyed || this.timelineKey !== timelineKey) {
+        queue!.units.clear();
+        queue!.decoded.clear();
+        if (this.aheadQueues.get(timelineKey) === queue) {
+          this.aheadQueues.delete(timelineKey);
+        }
+        return;
+      }
       if (
         this.aheadQueues.get(timelineKey) === queue &&
         queue!.units.size === 0 &&
@@ -1309,6 +1318,26 @@ export class SegmentedOpusEngine {
       } catch {
         // The source may already have ended.
         cleanup();
+      }
+    }
+  }
+
+  private prunePromotedTimelineState(
+    assetId: string,
+    timelineId: string,
+    activeTimelineKey: string
+  ) {
+    for (const [queuedTimelineKey, queue] of this.aheadQueues.entries()) {
+      if (queuedTimelineKey !== activeTimelineKey) {
+        queue.units.clear();
+        queue.decoded.clear();
+        this.aheadQueues.delete(queuedTimelineKey);
+      }
+    }
+    const activeCompletedPrefix = `${assetId}:${timelineId}:`;
+    for (const completedKey of this.completed) {
+      if (!completedKey.startsWith(activeCompletedPrefix)) {
+        this.completed.delete(completedKey);
       }
     }
   }

@@ -1,7 +1,7 @@
-﻿import type { RemoteTrackSourceRef, TrackMeta, TrackSourceType } from "@soqaro/shared";
+import type { RemoteTrackSourceRef, TrackMeta, TrackSourceType } from "@soqaro/shared";
 import { SoqaroApiError, soqaroApi, resolveDownloadedAudioMimeType } from "@/lib/network/soqaro-api";
 import { fetchProviderLyricsCached } from "@/features/playback/lyrics";
-import { getAssetUnit } from "@/features/library/indexeddb";
+import { getAssetUnitIndexes } from "@/features/library/indexeddb";
 import { playbackProfileId } from "@/features/library/audio-asset-builder";
 
 export function buildProviderSourceRef(
@@ -30,12 +30,17 @@ export async function hasUsableLocalPlaybackAsset(track: TrackMeta) {
     return false;
   }
 
-  const units = await Promise.all(
-    Array.from({ length: playbackAsset.unitCount }, (_, index) =>
-      getAssetUnit(playbackAsset.assetId, index)
-    )
-  );
-  return units.every(Boolean);
+  const indexes = await getAssetUnitIndexes(playbackAsset.assetId);
+  if (indexes.length < playbackAsset.unitCount) {
+    return false;
+  }
+  const indexSet = new Set(indexes);
+  for (let index = 0; index < playbackAsset.unitCount; index += 1) {
+    if (!indexSet.has(index)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export async function resolveImportedAudioMimeType(file: Blob) {

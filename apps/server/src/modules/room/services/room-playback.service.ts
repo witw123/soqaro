@@ -1,4 +1,4 @@
-﻿import type { GaplessTransition, PlaybackMode, PlaybackSnapshot } from "@soqaro/shared";
+import type { GaplessTransition, PlaybackMode, PlaybackSnapshot } from "@soqaro/shared";
 import { synchronizeShuffleBagTrackIds } from "@soqaro/shared";
 import type { RoomRecord } from "../room.types";
 import { RoomPresenceService } from "./room-presence.service";
@@ -525,7 +525,79 @@ export class RoomPlaybackService {
       return false;
     }
 
+    if (await this.shouldDeferTrackEndForReconnectingSource(record)) {
+      return false;
+    }
+
     await this.advanceByPlaybackMode(record, "next", 0);
+    bumpPlaybackVersion(playback);
+    return true;
+  }
+
+  /**
+   * Advances to another playable queue item when the active track's asset is
+   * reported unavailable during playback. Returns false when no alternative
+   * playable track exists so the caller can pause cleanly.
+   */
+  async advanceAfterUnavailableTrack(
+    record: RoomRecord,
+    unavailableTrackId: string
+  ): Promise<boolean> {
+    const playback = record.room.playback;
+    if (playback.status !== "playing" || playback.currentTrackId !== unavailableTrackId) {
+      return false;
+    }
+
+    const mode = playback.playbackMode ?? "sequence";
+    if (mode === "single") {
+      return false;
+    }
+
+    const excludedTrackIds = new Set([unavailableTrackId]);
+    if (mode === "shuffle") {
+      const trackIds = [...new Set(record.queue.map((item) => item.trackId))]
+        .filter((trackId) => !excludedTrackIds.has(trackId));
+      if (trackIds.length === 0) {
+        return false;
+      }
+      const bag = synchronizeShuffleBagTrackIds(
+        playback.shuffleBagTrackIds ?? [],
+        trackIds,
+        unavailableTrackId,
+        []
+      );
+      let candidateTrackId: string | null = null;
+      for (const trackId of bag) {
+        if (excludedTrackIds.has(trackId)) continue;
+        if (await this.resolveTrackSourceCandidate(record, trackId)) {
+          candidateTrackId = trackId;
+          break;
+        }
+      }
+      if (!candidateTrackId) {
+        return false;
+      }
+      const candidate = record.queue.find((item) => item.trackId === candidateTrackId);
+      if (!candidate) {
+        return false;
+      }
+      playback.shuffleBagTrackIds = bag.filter((trackId) => trackId !== candidateTrackId);
+      await this.applyTrackPlayback(record, candidate.trackId, 0, candidate.id);
+      bumpPlaybackVersion(playback);
+      return true;
+    }
+
+    const currentIndex = getCurrentQueueIndex(record);
+    const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
+    const candidate = await this.findPlayableQueueItem(record, startIndex, 1, {
+      wrap: true,
+      excludedTrackIds
+    });
+    if (!candidate) {
+      return false;
+    }
+
+    await this.applyTrackPlayback(record, candidate.trackId, 0, candidate.id);
     bumpPlaybackVersion(playback);
     return true;
   }
@@ -633,25 +705,87 @@ export class RoomPlaybackService {
 
 
 
+  private async shouldDeferTrackEndForReconnectingSource(record: RoomRecord): Promise<boolean> {
+    if (typeof this.roomPresenceService.getPresenceSnapshot !== "function") {
+      return false;
+    }
+
+    const playback = record.room.playback;
+    const mode = playback.playbackMode ?? "sequence";
+    const activePresence = await this.roomPresenceService.getActivePresence(
+      record.room.id,
+      record.room.members
+    );
+    const trackById = new Map(record.tracks.map((track) => [track.id, track]));
+
+    const candidateTrackIds = new Set<string>();
+    if (playback.nextQueueItemId) {
+      const explicitNext = record.queue.find((item) => item.id === playback.nextQueueItemId);
+      if (explicitNext && explicitNext.id !== playback.currentQueueItemId) {
+        candidateTrackIds.add(explicitNext.trackId);
+      }
+    }
+    if (mode === "single") {
+      if (playback.currentTrackId) {
+        candidateTrackIds.add(playback.currentTrackId);
+      }
+    } else {
+      for (const item of record.queue) {
+        candidateTrackIds.add(item.trackId);
+      }
+    }
+
+    for (const trackId of candidateTrackIds) {
+      if (
+        mode === "shuffle" &&
+        candidateTrackIds.size > 1 &&
+        trackId === playback.currentTrackId
+      ) {
+        continue;
+      }
+      const track = trackById.get(trackId);
+      if (track && pickTrackSourceCandidate(track, activePresence)) {
+        return false;
+      }
+    }
+
+    const presenceSnapshot = await this.roomPresenceService.getPresenceSnapshot(
+      record.room.id,
+      record.room.members
+    );
+    for (const trackId of candidateTrackIds) {
+      const track = trackById.get(trackId);
+      if (!track) continue;
+      if (presenceSnapshot.get(track.ownerSessionId)?.presenceState === "reconnecting") {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private async findPlayableQueueItem(
     record: RoomRecord,
     startIndex: number,
     direction: 1 | -1,
-    options: { wrap: boolean }
+    options: { wrap: boolean; excludedTrackIds?: Set<string> }
   ) {
     if (record.queue.length === 0) {
       return null;
     }
 
+    const excludedTrackIds = options.excludedTrackIds;
     const visited = new Set<number>();
     let index = startIndex;
 
     while (index >= 0 && index < record.queue.length && !visited.has(index)) {
       visited.add(index);
       const item = record.queue[index]!;
-      const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
-      if (sourceCandidate) {
-        return item;
+      if (!excludedTrackIds?.has(item.trackId)) {
+        const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
+        if (sourceCandidate) {
+          return item;
+        }
       }
       index += direction;
     }
@@ -664,6 +798,7 @@ export class RoomPlaybackService {
       for (let i = 0; i < startIndex && i < record.queue.length; i += 1) {
         if (visited.has(i)) continue;
         const item = record.queue[i]!;
+        if (excludedTrackIds?.has(item.trackId)) continue;
         const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
         if (sourceCandidate) {
           return item;
@@ -673,6 +808,7 @@ export class RoomPlaybackService {
       for (let i = record.queue.length - 1; i > startIndex && i >= 0; i -= 1) {
         if (visited.has(i)) continue;
         const item = record.queue[i]!;
+        if (excludedTrackIds?.has(item.trackId)) continue;
         const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
         if (sourceCandidate) {
           return item;

@@ -432,6 +432,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     }
 
     let cancelled = false;
+    const loudnessController = new AbortController();
     // Do not flip an already-resolved key back to "checking". That briefly
     // cleared the source media fanout on every redundant effect re-run.
     setLocalAudioResolution((current) => {
@@ -459,7 +460,10 @@ export function useRoomSegmentedPlaybackRuntime(input: {
         error: null
       });
       if (!track.loudness && file) {
-        void analyzeAudioBlobLoudness(file).then((loudness) => {
+        void analyzeAudioBlobLoudness(file, {
+          cacheKey: track.fileHash,
+          signal: loudnessController.signal
+        }).then((loudness) => {
           if (cancelled || !loudness) return;
           setLocalAudioResolution((current) => current.key === localAudioTrackKey
             ? { ...current, loudness }
@@ -480,6 +484,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
     return () => {
       cancelled = true;
+      loudnessController.abort();
     };
   }, [
     // currentTrack identity is stabilized by resolveStableCurrentTrack; keep it
@@ -582,7 +587,10 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           error: null
         });
         if (!track.loudness && !result.loudness) {
-          void analyzeAudioBlobLoudness(result.file).then((loudness) => {
+          void analyzeAudioBlobLoudness(result.file, {
+            cacheKey: track.fileHash,
+            signal: controller.signal
+          }).then((loudness) => {
             if (cancelled || !loudness) return;
             setLocalAudioResolution((current) =>
               current.key === localAudioTrackKey ? { ...current, loudness } : current
@@ -1979,6 +1987,10 @@ export function useRoomSegmentedPlaybackRuntime(input: {
         localAudio: audioRef.current,
         volume: input.volume,
         loudnessGainDb
+      }).then((resumed) => {
+        if (resumed && roomAudioOutput.isActivated() && roomAudioOutput.isAudioContextReady()) {
+          setAudioUnlocked(true);
+        }
       });
     };
 
@@ -1990,7 +2002,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       window.removeEventListener("pageshow", restoreAudioOutput);
       window.removeEventListener("focus", restoreAudioOutput);
     };
-  }, [audioRef, input.volume, loudnessGainDb]);
+  }, [audioRef, input.volume, loudnessGainDb, setAudioUnlocked]);
 
   const lastReportedErrorRef = useRef<string | null>(null);
   const completedTimelineRef = useRef<string | null>(null);
@@ -2033,14 +2045,26 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
   useEffect(() => {
     if (
-      usesSegmentedPlayback &&
-      audioUnlocked &&
-      playback.state === "awaiting-unlock" &&
-      playback.audioContextState !== "running"
+      !usesSegmentedPlayback ||
+      !audioUnlocked ||
+      playback.state !== "awaiting-unlock" ||
+      playback.audioContextState === "running"
     ) {
+      return;
+    }
+
+    let cancelled = false;
+    void roomAudioOutput.resumeSharedAudioContext().then((resumed) => {
+      if (cancelled || resumed) {
+        return;
+      }
       setAudioUnlocked(false);
       setStatusMessage("音频上下文已暂停，请点击播放或在房间内交互以恢复声音。");
-    }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     audioUnlocked,
     playback.audioContextState,

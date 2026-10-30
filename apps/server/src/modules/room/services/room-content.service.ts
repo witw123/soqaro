@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { PrepareTrackAssetRequest, QueueItem, RadioAutopilot, ReportTrackAssetUnavailableRequest, RoomTrackDeletion, TrackMeta } from "@soqaro/shared";
 import type { RoomRecord } from "../room.types";
@@ -193,14 +193,19 @@ export class RoomContentService {
         record.room.playback.currentQueueItemId,
         input.playbackAsset.assetId
       );
+      incrementPlaybackRevision(record.room.playback);
       playbackChanged = true;
     }
 
     await this.roomRecordRepository.persistRecord(record);
+    const playback = playbackChanged
+      ? await this.roomPlaybackService.buildPlaybackForSnapshot(record)
+      : undefined;
 
     return {
       track: updatedTrack,
       playbackChanged,
+      playback,
       roomRevision: record.room.roomRevision ?? 0
     };
   }
@@ -226,25 +231,31 @@ export class RoomContentService {
 
     let playbackChanged = false;
     if (record.room.playback.currentTrackId === track.id) {
-      const pausePositionMs = getEffectivePlaybackPositionMs(record, record.room.playback);
-      pausePlaybackAt(record, pausePositionMs, {
-        sourceCandidate: null,
-        clearSourcePeer: true,
-        keepSourceSessionId: true,
-        bumpMediaEpoch: true
-      });
-      incrementPlaybackRevision(record.room.playback);
+      const advanced = await this.roomPlaybackService.advanceAfterUnavailableTrack(record, track.id);
+      if (!advanced) {
+        const pausePositionMs = getEffectivePlaybackPositionMs(record, record.room.playback);
+        pausePlaybackAt(record, pausePositionMs, {
+          sourceCandidate: null,
+          clearSourcePeer: true,
+          keepSourceSessionId: true,
+          bumpMediaEpoch: true
+        });
+        incrementPlaybackRevision(record.room.playback);
+      }
       playbackChanged = true;
     }
 
     incrementRoomRevision(record.room);
     await this.roomRecordRepository.persistRecord(record);
+    const playback = playbackChanged
+      ? await this.roomPlaybackService.buildPlaybackForSnapshot(record)
+      : record.room.playback;
 
     return {
       track,
       reason: input.reason,
       playbackChanged,
-      playback: record.room.playback,
+      playback,
       roomRevision: record.room.roomRevision ?? 0
     };
   }

@@ -65,7 +65,10 @@ export class RoomAudioOutput {
 
   async restoreAfterBackground(input: ApplyRoomAudioVolumeInput) {
     const element = input.localAudio;
-    if (!element || !this.hasLocalAudioElementSource(element)) {
+    const shouldResumeContext = Boolean(
+      (element && this.hasLocalAudioElementSource(element)) || this.isActivated()
+    );
+    if (!shouldResumeContext) {
       this.applyVolume(input);
       return true;
     }

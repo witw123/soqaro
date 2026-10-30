@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   useCallback,
@@ -94,7 +94,16 @@ export function useRoomRealtimeConnectionEffects(input: {
       return;
     }
 
-    socketRef.current?.emit("room.presence", {
+    const socket = socketRef.current;
+    if (!socket) {
+      return;
+    }
+    if (socket.connected === false && typeof socket.connect === "function") {
+      socket.connect();
+      return;
+    }
+
+    socket.emit("room.presence", {
       roomId: currentRoomId,
       sessionId: currentSession.userId,
       peerId

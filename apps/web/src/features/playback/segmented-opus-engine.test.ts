@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   PlaybackAssetManifest,
   PlaybackSnapshot
@@ -1026,6 +1026,68 @@ describe("SegmentedOpusEngine", () => {
     });
 
     expect(sources).toHaveLength(sourceCountAfterResume);
+    engine.destroy();
+  });
+
+  it("prunes stale completed keys and ahead queues when promoting a gapless loop", async () => {
+    const { context } = createContext();
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext").mockReturnValue(context);
+    const engine = new SegmentedOpusEngine();
+    const serverNowMs = Date.now();
+    const transitionAt = new Date(serverNowMs + 12_000).toISOString();
+    const initialPlayback = playback(serverNowMs);
+
+    await engine.sync({
+      manifest,
+      playback: initialPlayback,
+      serverNowMs,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex),
+      gaplessNext: {
+        transition: {
+          trackId: "track_1",
+          queueItemId: "queue_1",
+          playbackAssetId: manifest.assetId,
+          durationMs: manifest.durationMs,
+          transitionAt,
+          sourceSessionId: "user_a",
+          sourcePeerId: "peer_a"
+        },
+        manifest,
+        getUnit: async (unitIndex) => unit(unitIndex)
+      }
+    });
+
+    const internals = engine as unknown as {
+      completed: Set<string>;
+      aheadQueues: Map<string, { units: Map<number, unknown>; decoded: Map<number, unknown> }>;
+    };
+    const staleCompletedKey = `${manifest.assetId}:${initialPlayback.startAt}:0`;
+    const promotedCompletedKey = `${manifest.assetId}:${transitionAt}:0`;
+    internals.completed.add(staleCompletedKey);
+    internals.completed.add(promotedCompletedKey);
+    internals.aheadQueues.set(`${manifest.assetId}:1:${initialPlayback.startAt}`, {
+      units: new Map([[5, unit(5)]]),
+      decoded: new Map()
+    });
+
+    await engine.sync({
+      manifest,
+      playback: {
+        ...initialPlayback,
+        mediaEpoch: 2,
+        playbackRevision: 2,
+        startAt: transitionAt,
+        startedAt: transitionAt
+      },
+      serverNowMs: serverNowMs + 12_000,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex)
+    });
+
+    expect(internals.completed.has(staleCompletedKey)).toBe(false);
+    expect(internals.completed.has(promotedCompletedKey)).toBe(true);
+    expect(internals.aheadQueues.has(`${manifest.assetId}:1:${initialPlayback.startAt}`)).toBe(false);
     engine.destroy();
   });
 });

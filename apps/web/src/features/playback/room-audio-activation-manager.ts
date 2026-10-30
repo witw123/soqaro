@@ -320,20 +320,30 @@ export class RoomAudioActivationManager {
     }
 
     this.lifecycleListenersInstalled = true;
-    const resume = () => {
+    const isContextSuspended = () =>
+      context.state === "suspended" || (context.state as string) === "interrupted";
+    const resumeWhenVisible = () => {
       if (
         this.activated &&
-        context.state === "suspended" &&
+        isContextSuspended() &&
         (typeof document === "undefined" || !document.hidden)
       ) {
         void this.resumeSharedAudioContext();
       }
     };
-    window.addEventListener("pageshow", resume);
+    const handleStateChange = () => {
+      if (this.activated && isContextSuspended()) {
+        // Attempt an immediate resume even in background tabs so transient OS or
+        // output-device transitions recover without waiting for foreground focus.
+        void this.resumeSharedAudioContext();
+      }
+    };
+    window.addEventListener("pageshow", resumeWhenVisible);
+    window.addEventListener("focus", resumeWhenVisible);
     if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", resume);
+      document.addEventListener("visibilitychange", resumeWhenVisible);
     }
-    context.addEventListener?.("statechange", resume);
+    context.addEventListener?.("statechange", handleStateChange);
   }
 
   private getOrCreateSharedContext() {

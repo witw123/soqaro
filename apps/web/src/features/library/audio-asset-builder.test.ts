@@ -4,6 +4,7 @@ import {
   assertDecodedPcmWithinMemoryBudget,
   estimateDecodedPcmBytes,
   maxDecodedPcmBytes,
+  maxFullDecodeFileBytes,
   playbackEncoderVersion,
   playbackProfileId,
   prepareIndependentOpusSegment,
@@ -15,7 +16,7 @@ import {
 } from "./audio-asset-builder";
 
 describe("audio asset preparation", () => {
-  it("keeps full decode for bounded PCM and selects streaming decode above the limit", () => {
+  it("routes FLAC/WAV/MP3 to streaming decode and guards M4A full decode memory", () => {
     const source = readFileSync(new URL("./audio-asset-builder.ts", import.meta.url), "utf8");
 
     expect(source).toContain("const audioBuffer = await decodeAudioFile(input.file);");
@@ -24,8 +25,17 @@ describe("audio asset preparation", () => {
     expect(source).toContain("maxDecodedPcmBytes = 256 * 1024 * 1024");
     expect(source).toContain("FLACDecoderWebWorker");
     expect(source).toContain("MPEGDecoderWebWorker");
+    expect(source).toContain("runExclusiveAudioDecodeTask");
+    expect(source).toContain("beginPlaybackAssetWrite");
+    expect(source).not.toContain("const allUnits");
+    expect(maxFullDecodeFileBytes).toBe(64 * 1024 * 1024);
     expect(resolveDecodePath(maxDecodedPcmBytes)).toBe("full");
     expect(resolveDecodePath(maxDecodedPcmBytes + 1)).toBe("streaming");
+    expect(resolveDecodePath(1024, "flac")).toBe("streaming");
+    expect(resolveDecodePath(1024, "wav")).toBe("streaming");
+    expect(resolveDecodePath(1024, "mp3")).toBe("streaming");
+    expect(resolveDecodePath(1024, "m4a")).toBe("full");
+    expect(resolveDecodePath(maxDecodedPcmBytes + 1, "m4a")).toBe("streaming");
   });
 
   it("publishes the server-compatible playback profile", () => {

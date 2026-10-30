@@ -16,7 +16,11 @@ import { RoomSessionLeaseService } from "./room-session-lease.service";
 @Injectable()
 export class RoomSessionRegistryService {
   private readonly logger = new Logger(RoomSessionRegistryService.name);
-  private readonly disconnectGracePeriodMs = 25_000;
+  // Background browser tabs under Intensive Wake Up Throttling only run timers
+  // once every 60s. Keep the disconnect grace window above one throttled tick
+  // so a transient socket drop in a hidden source tab can reconnect without
+  // flipping the room to paused.
+  private readonly disconnectGracePeriodMs = 90_000;
   private readonly activeSessionsByRoom = new Map<
     string,
     Map<string, { socketId: string; peerId: string; fenceToken: string }>

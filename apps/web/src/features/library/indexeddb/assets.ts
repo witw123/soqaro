@@ -268,14 +268,18 @@ export async function getAssetUnits(assetId: string, unitIndexes: readonly numbe
   if (byIndex.size < uniqueIndexes.length) {
     const repository = await getLocalRepositoryForAssetRead();
     if (repository) {
-      for (const unitIndex of uniqueIndexes) {
-        if (byIndex.has(unitIndex)) continue;
-        const localUnit = await getLocalPlaybackUnitFromRepository(
-          repository,
-          assetId,
-          unitIndex
-        );
-        if (localUnit) byIndex.set(unitIndex, localUnit);
+      const playback = await repository.readPlaybackAsset(assetId, playbackProfileId);
+      if (playback) {
+        for (const unitIndex of uniqueIndexes) {
+          if (byIndex.has(unitIndex)) continue;
+          const localUnit = await getLocalPlaybackUnitFromManifest(
+            repository,
+            playback,
+            assetId,
+            unitIndex
+          );
+          if (localUnit) byIndex.set(unitIndex, localUnit);
+        }
       }
     }
   }
@@ -338,7 +342,17 @@ async function getLocalPlaybackUnitFromRepository(
   unitIndex: number
 ) {
   const playback = await repository.readPlaybackAsset(assetId, playbackProfileId);
-  const unit = playback?.units.find((candidate) => candidate.descriptor.unitIndex === unitIndex);
+  if (!playback) return null;
+  return getLocalPlaybackUnitFromManifest(repository, playback, assetId, unitIndex);
+}
+
+async function getLocalPlaybackUnitFromManifest(
+  repository: LocalRepository,
+  playback: NonNullable<Awaited<ReturnType<LocalRepository["readPlaybackAsset"]>>>,
+  assetId: string,
+  unitIndex: number
+) {
+  const unit = playback.units.find((candidate) => candidate.descriptor.unitIndex === unitIndex);
   if (!unit) return null;
   const file = await repository.readPlaybackUnit(unit);
   if (!file) return null;

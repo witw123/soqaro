@@ -1,4 +1,4 @@
-﻿import { AuthService } from "../auth/auth.service";
+import { AuthService } from "../auth/auth.service";
 import { createRoomCoreServices } from "./room-graph";
 
 function createPrismaMock() {
@@ -2950,6 +2950,8 @@ describe("RoomService", () => {
     expect(result.track.fileHash).toBe(newFileHash);
     expect(result.track.playbackAsset?.assetId).toBe("2".repeat(64));
     expect(result.playbackChanged).toBe(true);
+    expect(result.playback?.status).toBe("playing");
+    expect(result.playback?.playbackAssetId).toBe("2".repeat(64));
 
     const updatedSnapshot = await roomService.getRoomSnapshot(snapshot.room.id, []);
     expect(updatedSnapshot.room.playback.status).toBe("playing");
@@ -3006,5 +3008,65 @@ describe("RoomService", () => {
     expect(updatedSnapshot.room.playback.status).toBe("paused");
     expect(updatedSnapshot.room.playback.sourcePeerId).toBeNull();
     expect(updatedSnapshot.room.playback.mediaEpoch).toBe(initialEpoch + 1);
+  });
+
+  it("advances to the next playable track when the active track asset is reported unavailable", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+    const host = await authService.createGuestSession("AssetHost3");
+    const snapshot = await roomService.createRoom(host.id, "public", { roomType: "interactive" });
+    await roomService.updatePeerPresence(snapshot.room.id, host.id, "peer_host", "online");
+
+    const hashA = "c".repeat(64);
+    const hashB = "d".repeat(64);
+    const [firstTrack, secondTrack] = await roomService.registerTracks(snapshot.room.id, host.id, [
+      {
+        title: "Broken Song",
+        artist: "Artist",
+        album: null,
+        durationMs: 180000,
+        bitrate: null,
+        fileHash: hashA,
+        artworkUrl: null,
+        ownerSessionId: host.id,
+        ownerNickname: host.nickname,
+        sourceType: "local_upload",
+        originalAsset: createOriginalAssetMock("5".repeat(64), hashA),
+        playbackAsset: createPlaybackAssetMock("6".repeat(64), 180000, hashA)
+      },
+      {
+        title: "Healthy Song",
+        artist: "Artist",
+        album: null,
+        durationMs: 180000,
+        bitrate: null,
+        fileHash: hashB,
+        artworkUrl: null,
+        ownerSessionId: host.id,
+        ownerNickname: host.nickname,
+        sourceType: "local_upload",
+        originalAsset: createOriginalAssetMock("7".repeat(64), hashB),
+        playbackAsset: createPlaybackAssetMock("8".repeat(64), 180000, hashB)
+      }
+    ]);
+    const firstQueueItem = await roomService.addQueueItem(snapshot.room.id, host.id, firstTrack.id);
+    await roomService.addQueueItem(snapshot.room.id, host.id, secondTrack.id);
+    await roomService.updatePlayback(snapshot.room.id, {
+      action: "play",
+      queueItemId: firstQueueItem.id,
+      actorSessionId: host.id
+    });
+
+    const result = await roomService.reportTrackAssetUnavailable(snapshot.room.id, host.id, {
+      trackId: firstTrack.id,
+      reason: "source-missing"
+    });
+
+    expect(result.playbackChanged).toBe(true);
+    expect(result.playback?.status).toBe("playing");
+    expect(result.playback?.currentTrackId).toBe(secondTrack.id);
   });
 });

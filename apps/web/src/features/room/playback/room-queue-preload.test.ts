@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RoomSnapshot, TrackMeta } from "@soqaro/shared";
-import { getRoomQueuePreloadTracks, RoomAudioPreloader } from "./room-queue-preload";
+import {
+  getRoomQueuePreloadTracks,
+  getRoomUpcomingPreparationTracks,
+  RoomAudioPreloader
+} from "./room-queue-preload";
 
 const tracks = ["a", "b", "c", "d"].map((id) => ({ id, fileHash: id } as TrackMeta));
 function snapshot(mode = "sequence", nextQueueItemId: string | null = null) {
@@ -32,6 +36,13 @@ describe("room queue preload", () => {
     room.room.playback.currentTrackId = "d";
     room.room.playback.currentQueueItemId = "qd";
     expect(getRoomQueuePreloadTracks(room).map((track) => track.id)).toEqual(["a", "b"]);
+  });
+  it("returns all upcoming preparation candidates and falls back to queue in exhausted shuffle bags", () => {
+    const room = snapshot("shuffle");
+    room.room.playback.shuffleBagTrackIds = [];
+    expect(getRoomUpcomingPreparationTracks(room).map((track) => track.id)).toEqual(["b", "c", "d"]);
+    expect(getRoomUpcomingPreparationTracks(snapshot("sequence")).map((track) => track.id))
+      .toEqual(["b", "c", "d"]);
   });
   it("reuses the pending preload on track switch and releases removed entries", async () => {
     let finish!: (file: Blob) => void;

@@ -1,4 +1,4 @@
-﻿import type { LocalPlaylistTrackRecord } from "@/features/library/indexeddb";
+import type { LocalPlaylistTrackRecord } from "@/features/library/indexeddb";
 import {
   hashAudioBlob,
   toProviderTrackRecord,
@@ -94,7 +94,7 @@ export async function downloadProviderTrackToLibrary(input: {
     blob = response.blob;
     fileHash = await hashAudioBlob(blob);
     mimeType = normalizeLocalAudioMimeType(response.contentType || blob.type);
-    loudness = (await analyzeAudioBlobLoudness(blob)) ?? undefined;
+    loudness = (await analyzeAudioBlobLoudness(blob, { cacheKey: fileHash })) ?? undefined;
     const lyricPayload = existingRecord?.lyrics
       ? null
       : await (provider === "netease"

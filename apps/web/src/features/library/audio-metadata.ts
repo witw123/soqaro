@@ -143,9 +143,13 @@ async function pictureToDataUrl(picture: IPicture | null) {
   }
 
   const mimeType = normalizePictureMimeType(picture.format);
-  const rawDataUrl = `data:${mimeType};base64,${bytesToBase64(picture.data)}`;
-  if (rawDataUrl.length <= maxArtworkDataUrlLength) {
-    return rawDataUrl;
+  const estimatedRawDataUrlLength =
+    Math.ceil(picture.data.byteLength / 3) * 4 + mimeType.length + 13;
+  if (estimatedRawDataUrlLength <= maxArtworkDataUrlLength) {
+    const rawDataUrl = `data:${mimeType};base64,${bytesToBase64(picture.data)}`;
+    if (rawDataUrl.length <= maxArtworkDataUrlLength) {
+      return rawDataUrl;
+    }
   }
 
   if (

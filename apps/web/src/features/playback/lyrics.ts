@@ -1,4 +1,4 @@
-﻿import type { ProviderLyrics } from "@soqaro/shared";
+import type { ProviderLyrics } from "@soqaro/shared";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 
 export type RoomLyricLine = {
@@ -391,6 +391,7 @@ export function getActiveRoomLyricIndex(lines: RoomLyricLine[], positionMs: numb
   return activeIndex;
 }
 
+const maxProviderLyricsCacheEntries = 64;
 const providerLyricsCache = new Map<string, Promise<ProviderLyrics>>();
 
 export function fetchProviderLyricsCached(
@@ -399,7 +400,11 @@ export function fetchProviderLyricsCached(
 ): Promise<ProviderLyrics> {
   const cacheKey = `${provider}:${trackId}`;
   const cached = providerLyricsCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    providerLyricsCache.delete(cacheKey);
+    providerLyricsCache.set(cacheKey, cached);
+    return cached;
+  }
   const promise = (
     provider === "netease"
       ? soqaroApi.getNeteaseLyrics(trackId)
@@ -410,6 +415,12 @@ export function fetchProviderLyricsCached(
     providerLyricsCache.delete(cacheKey);
     throw error;
   });
+  if (providerLyricsCache.size >= maxProviderLyricsCacheEntries) {
+    const oldestKey = providerLyricsCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      providerLyricsCache.delete(oldestKey);
+    }
+  }
   providerLyricsCache.set(cacheKey, promise);
   return promise;
 }

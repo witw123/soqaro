@@ -1,4 +1,4 @@
-﻿import { Body, BadRequestException, Controller, Delete, Get, Headers, Ip, Query, Patch, Param, Post, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
+import { Body, BadRequestException, Controller, Delete, Get, Headers, Ip, Query, Patch, Param, Post, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import {
   batchDeleteTracksRequestSchema,
   computeAssetId,
@@ -505,6 +505,9 @@ export class RoomController {
     await this.validateTrackAssets(payload);
     const result = await this.roomService.prepareTrackAsset(roomId, userId, payload);
     await this.roomRealtimePublisher.emitLibrarySnapshot(roomId);
+    if (result.playbackChanged && result.playback) {
+      this.roomRealtimePublisher.emitPlaybackPatch(roomId, result.playback, result.roomRevision);
+    }
     this.roomRealtimePublisher.emitTrackAssetReady(roomId, {
       trackId: result.track.id,
       fileHash: result.track.fileHash,

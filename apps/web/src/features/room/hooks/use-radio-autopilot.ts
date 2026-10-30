@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -38,6 +38,9 @@ export type RadioAutopilotNextTrack = {
   preloadStatus: "preloading" | "ready";
 };
 
+const maxAutomaticRetryAttempts = 2;
+const automaticRetryDelayMs = 15_000;
+
 export function useRadioAutopilot({
   roomSnapshot,
   isHost,
@@ -50,6 +53,8 @@ export function useRadioAutopilot({
   const [preloadingCandidate, setPreloadingCandidate] = useState<RadioRecommendationCandidate | null>(null);
   const runningRef = useRef(false);
   const pausedRef = useRef(false);
+  const retryAttemptsRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
   const refillGenerationRef = useRef(0);
   const roomSnapshotRef = useRef(roomSnapshot);
   const callbacksRef = useRef({
@@ -60,6 +65,13 @@ export function useRadioAutopilot({
   const isAutopilotEnabled = roomSnapshot.room.radioAutopilot?.enabled === true;
   const currentSeedKey = getCurrentAutopilotSeed(roomSnapshot)?.key ?? null;
   const isPlayingLastQueueItem = isRadioPlaybackAtQueueEnd(roomSnapshot);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     roomSnapshotRef.current = roomSnapshot;
@@ -75,10 +87,12 @@ export function useRadioAutopilot({
 
   useEffect(() => {
     refillGenerationRef.current += 1;
+    clearRetryTimer();
     return () => {
       refillGenerationRef.current += 1;
+      clearRetryTimer();
     };
-  }, [currentSeedKey, isAutopilotEnabled, isHost]);
+  }, [clearRetryTimer, currentSeedKey, isAutopilotEnabled, isHost]);
 
   const refill = useCallback(async (mode: "automatic" | "manual") => {
     const snapshot = roomSnapshotRef.current;
@@ -101,6 +115,7 @@ export function useRadioAutopilot({
       return;
     }
 
+    clearRetryTimer();
     const refillGeneration = refillGenerationRef.current;
     const isCurrentRefill = () => {
       const current = roomSnapshotRef.current;
@@ -150,25 +165,44 @@ export function useRadioAutopilot({
       if (imported.kind === "cancelled") return;
       if (imported.kind === "failed") throw imported.error;
 
+      retryAttemptsRef.current = 0;
       pausedRef.current = false;
       if (imported.refreshedSnapshot) roomSnapshotRef.current = imported.refreshedSnapshot;
       setState({ kind: "idle", message: `已将《${imported.candidate.candidate.title}》设为下一首。` });
     } catch (error) {
-      pausedRef.current = true;
       setPreloadingCandidate(null);
+      if (
+        isAutomatic &&
+        isCurrentRefill() &&
+        retryAttemptsRef.current < maxAutomaticRetryAttempts
+      ) {
+        retryAttemptsRef.current += 1;
+        setState({ kind: "refilling", message: "自动推荐遇到波动，即将重试…" });
+        retryTimerRef.current = window.setTimeout(() => {
+          retryTimerRef.current = null;
+          if (isCurrentRefill()) {
+            void refill("automatic");
+          }
+        }, automaticRetryDelayMs);
+        return;
+      }
+      pausedRef.current = true;
       setState({ kind: "paused", message: toAutopilotErrorMessage(error) });
     } finally {
       runningRef.current = false;
     }
-  }, [isHost, userId]);
+  }, [clearRetryTimer, isHost, userId]);
 
   useEffect(() => {
+    retryAttemptsRef.current = 0;
     pausedRef.current = false;
     setPreloadingCandidate(null);
   }, [currentSeedKey]);
 
   useEffect(() => {
     if (!isHost || !isAutopilotEnabled) {
+      clearRetryTimer();
+      retryAttemptsRef.current = 0;
       pausedRef.current = false;
       setPreloadingCandidate(null);
       setState((current) => current.kind === "idle" && current.message === null
@@ -186,12 +220,27 @@ export function useRadioAutopilot({
     }
 
     if (isPlayingLastQueueItem) void refill("automatic");
-  }, [currentSeedKey, isAutopilotEnabled, isHost, isPlayingLastQueueItem, refill]);
+  }, [clearRetryTimer, currentSeedKey, isAutopilotEnabled, isHost, isPlayingLastQueueItem, refill]);
+
+  useEffect(() => {
+    if (!isHost || !isAutopilotEnabled || !currentSeedKey) return;
+    const handleOnline = () => {
+      if (!isRadioPlaybackAtQueueEnd(roomSnapshotRef.current)) return;
+      clearRetryTimer();
+      retryAttemptsRef.current = 0;
+      pausedRef.current = false;
+      void refill("automatic");
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [clearRetryTimer, currentSeedKey, isAutopilotEnabled, isHost, refill]);
 
   const refillNow = useCallback(async () => {
+    clearRetryTimer();
+    retryAttemptsRef.current = 0;
     pausedRef.current = false;
     await refill("manual");
-  }, [refill]);
+  }, [clearRetryTimer, refill]);
 
   const queuedNextTrack = getNextAutopilotTrack(roomSnapshot);
   const queuedNextTrackKey = queuedNextTrack?.key ?? null;

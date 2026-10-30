@@ -1,4 +1,4 @@
-﻿import {
+import {
   hasCompleteRoomAsset,
   type RoomSnapshot,
   type RoomTrackDistributionState,
@@ -14,15 +14,15 @@ import {
   linkTrackAssets,
   soqaroDatabase
 } from "@/features/library/indexeddb";
-import { toCachedLibraryFile } from "@/features/library/cache-library";
+import { notifyCacheLibraryChanged, toCachedLibraryFile } from "@/features/library/cache-library";
 import { prepareAudioAssets } from "@/features/library/audio-asset-builder";
-import { getAppSettings } from "@/features/settings/settings-store";
+import { appSettingsChangeEvent, getAppSettings } from "@/features/settings/settings-store";
 import {
   extensionForImportedMimeType,
   resolveImportedAudioMimeType,
   sanitizeFileName
 } from "@/features/upload/upload-import-helpers";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getRoomQueuePreloadTracks } from "./room-queue-preload";
 
 export type TrackUnavailableReason = "source-missing" | "asset-corrupt" | "permission-denied";
@@ -287,6 +287,7 @@ export async function ensureRoomTrackDistributionAsset(
         originalAssetId: assets.originalAsset.assetId,
         playbackAssetId: assets.playbackAsset.assetId
       }).catch(() => undefined);
+      notifyCacheLibraryChanged();
 
       trackPreparationStates.set(track.id, "ready");
       setTrackUnavailableReason(track.id, null);
@@ -356,6 +357,7 @@ export async function prepareTrackWithLocalFile(
       originalAssetId: assets.originalAsset.assetId,
       playbackAssetId: assets.playbackAsset.assetId
     }).catch(() => undefined);
+    notifyCacheLibraryChanged();
 
     trackPreparationStates.set(track.id, "ready");
     setTrackUnavailableReason(track.id, null);
@@ -382,7 +384,24 @@ export function useRoomTrackAssetAutoPreparation(input: {
   activeSessionId: string | null | undefined;
 }) {
   const { roomId, roomSnapshot, currentTrack, activeSessionId } = input;
-  const upcomingTracks = roomSnapshot
+  const [streamingOnlyPlayback, setStreamingOnlyPlayback] = useState(
+    () => Boolean(getAppSettings().playback.streamingOnlyPlayback)
+  );
+
+  useEffect(() => {
+    const syncSetting = () => {
+      setStreamingOnlyPlayback(Boolean(getAppSettings().playback.streamingOnlyPlayback));
+    };
+    const changeEvent = appSettingsChangeEvent ?? "soqaro-settings-change";
+    window.addEventListener(changeEvent, syncSetting);
+    window.addEventListener("storage", syncSetting);
+    return () => {
+      window.removeEventListener(changeEvent, syncSetting);
+      window.removeEventListener("storage", syncSetting);
+    };
+  }, []);
+
+  const upcomingTracks = roomSnapshot && !streamingOnlyPlayback
     ? getRoomQueuePreloadTracks(roomSnapshot).filter((track) =>
         track.ownerSessionId === activeSessionId && !hasCompleteRoomAsset(track))
     : [];
@@ -394,6 +413,7 @@ export function useRoomTrackAssetAutoPreparation(input: {
 
   // 1. Current track auto-preparation (high priority)
   useEffect(() => {
+    if (streamingOnlyPlayback) return;
     if (!roomId || !activeSessionId || !currentTrack) return;
     if (currentTrack.ownerSessionId !== activeSessionId) return;
     if (hasCompleteRoomAsset(currentTrack)) return;
@@ -408,10 +428,11 @@ export function useRoomTrackAssetAutoPreparation(input: {
     return () => {
       controller.abort();
     };
-  }, [roomId, activeSessionId, currentTrack]);
+  }, [roomId, activeSessionId, currentTrack, streamingOnlyPlayback]);
 
   // 2. Upcoming queue tracks auto-preparation (background priority)
   useEffect(() => {
+    if (streamingOnlyPlayback) return;
     if (!roomId || !activeSessionId) return;
     const upcomingTracksToPrepare = upcomingTracksRef.current;
 
@@ -437,6 +458,7 @@ export function useRoomTrackAssetAutoPreparation(input: {
   }, [
     roomId,
     activeSessionId,
-    upcomingPreparationKey
+    upcomingPreparationKey,
+    streamingOnlyPlayback
   ]);
 }

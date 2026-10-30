@@ -210,14 +210,7 @@ export function DiscoverPage() {
     try {
       setPending("dailyRadar");
       setErrorMessage(null);
-      const first = tracks[0]!;
-      // First track first: prepare -> play -> preload the rest in background.
-      const prepared = await prepareTrackForImmediatePlayback(first);
-      await player.playTrack(prepared.record);
-      const rest = tracks.slice(1);
-      for (const track of rest) {
-        player.addToQueue(toProviderTrackRecord(track));
-      }
+      await player.playTracks(tracks.map((track) => toProviderTrackRecord(track)));
       setStatusMessage(`已开启今日聚焦全部 ${tracks.length} 首歌曲播放`);
     } catch (error) {
       setErrorMessage(toPlaybackPreparationErrorMessage(error, "播放聚焦歌曲失败，请稍后重试。"));
@@ -270,11 +263,8 @@ export function DiscoverPage() {
       try {
         const radioTracks = await soqaroApi.getTrackRadio({ seedTrack: track, limit: 15 });
         const prepared = await prepareTrackForImmediatePlayback(track);
-        await player.playTrack(prepared.record);
-        const queuedTracks = radioTracks.slice(0, 10);
-        for (const nextTrack of queuedTracks) {
-          player.addToQueue(toProviderTrackRecord(nextTrack));
-        }
+        const queuedTracks = radioTracks.slice(0, 10).map((nextTrack) => toProviderTrackRecord(nextTrack));
+        await player.playTracks([prepared.record, ...queuedTracks], 0);
         setStatusMessage(`已开启从《${track.title}》出发的单曲漫游`);
       } catch (error) {
         setErrorMessage(toPlaybackPreparationErrorMessage(error, "开启漫游失败，请稍后重试。"));
@@ -291,13 +281,7 @@ export function DiscoverPage() {
     try {
       setPending("playPlaylist");
       setErrorMessage(null);
-      const first = tracks[0]!;
-      const prepared = await prepareTrackForImmediatePlayback(first);
-      await player.playTrack(prepared.record);
-      const rest = tracks.slice(1);
-      for (const track of rest) {
-        player.addToQueue(toProviderTrackRecord(track));
-      }
+      await player.playTracks(tracks.map((track) => toProviderTrackRecord(track)));
       setStatusMessage(title ? `正在播放歌单《${title}》` : `已开启全部 ${tracks.length} 首歌曲播放`);
     } catch (error) {
       setErrorMessage(toPlaybackPreparationErrorMessage(error, "播放歌单歌曲失败，请稍后重试。"));
@@ -549,13 +533,9 @@ export function DiscoverPage() {
       });
       const tracksToPlay = matched.length > 0 ? matched : uniquePool;
       if (tracksToPlay.length > 0) {
-        const first = tracksToPlay[0]!;
-        const prepared = await prepareTrackForImmediatePlayback(first);
-        await player.playTrack(prepared.record);
-        const queuedTracks = tracksToPlay.slice(1, 10);
-        for (const t of queuedTracks) {
-          player.addToQueue(toProviderTrackRecord(t));
-        }
+        await player.playTracks(
+          tracksToPlay.slice(0, 10).map((t) => toProviderTrackRecord(t))
+        );
         setStatusMessage(`正在播放「${station.title}」专属场景电台`);
       }
     } catch (error) {

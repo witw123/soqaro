@@ -60,11 +60,8 @@ export function ListeningProfileOverview({
     try {
       const radioTracks = await soqaroApi.getTrackRadio({ seedTrack: candidate, limit: 15 });
       const prepared = await prepareTrackForImmediatePlayback(candidate);
-      await player.playTrack(prepared.record);
-      const queuedTracks = radioTracks.slice(0, 10);
-      for (const nextTrack of queuedTracks) {
-        player.addToQueue(toProviderTrackRecord(nextTrack));
-      }
+      const queuedTracks = radioTracks.slice(0, 10).map((nextTrack) => toProviderTrackRecord(nextTrack));
+      await player.playTracks([prepared.record, ...queuedTracks], 0);
       setStatusMessage(`已开启从《${candidate.title}》出发的单曲漫游`);
     } catch {
       setStatusMessage(`开启漫游失败，请稍后重试`);

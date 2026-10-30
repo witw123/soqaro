@@ -66,6 +66,34 @@ describe("app settings store", () => {
       streamingOnlyPlayback: true,
       fullyCachedPlayback: false
     });
+
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key)
+      },
+      dispatchEvent: vi.fn()
+    });
+
+    updateAppSettings({ playback: { streamingOnlyPlayback: true } });
+    expect(getAppSettings().playback).toMatchObject({
+      streamingOnlyPlayback: true,
+      fullyCachedPlayback: false
+    });
+
+    updateAppSettings({ playback: { fullyCachedPlayback: true } });
+    expect(getAppSettings().playback).toMatchObject({
+      streamingOnlyPlayback: false,
+      fullyCachedPlayback: true
+    });
+
+    updateAppSettings({ playback: { streamingOnlyPlayback: true } });
+    expect(getAppSettings().playback).toMatchObject({
+      streamingOnlyPlayback: true,
+      fullyCachedPlayback: false
+    });
   });
 
   it("keeps custom layout pages independent and bounded", () => {

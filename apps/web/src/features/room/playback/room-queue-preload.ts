@@ -1,4 +1,4 @@
-﻿import type { RoomSnapshot, TrackMeta } from "@soqaro/shared";
+import type { RoomSnapshot, TrackMeta } from "@soqaro/shared";
 
 export function getRoomQueuePreloadTracks(snapshot: RoomSnapshot) {
   const { playback } = snapshot.room;
@@ -46,6 +46,10 @@ export class RoomAudioPreloader {
       if (this.files.get(key) === loading) this.files.delete(key);
     });
     return loading;
+  }
+
+  clear() {
+    this.files.clear();
   }
 
   private key(track: TrackMeta) {

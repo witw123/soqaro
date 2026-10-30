@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import type { TrackMeta } from "@soqaro/shared";
@@ -16,6 +16,7 @@ import { useBackHandler } from "@/lib/desktop/use-back-handler";
 import { checkAnyProviderAccountBound } from "@/features/playback/provider-account-guard";
 import { updateAppSettings } from "@/features/settings/settings-store";
 import { resolveProviderTrackSource } from "@/features/library/provider-track-identity";
+import { providerDisplayName } from "@/lib/domain/provider-labels";
 
 type CachePlaybackPromptModalProps = {
   isOpen: boolean;
@@ -36,12 +37,19 @@ export function CachePlaybackPromptModal({
   const [checking, setChecking] = useState(false);
   const [requiresBinding, setRequiresBinding] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setRequiresBinding(false);
+      setChecking(false);
+    }
+  }, [isOpen, track?.id]);
+
   useBackHandler(onClose, isOpen);
 
   if (!isOpen || !track) return null;
 
   const providerSource = resolveProviderTrackSource(track);
-  const platformName = providerSource?.provider === "qqmusic" ? "QQ 音乐" : "网易云音乐";
+  const platformName = providerSource ? providerDisplayName(providerSource.provider) : "音乐平台";
 
   const handleEnableCache = async () => {
     setChecking(true);
@@ -53,7 +61,12 @@ export function CachePlaybackPromptModal({
         return;
       }
 
-      updateAppSettings({ playback: { fullyCachedPlayback: true } });
+      updateAppSettings({
+        playback: {
+          fullyCachedPlayback: true,
+          streamingOnlyPlayback: false
+        }
+      });
       onEnabled?.();
       onClose();
     } catch {
@@ -65,7 +78,7 @@ export function CachePlaybackPromptModal({
 
   const handleGoToBind = () => {
     onClose();
-    router.push("/app/settings" as Route);
+    router.push("/app/profile" as Route);
   };
 
   return (
@@ -73,16 +86,16 @@ export function CachePlaybackPromptModal({
       <DialogContent className="max-w-md p-6">
         <DialogHeader className="pr-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-surface-border bg-surface text-accent">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-surface-border bg-surface text-accent">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
                 <path d="M12 12v9" />
                 <path d="m8 17 4 4 4-4" />
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="text-base font-bold text-foreground tracking-tight">
-                {requiresBinding ? "需要绑定平台账号" : isSourceOwner ? "歌曲源 OPS 资产缺失提示" : "开启缓存播放提示"}
+              <DialogTitle className="text-base font-semibold text-foreground tracking-tight">
+                {requiresBinding ? "需要绑定平台账号" : isSourceOwner ? "缺少房间音频资产" : "开启平台歌曲缓存播放"}
               </DialogTitle>
               <DialogDescription className="text-xs text-foreground-muted truncate">
                 {track.title} {track.artist ? `- ${track.artist}` : ""}
@@ -93,33 +106,25 @@ export function CachePlaybackPromptModal({
 
         <div className="text-xs">
           {requiresBinding ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-amber-200/90 leading-relaxed">
-              <p className="font-medium text-amber-100">
-                ⚠️ 开启缓存播放必须先绑定网易云音乐或 QQ 音乐账号。
-              </p>
-              <p>
-                {isSourceOwner
-                  ? `您是当前歌曲的播放源，歌曲来自 ${platformName}。绑定账号并开启缓存播放后，方可向房间内其他成员广播音频。`
-                  : `当前歌曲来自 ${platformName}，绑定对应账号后即可从音乐平台自动拉取高质量音频并在本地高速缓存播放。`}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 rounded-xl border border-surface-border bg-surface/50 p-4 leading-relaxed">
-              <p className="text-foreground">
-                {isSourceOwner ? (
-                  <>
-                    您正在播放的歌曲 <span className="font-semibold">《{track.title}》</span> 未在房间曲库中预置 OPS 音频资产。
-                  </>
-                ) : (
-                  <>
-                    当前播放的歌曲 <span className="font-semibold">《{track.title}》</span> 未在房间曲库中预置 OPS 音频资产。
-                  </>
-                )}
+            <div className="flex flex-col gap-2 rounded-lg border border-surface-border bg-surface/60 p-4 leading-relaxed">
+              <p className="font-medium text-foreground">
+                开启平台歌曲缓存播放前，请先绑定网易云音乐或 QQ 音乐账号。
               </p>
               <p className="text-foreground-muted">
                 {isSourceOwner
-                  ? `开启「缓存播放」后，将自动通过绑定的 ${platformName} 账号获取完整音频并向全房广播；若不开启，其他成员将无法听到该歌曲。`
-                  : `开启「缓存播放」后，将自动通过您绑定的 ${platformName} 账号获取完整歌曲音频并在本地缓存播放，享受最高音质体验。`}
+                  ? `当前歌曲来自${platformName}，绑定账号并开启缓存播放后可下载音频并向房间广播。`
+                  : `当前歌曲来自${platformName}，绑定账号后可自动缓存到本地播放。`}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 rounded-lg border border-surface-border bg-surface/60 p-4 leading-relaxed">
+              <p className="text-foreground">
+                歌曲《{track.title}》缺少可用的房间音频资产。
+              </p>
+              <p className="text-foreground-muted">
+                {isSourceOwner
+                  ? `开启平台歌曲缓存播放后，可通过已绑定的${platformName}账号下载音频并向房间广播。`
+                  : `开启平台歌曲缓存播放后，可通过已绑定的${platformName}账号缓存到本地播放。`}
               </p>
             </div>
           )}
@@ -140,7 +145,7 @@ export function CachePlaybackPromptModal({
               size="sm"
               type="button"
             >
-              前往设置绑定账号
+              前往绑定账号
             </Button>
           ) : (
             <Button

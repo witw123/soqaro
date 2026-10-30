@@ -15,6 +15,7 @@ import {
   resolveLocalAudioTimelineKey,
   resolveRoomAudioPath,
   resolveRoomAudioPositionMs,
+  resolveRoomProviderCachePlan,
   resolveRemoteAudioTimelineKey,
   shouldDisableSourcePlayback,
   shouldSkipUnavailableStreamingTrack,
@@ -506,5 +507,172 @@ describe("native local audio timeline", () => {
         resumeAtMs: null
       })
     );
+  });
+});
+
+describe("room provider cache and offline auto-load plan", () => {
+  function buildTrack(complete = true) {
+    return {
+      id: "track-1",
+      title: "Demo",
+      artist: "Artist",
+      album: null,
+      durationMs: 180_000,
+      bitrate: 320_000,
+      sizeBytes: 4_000_000,
+      fileHash: "a".repeat(64),
+      artworkUrl: null,
+      ownerSessionId: "owner-1",
+      ownerNickname: "Owner",
+      sourceType: "netease" as const,
+      sourceRef: { provider: "netease" as const, trackId: "10086" },
+      ...(complete
+        ? {
+            originalAsset: {
+              assetId: "1".repeat(64),
+              kind: "original" as const,
+              fileHash: "a".repeat(64),
+              mimeType: "audio/mpeg",
+              sizeBytes: 4_000_000,
+              unitSize: 1_048_576,
+              unitCount: 4,
+              merkleRoot: "2".repeat(64)
+            },
+            playbackAsset: {
+              assetId: "3".repeat(64),
+              kind: "playback" as const,
+              sourceFileHash: "a".repeat(64),
+              profileId: "opus-music-v4" as const,
+              codec: "opus" as const,
+              container: "audio/ogg" as const,
+              sampleRate: 48_000 as const,
+              channels: 2 as const,
+              bitrate: 256_000 as const,
+              durationMs: 180_000,
+              segmentDurationMs: 2_000 as const,
+              seekPrerollMs: 80 as const,
+              unitCount: 90,
+              merkleRoot: "4".repeat(64),
+              encoder: { name: "@audio/opus-encode" as const, version: "3.4.0" as const }
+            }
+          }
+        : {})
+    };
+  }
+
+  function buildSnapshot(presenceState: "online" | "offline" = "online", status: "playing" | "paused" = "playing") {
+    return {
+      room: {
+        id: "room-1",
+        playback: {
+          currentTrackId: "track-1",
+          sourceSessionId: "owner-1",
+          status,
+          mediaEpoch: 1,
+          playbackRevision: 1,
+          positionMs: 0,
+          startedAt: "2026-07-22T00:00:10.000Z",
+          startAt: "2026-07-22T00:00:10.000Z"
+        },
+        members: [
+          {
+            id: "owner-1",
+            presenceState
+          }
+        ]
+      }
+    } as never;
+  }
+
+  it("enables provider caching when fullyCachedPlayback is on and source member is online even if preventOfflineAutoLoad is on", () => {
+    expect(resolveRoomProviderCachePlan({
+      sharedCacheEnabled: true,
+      segmentedStreamEnabled: true,
+      streamingOnlyPlayback: false,
+      fullyCachedPlayback: true,
+      preventOfflineAutoLoad: true,
+      isCurrentSource: false,
+      roomSnapshot: buildSnapshot("online"),
+      track: buildTrack(true)
+    })).toEqual({
+      mode: "provider-cache",
+      source: { provider: "netease", trackId: "10086", label: "网易云音乐" },
+      isSourceMemberOffline: false
+    });
+  });
+
+  it("auto-caches when source member is offline and preventOfflineAutoLoad is false", () => {
+    expect(resolveRoomProviderCachePlan({
+      sharedCacheEnabled: true,
+      segmentedStreamEnabled: true,
+      streamingOnlyPlayback: false,
+      fullyCachedPlayback: false,
+      preventOfflineAutoLoad: false,
+      isCurrentSource: false,
+      roomSnapshot: buildSnapshot("offline", "playing"),
+      track: buildTrack(false)
+    })).toEqual({
+      mode: "offline-fallback",
+      source: { provider: "netease", trackId: "10086", label: "网易云音乐" },
+      isSourceMemberOffline: true
+    });
+  });
+
+  it("blocks offline provider downloads when preventOfflineAutoLoad is true", () => {
+    expect(resolveRoomProviderCachePlan({
+      sharedCacheEnabled: true,
+      segmentedStreamEnabled: true,
+      streamingOnlyPlayback: false,
+      fullyCachedPlayback: true,
+      preventOfflineAutoLoad: true,
+      isCurrentSource: false,
+      roomSnapshot: buildSnapshot("offline", "playing"),
+      track: buildTrack(true)
+    })).toEqual({
+      mode: "none",
+      source: null,
+      isSourceMemberOffline: true
+    });
+  });
+
+  it("disables all provider caching and offline auto-loading in streamingOnlyPlayback mode", () => {
+    expect(resolveRoomProviderCachePlan({
+      sharedCacheEnabled: true,
+      segmentedStreamEnabled: true,
+      streamingOnlyPlayback: true,
+      fullyCachedPlayback: true,
+      preventOfflineAutoLoad: false,
+      isCurrentSource: false,
+      roomSnapshot: buildSnapshot("offline", "playing"),
+      track: buildTrack(true)
+    })).toEqual({
+      mode: "none",
+      source: null,
+      isSourceMemberOffline: true
+    });
+  });
+
+  it("defers duplicate provider download on current source while OPS assets are still preparing", () => {
+    expect(resolveRoomProviderCachePlan({
+      sharedCacheEnabled: true,
+      segmentedStreamEnabled: true,
+      streamingOnlyPlayback: false,
+      fullyCachedPlayback: true,
+      preventOfflineAutoLoad: false,
+      isCurrentSource: true,
+      roomSnapshot: buildSnapshot("online", "playing"),
+      track: buildTrack(false)
+    }).mode).toBe("none");
+
+    expect(resolveRoomProviderCachePlan({
+      sharedCacheEnabled: true,
+      segmentedStreamEnabled: true,
+      streamingOnlyPlayback: false,
+      fullyCachedPlayback: true,
+      preventOfflineAutoLoad: false,
+      isCurrentSource: true,
+      roomSnapshot: buildSnapshot("online", "playing"),
+      track: buildTrack(true)
+    }).mode).toBe("provider-cache");
   });
 });

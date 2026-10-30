@@ -1,4 +1,10 @@
-﻿import type { PlaybackMode, PlaybackSnapshot, TrackMeta } from "@soqaro/shared";
+import {
+  synchronizeShuffleBagTrackIds,
+  takeNextShuffleTrack,
+  type PlaybackMode,
+  type PlaybackSnapshot,
+  type TrackMeta
+} from "@soqaro/shared";
 import {
   getCachedLibraryTrack,
   upsertCachedLibraryTrack,
@@ -262,4 +268,82 @@ export function buildLocalPlaybackSnapshot(input: {
     playbackMode: input.playbackMode,
     nextQueueItemId: input.nextQueueItemId
   };
+}
+
+export function resolveBatchPlaySelection(input: {
+  tracks: readonly LocalPlaylistTrackRecord[];
+  playbackMode: PlaybackMode;
+  startIndex?: number;
+  isPlayable: (track: LocalPlaylistTrackRecord) => boolean;
+  random?: () => number;
+}): { selectedIndex: number; shuffleBag: string[] } {
+  const { tracks, playbackMode, startIndex, isPlayable, random = Math.random } = input;
+  if (tracks.length === 0) {
+    return { selectedIndex: -1, shuffleBag: [] };
+  }
+
+  if (typeof startIndex === "number" && Number.isFinite(startIndex)) {
+    const selectedIndex = Math.min(Math.max(0, Math.floor(startIndex)), tracks.length - 1);
+    return {
+      selectedIndex,
+      shuffleBag: playbackMode === "shuffle"
+        ? synchronizeShuffleBagTrackIds(
+            [],
+            tracks.map((track) => track.id),
+            tracks[selectedIndex]?.id ?? null,
+            [],
+            random
+          )
+        : []
+    };
+  }
+
+  if (playbackMode === "shuffle") {
+    const selection = takeNextShuffleTrack(tracks, [], null, isPlayable, random);
+    const pickedIndex = selection.track
+      ? tracks.findIndex((track) => track.id === selection.track?.id)
+      : -1;
+    return {
+      selectedIndex: pickedIndex >= 0
+        ? pickedIndex
+        : Math.min(tracks.length - 1, Math.max(0, Math.floor(random() * tracks.length))),
+      shuffleBag: selection.bag
+    };
+  }
+
+  return { selectedIndex: 0, shuffleBag: [] };
+}
+
+export function pushPlayedTrackHistory(
+  history: readonly string[],
+  previousTrackId: string | null | undefined,
+  nextTrackId: string,
+  maxEntries = 50
+): string[] {
+  if (!previousTrackId || previousTrackId === nextTrackId) {
+    return [...history];
+  }
+  const filtered = history.filter((id) => id !== previousTrackId);
+  filtered.push(previousTrackId);
+  if (filtered.length > maxEntries) {
+    filtered.splice(0, filtered.length - maxEntries);
+  }
+  return filtered;
+}
+
+export function popPreviousPlayedTrackIndex(
+  history: readonly string[],
+  records: readonly LocalPlaylistTrackRecord[],
+  currentTrackId: string | null | undefined
+): { index: number; remainingHistory: string[] } {
+  const remaining = [...history];
+  while (remaining.length > 0) {
+    const candidateId = remaining.pop();
+    if (!candidateId || candidateId === currentTrackId) continue;
+    const index = records.findIndex((track) => track.id === candidateId);
+    if (index >= 0) {
+      return { index, remainingHistory: remaining };
+    }
+  }
+  return { index: -1, remainingHistory: remaining };
 }

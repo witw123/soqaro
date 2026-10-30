@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RoomSnapshot, TrackMeta } from "@soqaro/shared";
 import { getRoomQueuePreloadTracks, RoomAudioPreloader } from "./room-queue-preload";
 
@@ -55,5 +55,16 @@ describe("room queue preload", () => {
     await preloader.get(tracks[1]!);
     preloader.update([tracks[1]!]);
     expect(read).toHaveBeenCalledTimes(1);
+  });
+  it("re-reads previously missing files after clear()", async () => {
+    const cachedBlob = new Blob(["cached-audio"]);
+    const read = vi.fn<() => Promise<Blob | null>>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(cachedBlob);
+    const preloader = new RoomAudioPreloader(read);
+    await expect(preloader.get(tracks[1]!)).resolves.toBeNull();
+    preloader.clear();
+    await expect(preloader.get(tracks[1]!)).resolves.toBe(cachedBlob);
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,4 +1,4 @@
-﻿import type { PlaybackMode } from "@soqaro/shared";
+import type { PlaybackMode } from "@soqaro/shared";
 import { create } from "zustand";
 import { invokeTauri, isTauriRuntime } from "@/lib/desktop/tauri";
 import { EQUALIZER_PRESETS, type EqualizerPresetId } from "../playback/audio-equalizer";
@@ -227,6 +227,14 @@ export const useAppSettingsStore = create<AppSettingsStoreState>((set) => ({
   }
 }));
 
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (event) => {
+    if (!event.key || event.key === appSettingsStorageKey) {
+      useAppSettingsStore.setState({ settings: getAppSettings() });
+    }
+  });
+}
+
 export function useAppSettings<T = AppSettings>(selector?: (state: AppSettings) => T): T {
   return useAppSettingsStore((s) => (selector ? selector(s.settings) : (s.settings as unknown as T)));
 }
@@ -239,11 +247,17 @@ export function updateAppSettings(
   }>
 ) {
   const current = getAppSettings();
+  const mergedPlayback = { ...current.playback, ...patch.playback };
+  if (patch.playback?.fullyCachedPlayback === true && patch.playback.streamingOnlyPlayback === undefined) {
+    mergedPlayback.streamingOnlyPlayback = false;
+  } else if (patch.playback?.streamingOnlyPlayback === true && patch.playback.fullyCachedPlayback === undefined) {
+    mergedPlayback.fullyCachedPlayback = false;
+  }
   const next = normalizeSettings({
     ...current,
     ...patch,
     layout: { ...current.layout, ...patch.layout },
-    playback: { ...current.playback, ...patch.playback }
+    playback: mergedPlayback
   });
   if (typeof window !== "undefined") {
     window.localStorage.setItem(appSettingsStorageKey, JSON.stringify(next));

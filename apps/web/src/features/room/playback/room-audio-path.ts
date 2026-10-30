@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Room audio path resolution for the segmented playback runtime.
  *
  * These helpers decide which audio source a member should play (local file,
@@ -7,19 +7,23 @@
  * transitions and the shared AudioContext requirements of the source.
  */
 
-import type {
-  PlaybackSnapshot,
-  RoomPlaybackReadinessInputPayload,
-  TrackLoudness,
-  TrackMeta
+import {
+  hasCompleteRoomAsset,
+  type PlaybackSnapshot,
+  type RoomPlaybackReadinessInputPayload,
+  type RoomSnapshot,
+  type TrackLoudness,
+  type TrackMeta
 } from "@soqaro/shared";
 import {
   getRoomPlaybackClockNowMs,
   resolveRoomPlaybackPositionMs,
   type RoomPlaybackBarrierClock
 } from "@/features/playback/room-playback-clock";
+import type { OfflineProviderSource } from "@/features/playback/offline-source-fallback";
 import type { PlaybackAudioPath } from "@/features/playback/use-segmented-opus-playback";
 import { resolveProviderTrackSource } from "@/features/library/provider-track-identity";
+import { providerDisplayName } from "@/lib/domain/provider-labels";
 
 export const localAudioSeekToleranceSeconds = 0.35;
 const localAudioMetadataTimeoutMs = 8_000;
@@ -80,8 +84,7 @@ export function alignLocalAudioToRoom(
 }
 
 export function resolveLocalAudioTrackKey(
-  track: TrackMeta | null | undefined,
-  forceProviderCache = false
+  track: TrackMeta | null | undefined
 ) {
   if (!track) {
     return null;
@@ -91,7 +94,7 @@ export function resolveLocalAudioTrackKey(
   return [
     track.id,
     track.fileHash,
-    forceProviderCache ? "provider-cache" : "room-cache",
+    track.originalAsset?.assetId ?? "no-orig",
     providerSource?.provider ?? "local",
     providerSource?.trackId ?? "none"
   ].join(":");
@@ -99,6 +102,105 @@ export function resolveLocalAudioTrackKey(
 
 export function isProviderTrack(track: TrackMeta | null | undefined) {
   return !!resolveProviderTrackSource(track);
+}
+
+export type RoomProviderCacheMode = "none" | "provider-cache" | "offline-fallback";
+
+export type RoomProviderCachePlan = {
+  mode: RoomProviderCacheMode;
+  source: OfflineProviderSource | null;
+  isSourceMemberOffline: boolean;
+};
+
+export function resolveRoomSourceMemberOffline(input: {
+  isCurrentSource: boolean;
+  roomSnapshot: RoomSnapshot | null | undefined;
+  track: TrackMeta | null | undefined;
+}) {
+  if (input.isCurrentSource || !input.roomSnapshot || !input.track) {
+    return false;
+  }
+  const playback = input.roomSnapshot.room.playback;
+  const sourceSessionId =
+    (playback.currentTrackId === input.track.id ? playback.sourceSessionId : null) ??
+    input.track.ownerSessionId;
+  if (!sourceSessionId) {
+    return false;
+  }
+  const sourceMember = input.roomSnapshot.room.members.find(
+    (member) => member.id === sourceSessionId
+  );
+  return !sourceMember || sourceMember.presenceState === "offline";
+}
+
+export function resolveRoomProviderCachePlan(input: {
+  sharedCacheEnabled: boolean;
+  segmentedStreamEnabled: boolean;
+  streamingOnlyPlayback: boolean;
+  fullyCachedPlayback: boolean;
+  preventOfflineAutoLoad: boolean;
+  isCurrentSource: boolean;
+  roomSnapshot: RoomSnapshot | null | undefined;
+  track: TrackMeta | null | undefined;
+}): RoomProviderCachePlan {
+  const isSourceMemberOffline = resolveRoomSourceMemberOffline({
+    isCurrentSource: input.isCurrentSource,
+    roomSnapshot: input.roomSnapshot,
+    track: input.track
+  });
+
+  if (
+    !input.sharedCacheEnabled ||
+    !input.segmentedStreamEnabled ||
+    input.streamingOnlyPlayback ||
+    !input.roomSnapshot ||
+    !input.track
+  ) {
+    return { mode: "none", source: null, isSourceMemberOffline };
+  }
+
+  const playback = input.roomSnapshot.room.playback;
+  if (!playback || playback.currentTrackId !== input.track.id) {
+    return { mode: "none", source: null, isSourceMemberOffline };
+  }
+
+  const providerSource = resolveProviderTrackSource(input.track);
+  if (!providerSource) {
+    return { mode: "none", source: null, isSourceMemberOffline };
+  }
+
+  const source: OfflineProviderSource = {
+    provider: providerSource.provider,
+    trackId: providerSource.trackId,
+    label: providerDisplayName(providerSource.provider)
+  };
+
+  if (isSourceMemberOffline) {
+    if (playback.status !== "playing" || input.preventOfflineAutoLoad) {
+      return { mode: "none", source: null, isSourceMemberOffline };
+    }
+    return {
+      mode: input.fullyCachedPlayback ? "provider-cache" : "offline-fallback",
+      source,
+      isSourceMemberOffline
+    };
+  }
+
+  if (!input.fullyCachedPlayback) {
+    return { mode: "none", source: null, isSourceMemberOffline };
+  }
+
+  // While the active source member is already preparing/transcoding its missing
+  // room distribution asset, avoid firing a duplicate parallel download.
+  if (input.isCurrentSource && !hasCompleteRoomAsset(input.track)) {
+    return { mode: "none", source: null, isSourceMemberOffline };
+  }
+
+  return {
+    mode: "provider-cache",
+    source,
+    isSourceMemberOffline
+  };
 }
 
 export function resolveLocalAudioTimelineKey(

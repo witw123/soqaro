@@ -256,14 +256,7 @@ export function FavoriteAlbumsPage({
       setPending("playAllFavorites");
       setErrorMessage(null);
       setStatusMessage(null);
-      // First track first: prepare -> play -> preload the rest in background.
-      const first = candidateTracks[0]!;
-      const prepared = await prepareFavoriteTrack(first);
-      await player.playTrack(prepared.record);
-      const rest = candidateTracks.slice(1);
-      for (const next of rest) {
-        player.addToQueue(getLocalRecord(next));
-      }
+      await player.playTracks(candidateTracks.map(getLocalRecord));
       setStatusMessage(`已开启收藏全部 ${candidateTracks.length} 首歌曲播放`);
     } catch (error) {
       setErrorMessage(toPlaybackPreparationErrorMessage(error, "播放收藏歌曲失败，请稍后重试。"));

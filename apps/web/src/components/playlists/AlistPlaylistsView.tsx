@@ -170,13 +170,17 @@ export function AlistPlaylistsView() {
     if (audioItems.length === 0) return;
     try {
       setLoading(true);
-      const first = audioItems[0]!;
+      const initialIndex = player.playbackMode === "shuffle"
+        ? Math.floor(Math.random() * audioItems.length)
+        : 0;
+      const first = audioItems[initialIndex]!;
       setPlayingTrackPath(first.path);
       const firstRecord = await buildTrackRecord(first);
-      await player.playTrack(firstRecord);
+      await player.playTracks([firstRecord], 0);
 
       // Preload the rest asynchronously into player queue
-      for (let i = 1; i < audioItems.length; i++) {
+      for (let i = 0; i < audioItems.length; i++) {
+        if (i === initialIndex) continue;
         const other = audioItems[i]!;
         void buildTrackRecord(other).then((rec) => {
           player.addToQueue(rec);

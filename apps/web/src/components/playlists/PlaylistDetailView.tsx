@@ -273,15 +273,7 @@ export function PlaylistDetailView({
     const firstTrack = playableTracks[0]!;
     setPlaybackTrackId(firstTrack.id);
     try {
-      // First track first: prepare -> play -> preload the remaining tracks in
-      // the background, instead of serially downloading the whole playlist
-      // before the first sound is heard.
-      const firstPrepared = await prepareTrackForImmediatePlayback(firstTrack);
-      await player.playTrack(firstPrepared.record);
-      const remaining = playableTracks.filter((track) => track.id !== firstTrack.id);
-      for (const track of remaining) {
-        player.addToQueue(track);
-      }
+      await player.playTracks(playableTracks);
       setDownloadMessage(`正在播放“${title}”`);
     } catch (error) {
       setDownloadMessage(toPlaybackPreparationErrorMessage(error, "播放歌单失败，请重试。"));

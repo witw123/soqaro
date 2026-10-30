@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type {
   RoomSnapshot,
@@ -20,9 +20,10 @@ import {
   notifyCacheLibraryChanged
 } from "@/features/library/cache-library";
 import { providerDisplayName } from "@/lib/domain/provider-labels";
-import { resolveProviderTrackSource } from "@/features/library/provider-track-identity";
 import { extensionForImportedMimeType } from "@/features/upload/upload-import-helpers";
+import { getAppSettings } from "@/features/settings/settings-store";
 import { analyzeAudioBlobLoudness } from "./loudness";
+import { downloadTrackWithFallback } from "./source-fallback-resolver";
 
 export type OfflineProviderSource = {
   provider: "netease" | "qqmusic" | "bilibili" | "alist";
@@ -41,44 +42,6 @@ const inFlightFallbackImports = new Map<
   Promise<OfflineFallbackResult>
 >();
 
-export function resolveOfflineProviderSource(input: {
-  roomSnapshot: RoomSnapshot | null | undefined;
-  track: TrackMeta | null | undefined;
-  forceProviderCache?: boolean;
-}) {
-  const { roomSnapshot, track } = input;
-  const playback = roomSnapshot?.room.playback;
-  if (
-    !track ||
-    !playback ||
-    playback.status !== "playing" ||
-    playback.currentTrackId !== track.id
-  ) {
-    return null;
-  }
-
-  if (!input.forceProviderCache) {
-    const sourceSessionId = playback.sourceSessionId ?? track.ownerSessionId;
-    const sourceMember = roomSnapshot.room.members.find(
-      (member) => member.id === sourceSessionId
-    );
-    if (sourceMember && sourceMember.presenceState !== "offline") {
-      return null;
-    }
-  }
-
-  const providerSource = resolveProviderTrackSource(track);
-  if (!providerSource) {
-    return null;
-  }
-
-  return {
-    provider: providerSource.provider,
-    trackId: providerSource.trackId,
-    label: providerDisplayName(providerSource.provider)
-  } satisfies OfflineProviderSource;
-}
-
 export async function ensureOfflineProviderPlaybackAsset(input: {
   roomSnapshot: RoomSnapshot;
   track: TrackMeta;
@@ -88,28 +51,46 @@ export async function ensureOfflineProviderPlaybackAsset(input: {
   signal?: AbortSignal;
 }) {
   const importKey = `${input.roomSnapshot.room.id}:${input.track.id}:${input.source.provider}:${input.source.trackId}`;
-  const existing = inFlightFallbackImports.get(importKey);
-  if (existing) {
-    return existing;
+  if (!input.signal?.aborted) {
+    input.onStatus?.(input.forceDownload
+      ? `正在从${input.source.label}下载并缓存《${input.track.title}》…`
+      : `成员不在线，正在从${input.source.label}下载并缓存《${input.track.title}》…`);
   }
 
-  // This operation is shared across render/effect lifetimes. A room snapshot
-  // refresh can dispose the caller that started it, but that must not abort a
-  // download which is still useful cache for the next render or next room
-  // visit. The caller's cancelled flag still prevents stale state updates.
-  const operation = importOfflineProviderTrack({
-    ...input,
-    onStatus: undefined,
-    signal: undefined
-  });
-  inFlightFallbackImports.set(importKey, operation);
-  const sharedOperation = operation.finally(() => {
-    if (inFlightFallbackImports.get(importKey) === sharedOperation) {
-      inFlightFallbackImports.delete(importKey);
+  let sharedOperation = inFlightFallbackImports.get(importKey);
+  if (!sharedOperation) {
+    // This operation is shared across render/effect lifetimes. A room snapshot
+    // refresh can dispose the caller that started it, but that must not abort a
+    // download which is still useful cache for the next render or next room
+    // visit. The caller's cancelled flag still prevents stale state updates.
+    const operation = importOfflineProviderTrack({
+      ...input,
+      onStatus: undefined,
+      signal: undefined
+    });
+    sharedOperation = operation.finally(() => {
+      if (inFlightFallbackImports.get(importKey) === sharedOperation) {
+        inFlightFallbackImports.delete(importKey);
+      }
+    });
+    inFlightFallbackImports.set(importKey, sharedOperation);
+  }
+
+  const result = await sharedOperation;
+  if (!input.signal?.aborted) {
+    if (result.file) {
+      input.onStatus?.(input.forceDownload
+        ? `已从${input.source.label}缓存《${input.track.title}》，正在使用缓存音频播放。`
+        : `成员不在线，已从${input.source.label}缓存《${input.track.title}》，正在使用缓存音频播放。`);
+    } else {
+      input.onStatus?.(input.forceDownload
+        ? `${input.source.label}缓存下载失败，已回退到实时流式播放。`
+        : input.track.playbackAsset
+          ? `成员不在线，${input.source.label}下载失败，已回退到流式播放。`
+          : `成员不在线，${input.source.label}下载失败，当前无法自动缓存播放。`);
     }
-  });
-  inFlightFallbackImports.set(importKey, sharedOperation);
-  return sharedOperation;
+  }
+  return result;
 }
 
 async function importOfflineProviderTrack(input: {
@@ -132,31 +113,62 @@ async function importOfflineProviderTrack(input: {
     onStatus?.(input.forceDownload
       ? `正在从${source.label}下载并缓存《${track.title}》…`
       : `成员不在线，正在从${source.label}下载并缓存《${track.title}》…`);
-    const downloaded =
-      source.provider === "netease"
-        ? await soqaroApi.downloadNeteaseTrack(source.trackId, "exhigh", signal)
-        : source.provider === "qqmusic"
-        ? await soqaroApi.downloadQqMusicTrack(source.trackId, "exhigh", signal)
-        : source.provider === "bilibili"
-        ? await soqaroApi.downloadBilibiliTrack(source.trackId, signal)
-        : await fetch(soqaroApi.getAlistStreamUrl(source.trackId), { signal }).then(async (res) => ({
-            blob: await res.blob(),
-            contentType: res.headers.get("content-type") ?? "audio/mpeg"
-          }));
+    const preferredQuality = getAppSettings().playback.preferredAudioQuality;
+    let activeProvider = source.provider;
+    let activeTrackId = source.trackId;
+    let downloaded: { blob: Blob; contentType?: string };
+    if (
+      source.provider === "netease" ||
+      source.provider === "qqmusic" ||
+      source.provider === "bilibili"
+    ) {
+      const result = await downloadTrackWithFallback({
+        track: {
+          provider: source.provider,
+          providerTrackId: source.trackId,
+          access: "unknown",
+          quality: null,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.durationMs,
+          artworkUrl: track.artworkUrl
+        },
+        preferredQuality,
+        signal
+      });
+      downloaded = result.response;
+      activeProvider = result.actualTrack.provider;
+      activeTrackId = result.actualTrack.providerTrackId;
+    } else {
+      const res = await fetch(soqaroApi.getAlistStreamUrl(source.trackId), { signal });
+      if (!res.ok) {
+        throw new Error(`Alist 音频请求失败 (${res.status})`);
+      }
+      downloaded = {
+        blob: await res.blob(),
+        contentType: res.headers.get("content-type") ?? "audio/mpeg"
+      };
+    }
     const mimeType = await resolveDownloadedAudioMimeType(
       downloaded.blob,
-      downloaded.contentType
+      downloaded.contentType ?? "audio/mpeg"
     );
     const extension = extensionForImportedMimeType(mimeType);
     const file = new File(
       [downloaded.blob],
-      `${sanitizeFileName(track.title) || source.provider}-fallback.${extension}`,
+      `${sanitizeFileName(track.title) || activeProvider}-fallback.${extension}`,
       { type: mimeType }
     );
 
+    const activeSource: OfflineProviderSource = {
+      provider: activeProvider,
+      trackId: activeTrackId,
+      label: providerDisplayName(activeProvider)
+    };
     const providerLyrics = track.lyrics?.trim()
       ? null
-      : await resolveProviderLyrics(source).catch(() => null);
+      : await resolveProviderLyrics(activeSource).catch(() => null);
     const lyrics = track.lyrics?.trim() || providerLyrics?.wordSyncedLyric || providerLyrics?.plainLyric || null;
     const loudness = track.loudness ?? null;
     if (!track.loudness) {
@@ -200,7 +212,7 @@ async function importOfflineProviderTrack(input: {
       fileHash: track.fileHash,
       title: track.title,
       mimeType,
-      provider: source.provider,
+      provider: activeSource.provider,
       // A provider fallback is a fresh source for the room track. Reusing an
       // older cache entry here could leave the local path pointing at a
       // truncated or stale download while the returned File plays correctly.
@@ -213,8 +225,8 @@ async function importOfflineProviderTrack(input: {
     notifyCacheLibraryChanged();
 
     onStatus?.(input.forceDownload
-      ? `已从${source.label}缓存《${track.title}》，正在使用缓存音频播放。`
-      : `成员不在线，已从${source.label}缓存《${track.title}》，正在使用缓存音频播放。`);
+      ? `已从${activeSource.label}缓存《${track.title}》，正在使用缓存音频播放。`
+      : `成员不在线，已从${activeSource.label}缓存《${track.title}》，正在使用缓存音频播放。`);
     return {
       fileHash: track.fileHash,
       file,

@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const indexedDbMocks = vi.hoisted(() => ({
   upsertCachedLibraryTrack: vi.fn()
@@ -144,5 +144,25 @@ describe("offline provider fallback", () => {
     expect(firstResult.file).toBeInstanceOf(File);
     expect(secondResult.file).toBe(firstResult.file);
     expect(apiMocks.soqaroApi.downloadNeteaseTrack).toHaveBeenCalledOnce();
+  });
+
+  it("notifies active callers via onStatus and suppresses status callbacks after abort", async () => {
+    apiMocks.soqaroApi.downloadNeteaseTrack.mockResolvedValue({
+      blob: new Blob(["audio"], { type: "audio/mpeg" }),
+      contentType: "audio/mpeg"
+    });
+    const statuses: string[] = [];
+
+    const result = await ensureOfflineProviderPlaybackAsset({
+      ...buildInput(),
+      forceDownload: true,
+      onStatus: (msg) => statuses.push(msg)
+    });
+
+    expect(result.file).toBeInstanceOf(File);
+    expect(statuses).toEqual([
+      "正在从网易云音乐下载并缓存《Song》…",
+      "已从网易云音乐缓存《Song》，正在使用缓存音频播放。"
+    ]);
   });
 });

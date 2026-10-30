@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import type {
@@ -19,6 +19,10 @@ import { createPlaybackMediaSession } from "@/features/playback/playback-media-s
 import { roomAudioOutput } from "@/features/playback/room-audio-output";
 import { getRoomPlaybackClockNowMs } from "@/features/playback/room-playback-clock";
 import { getRoomLocalAudioFile } from "@/features/library/local-audio-storage";
+import { cacheLibraryChangedEventName } from "@/features/library/cache-library";
+import { storageRootChangedEvent } from "@/features/library/storage-root-events";
+import { ensureOfflineProviderPlaybackAsset } from "@/features/playback/offline-source-fallback";
+import { providerPlaybackCacheChangedEvent } from "@/features/playback/provider-track-cache";
 import { resolveRoomPlaybackStrategy } from "@/features/room/playback/room-playback-strategy";
 import { resolveProviderTrackSource } from "@/features/library/provider-track-identity";
 import { getRoomQueuePreloadTracks, RoomAudioPreloader } from "@/features/room/playback/room-queue-preload";
@@ -46,7 +50,6 @@ import {
   alignLocalAudioToRoom,
   isAudioPlaybackBlockedError,
   hasCurrentLocalAudio,
-  isProviderTrack,
   isRecoverableLocalAudioError,
   localAudioSeekToleranceSeconds,
   resolveCacheReadinessReport,
@@ -55,6 +58,7 @@ import {
   resolveRemoteAudioTimelineKey,
   resolveRoomAudioPath,
   resolveRoomAudioPositionMs,
+  resolveRoomProviderCachePlan,
   shouldDisableSourcePlayback,
   shouldSkipUnavailableStreamingTrack,
   shouldWaitForLocalAudioContext,
@@ -137,6 +141,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     fullyCachedPlayback,
     loudnessNormalization
   } = playbackPreferences;
+  const [cacheRevision, setCacheRevision] = useState(0);
   const [localAudioPreloader] = useState(() => new RoomAudioPreloader((track) => {
     const source = resolveProviderTrackSource(track);
     return getRoomLocalAudioFile({
@@ -150,6 +155,25 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     });
   }));
   useEffect(() => {
+    const handleCacheInvalidate = () => {
+      localAudioPreloader.clear();
+      setCacheRevision((rev) => rev + 1);
+    };
+    const handleStorageRootChange = () => {
+      failedLocalAudioKeysRef.current.clear();
+      localAudioPreloader.clear();
+      setCacheRevision((rev) => rev + 1);
+    };
+    window.addEventListener(cacheLibraryChangedEventName, handleCacheInvalidate);
+    window.addEventListener(providerPlaybackCacheChangedEvent, handleCacheInvalidate);
+    window.addEventListener(storageRootChangedEvent, handleStorageRootChange);
+    return () => {
+      window.removeEventListener(cacheLibraryChangedEventName, handleCacheInvalidate);
+      window.removeEventListener(providerPlaybackCacheChangedEvent, handleCacheInvalidate);
+      window.removeEventListener(storageRootChangedEvent, handleStorageRootChange);
+    };
+  }, [localAudioPreloader]);
+  useEffect(() => {
     if (!input.roomSnapshot || streamingOnlyPlayback) {
       localAudioPreloader.update([]);
       return;
@@ -158,18 +182,23 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       ...(input.currentTrack ? [input.currentTrack] : []),
       ...getRoomQueuePreloadTracks(input.roomSnapshot)
     ]);
-  }, [input.roomSnapshot, input.currentTrack, streamingOnlyPlayback, localAudioPreloader]);
+  }, [input.roomSnapshot, input.currentTrack, streamingOnlyPlayback, localAudioPreloader, cacheRevision]);
   useEffect(() => () => localAudioPreloader.update([]), [localAudioPreloader]);
   // Offline auto-cache prevention and stream-only playback take priority over
   // the provider-cache preference when multiple strategies are enabled.
   const sharedCacheEnabled = playbackStrategy.cache === "shared-library-and-provider";
   const segmentedStreamEnabled = playbackStrategy.stream === "segmented-opus-with-rtp-fallback";
-  const cacheBarrierEnabled = sharedCacheEnabled &&
-    segmentedStreamEnabled &&
-    fullyCachedPlayback &&
-    !preventOfflineAutoLoad &&
-    !streamingOnlyPlayback &&
-    isProviderTrack(input.currentTrack);
+  const providerCachePlan = resolveRoomProviderCachePlan({
+    sharedCacheEnabled,
+    segmentedStreamEnabled,
+    streamingOnlyPlayback,
+    fullyCachedPlayback,
+    preventOfflineAutoLoad,
+    isCurrentSource: input.isCurrentSource,
+    roomSnapshot: input.roomSnapshot,
+    track: input.currentTrack
+  });
+  const cacheBarrierEnabled = providerCachePlan.mode === "provider-cache";
   const localAudioTrackKey = resolveLocalAudioTrackKey(input.currentTrack);
   const [localAudioResolution, setLocalAudioResolution] = useState<LocalAudioResolution>({
     key: null,
@@ -177,6 +206,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     file: null,
     error: null
   });
+  const [isPreparingProviderCache, setIsPreparingProviderCache] = useState(false);
+  const [failedProviderCacheKey, setFailedProviderCacheKey] = useState<string | null>(null);
   const playbackBarrier = uninterruptedRoomClock;
   const readinessRoomId = input.roomSnapshot?.room.id;
   const readinessTrackId = input.roomSnapshot?.room.playback.currentTrackId ?? null;
@@ -217,6 +248,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     playbackAsset: null as TrackMeta["playbackAsset"] | null,
     streamingOnlyPlayback: false,
     usesNativeLocalAudio: false,
+    isSourceMemberOffline: false,
     cacheBarrierEnabled: false,
     playbackBarrier,
     loudnessGainDb: 0,
@@ -232,6 +264,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     playbackAsset: currentPlaybackAsset,
     streamingOnlyPlayback,
     usesNativeLocalAudio,
+    isSourceMemberOffline: providerCachePlan.isSourceMemberOffline,
     localAudioResolution,
     cacheBarrierEnabled,
     playbackBarrier,
@@ -273,6 +306,9 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   const remoteAudioTimelineKeyRef = useRef<string | null>(null);
   const skippedUnavailableStreamingTimelineRef = useRef<string | null>(null);
   const failedLocalAudioKeysRef = useRef<Set<string>>(new Set());
+  const localAudioResolutionRef = useRef(localAudioResolution);
+  localAudioResolutionRef.current = localAudioResolution;
+  const syncMediaRef = useRef<(() => Promise<void>) | null>(null);
   const readinessPublishKeyRef = useRef<string | null>(null);
   const cacheBarrierParticipationRef = useRef(false);
   const roomId = input.roomSnapshot?.room.id ?? null;
@@ -361,13 +397,17 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     }
 
     if (streamingOnlyPlayback) {
-      setLocalAudioResolution({
-        key: localAudioTrackKey,
-        status: "missing",
-        file: null,
-        loudness: undefined,
-        error: null
-      });
+      setLocalAudioResolution((current) =>
+        current.key === null && current.status === "missing" && current.file === null
+          ? current
+          : {
+            key: null,
+            status: "missing",
+            file: null,
+            loudness: undefined,
+            error: null
+          }
+      );
       return;
     }
 
@@ -379,6 +419,15 @@ export function useRoomSegmentedPlaybackRuntime(input: {
         loudness: undefined,
         error: "本地音频文件不可播放。"
       });
+      return;
+    }
+
+    const existingResolution = localAudioResolutionRef.current;
+    if (
+      existingResolution.key === localAudioTrackKey &&
+      existingResolution.status === "available" &&
+      existingResolution.file !== null
+    ) {
       return;
     }
 
@@ -444,8 +493,132 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     input.currentTrack?.title,
     localAudioTrackKey,
     localAudioPreloader,
-    streamingOnlyPlayback
+    streamingOnlyPlayback,
+    cacheRevision
   ]);
+
+  const providerCacheAttemptKey =
+    providerCachePlan.mode !== "none" &&
+    providerCachePlan.source &&
+    localAudioTrackKey &&
+    roomId
+      ? [
+          roomId,
+          input.currentTrack?.id ?? "none",
+          readinessMediaEpoch,
+          localAudioTrackKey,
+          providerCachePlan.mode
+        ].join(":")
+      : null;
+  const providerCacheFailed =
+    providerCacheAttemptKey !== null && failedProviderCacheKey === providerCacheAttemptKey;
+  const providerCacheSourceProvider = providerCachePlan.source?.provider ?? null;
+  const providerCacheSourceTrackId = providerCachePlan.source?.trackId ?? null;
+  const providerCacheSourceLabel = providerCachePlan.source?.label ?? null;
+
+  useEffect(() => {
+    const snapshot = runtimeInputRef.current.roomSnapshot;
+    const track = runtimeInputRef.current.currentTrack;
+    if (
+      !providerCacheAttemptKey ||
+      !snapshot ||
+      !track ||
+      !localAudioTrackKey ||
+      !providerCacheSourceProvider ||
+      !providerCacheSourceTrackId ||
+      !providerCacheSourceLabel ||
+      providerCacheFailed ||
+      failedLocalAudioKeysRef.current.has(localAudioTrackKey)
+    ) {
+      setIsPreparingProviderCache(false);
+      return;
+    }
+
+    if (
+      localAudioResolution.key !== localAudioTrackKey ||
+      localAudioResolution.status !== "missing"
+    ) {
+      setIsPreparingProviderCache(false);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const activeAttemptKey = providerCacheAttemptKey;
+    setIsPreparingProviderCache(true);
+
+    void ensureOfflineProviderPlaybackAsset({
+      roomSnapshot: snapshot,
+      track,
+      source: {
+        provider: providerCacheSourceProvider,
+        trackId: providerCacheSourceTrackId,
+        label: providerCacheSourceLabel
+      },
+      forceDownload: providerCachePlan.mode === "provider-cache",
+      onStatus: (message) => {
+        if (!cancelled) {
+          setStatusMessage(message);
+        }
+      },
+      signal: controller.signal
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setIsPreparingProviderCache(false);
+        if (!result.file) {
+          setFailedProviderCacheKey(activeAttemptKey);
+          return;
+        }
+        setLocalAudioResolution({
+          key: localAudioTrackKey,
+          status: "available",
+          file: result.file,
+          ...(track.loudness
+            ? { loudness: track.loudness }
+            : result.loudness
+              ? { loudness: result.loudness }
+              : {}),
+          error: null
+        });
+        if (!track.loudness && !result.loudness) {
+          void analyzeAudioBlobLoudness(result.file).then((loudness) => {
+            if (cancelled || !loudness) return;
+            setLocalAudioResolution((current) =>
+              current.key === localAudioTrackKey ? { ...current, loudness } : current
+            );
+          });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsPreparingProviderCache(false);
+        setFailedProviderCacheKey(activeAttemptKey);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    localAudioResolution.key,
+    localAudioResolution.status,
+    localAudioTrackKey,
+    providerCacheAttemptKey,
+    providerCacheFailed,
+    providerCachePlan.mode,
+    providerCacheSourceLabel,
+    providerCacheSourceProvider,
+    providerCacheSourceTrackId,
+    setStatusMessage
+  ]);
+
+  const cacheAttemptPending =
+    isPreparingProviderCache ||
+    (providerCachePlan.mode === "provider-cache" &&
+      localAudioResolution.key === localAudioTrackKey &&
+      localAudioResolution.status === "missing" &&
+      !providerCacheFailed);
 
   useEffect(() => {
     const trackId = readinessTrackId;
@@ -479,7 +652,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     const report = resolveCacheReadinessReport({
       cacheRequested,
       localReady,
-      cacheAttemptPending: false,
+      cacheAttemptPending,
       localAudioStatus: localAudioResolution.status
     });
     cacheBarrierParticipationRef.current = report.cacheEnabled;
@@ -511,6 +684,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     return () => window.clearInterval(interval);
   }, [
     cacheBarrierEnabled,
+    cacheAttemptPending,
     readinessActiveSessionId,
     readinessPeerId,
     publishReadiness,
@@ -1671,6 +1845,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       return operation;
     };
 
+    syncMediaRef.current = syncMedia;
     void syncMedia();
     const interval = window.setInterval(() => void syncMedia(), 250);
     const unsubscribeRemoteAudioTrack = subscribeRemoteAudioTrack?.(() => {
@@ -1684,6 +1859,9 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     const mountedAudio = audioRef.current;
     return () => {
       cancelled = true;
+      if (syncMediaRef.current === syncMedia) {
+        syncMediaRef.current = null;
+      }
       window.clearInterval(interval);
       unsubscribeRemoteAudioTrack?.();
       unsubscribeBroadcastStream?.();
@@ -1719,6 +1897,15 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     input.roomSnapshot?.room.playback.mediaEpoch,
     ensureListenerMediaConnection,
     subscribeRemoteAudioTrack
+  ]);
+
+  useEffect(() => {
+    void syncMediaRef.current?.();
+  }, [
+    streamingOnlyPlayback,
+    usesNativeLocalAudio,
+    input.roomSnapshot?.room.playback.status,
+    input.roomSnapshot?.room.playback.playbackRevision
   ]);
 
   useEffect(() => {
@@ -1810,7 +1997,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !input.isCurrentSource) {
+    if (!audio || (!input.isCurrentSource && !providerCachePlan.isSourceMemberOffline)) {
       return;
     }
 
@@ -1818,6 +2005,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       const runtime = runtimeInputRef.current;
       const roomPlayback = runtime.roomSnapshot?.room.playback;
       if (
+        (!runtime.isCurrentSource && !runtime.isSourceMemberOffline) ||
         !runtime.usesNativeLocalAudio ||
         roomPlayback?.status !== "playing" ||
         roomPlayback.currentTrackId !== runtime.currentTrack?.id
@@ -1836,7 +2024,12 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
-  }, [audioRef, input.isCurrentSource, onPlaybackEnded]);
+  }, [
+    audioRef,
+    input.isCurrentSource,
+    onPlaybackEnded,
+    providerCachePlan.isSourceMemberOffline
+  ]);
 
   useEffect(() => {
     if (

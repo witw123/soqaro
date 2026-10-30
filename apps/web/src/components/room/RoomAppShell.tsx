@@ -1,9 +1,16 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import type { AuthSession, RoomSnapshot, TrackMeta } from "@soqaro/shared";
 import type { RoomSocket } from "@/lib/network/ws-client";
-import { isProviderTrack } from "@/features/room/playback/room-audio-path";
+import {
+  isProviderTrack,
+  resolveRoomSourceMemberOffline
+} from "@/features/room/playback/room-audio-path";
+import {
+  useTrackAssetPreparationState,
+  useTrackUnavailableReason
+} from "@/features/room/playback/room-track-asset-preparation";
 import { appSettingsChangeEvent, getAppSettings } from "@/features/settings/settings-store";
 import type { useTrackUploads } from "@/features/upload/use-track-uploads";
 import type { useRoomClipboardActions } from "@/components/room/hooks/use-room-clipboard-actions";
@@ -87,11 +94,26 @@ export function RoomAppShell({
     };
   }, []);
 
+  const preparationState = useTrackAssetPreparationState(currentTrack?.id);
+  const unavailableReason = useTrackUnavailableReason(currentTrack?.id);
+  const isSourceMemberOffline = resolveRoomSourceMemberOffline({
+    isCurrentSource: isSourceOwner,
+    roomSnapshot,
+    track: currentTrack
+  });
+  const requiresCachePrompt = isSourceOwner
+    ? preparationState === "failed" || preparationState === "source-missing"
+    : Boolean(unavailableReason) ||
+      (isSourceMemberOffline && settings.playback.preventOfflineAutoLoad);
+
   const isMissingOpsAsset = Boolean(
+    !backgroundOnly &&
     currentTrack &&
     isProviderTrack(currentTrack) &&
     !currentTrack.playbackAsset &&
+    !settings.playback.streamingOnlyPlayback &&
     !settings.playback.fullyCachedPlayback &&
+    requiresCachePrompt &&
     dismissedTrackId !== currentTrack.id
   );
 

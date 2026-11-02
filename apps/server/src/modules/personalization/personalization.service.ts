@@ -1,4 +1,4 @@
-﻿import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type {
   PersonalizationFeedback,
@@ -226,7 +226,7 @@ export class PersonalizationService {
       if (recentTracks.length >= 15) break;
     }
 
-    const sourceDistribution = (["netease", "qqmusic", "local_upload"] as const).map((source) => ({
+    const sourceDistribution = (["netease", "qqmusic", "bilibili", "alist", "local_upload"] as const).map((source) => ({
       source,
       listenedMs: Number(playbackEvents.filter((event) => event.provider === source).reduce((total, event) => total + event.listenedMs, BigInt(0)))
     })).filter((item) => item.listenedMs > 0);

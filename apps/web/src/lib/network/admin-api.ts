@@ -1,10 +1,12 @@
-﻿import { apiBaseUrl } from "./api-client";
+import { apiBaseUrl } from "./api-client";
 import type {
   AdminIncident,
+  AdminMaintenanceResult,
   AdminOverview,
   AdminProviderHealth,
   AdminRoomSummary,
   AdminSession,
+  AdminTrackStats,
   AdminUserSummary,
   RoomChatMessage,
   SystemAnnouncement
@@ -107,6 +109,8 @@ export const adminApi = {
   audit: () => request<{ data: Array<{ id: string; actorUserId: string; action: string; targetType: string; targetId: string | null; reason: string | null; result: string; createdAt: string }>; nextCursor: string | null; generatedAt: string }>("/v1/admin/audit-logs"),
   system: () => request<AdminOverview>("/v1/admin/system"),
   providerHealth: () => request<{ data: AdminProviderHealth[] }>("/v1/admin/system/providers"),
+  trackStats: () => request<AdminTrackStats>("/v1/admin/stats/tracks"),
+  runMaintenance: () => request<AdminMaintenanceResult>("/v1/admin/system/maintenance", { method: "POST" }),
   announcements: () => request<{ data: SystemAnnouncement[] }>("/v1/admin/announcements"),
   createAnnouncement: (payload: { title: string; content: string; isActive?: boolean }) =>
     request<SystemAnnouncement>("/v1/admin/announcements", { method: "POST", body: JSON.stringify(payload) }),

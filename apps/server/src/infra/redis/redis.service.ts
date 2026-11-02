@@ -50,6 +50,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.mode;
   }
 
+  async ping(): Promise<number | null> {
+    if (!this.client || !this.isAvailable()) return null;
+    const start = Date.now();
+    try {
+      await this.client.ping();
+      return Date.now() - start;
+    } catch {
+      return null;
+    }
+  }
+
   async publish(channel: string, payload: unknown) {
     this.assertReady(this.client, "publisher");
 

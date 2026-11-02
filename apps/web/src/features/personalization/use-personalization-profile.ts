@@ -17,28 +17,36 @@ export function usePersonalizationProfile() {
     sessionStorageKey: "soqaro-session",
     initialStatusMessage: ""
   });
+  const userId = activeSession?.userId ?? null;
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["personalization", activeSession?.userId ?? null, "profile"],
+    queryKey: ["personalization", userId, "profile"],
     queryFn: ({ signal }) => soqaroApi.getPersonalizationProfile(signal),
     enabled: pageActive && Boolean(activeSession)
   });
-  const [localProfile, setLocalProfile] = useState(getLocalStoredProfile);
+  const [localProfile, setLocalProfile] = useState(() => getLocalStoredProfile(userId));
+
+  useEffect(() => {
+    setLocalProfile(getLocalStoredProfile(userId));
+  }, [userId]);
 
   useEffect(() => {
     if (!pageActive) {
       void queryClient.cancelQueries({ queryKey: ["personalization"], type: "inactive" });
       return;
     }
-    const refreshLocal = () => setLocalProfile(getLocalStoredProfile());
-    refreshLocal();
-    window.addEventListener(personalizationChangedEvent, refreshLocal);
-    return () => window.removeEventListener(personalizationChangedEvent, refreshLocal);
-  }, [pageActive, queryClient]);
+    const refresh = () => {
+      setLocalProfile(getLocalStoredProfile(userId));
+      void queryClient.invalidateQueries({ queryKey: ["personalization", userId] });
+    };
+    refresh();
+    window.addEventListener(personalizationChangedEvent, refresh);
+    return () => window.removeEventListener(personalizationChangedEvent, refresh);
+  }, [pageActive, queryClient, userId]);
 
   const profile = useMemo(
-    () => query.data ? mergeProfileWithServer(localProfile, query.data) ?? query.data : localProfile,
-    [localProfile, query.data]
+    () => query.data ? mergeProfileWithServer(localProfile, query.data, userId) ?? query.data : localProfile,
+    [localProfile, query.data, userId]
   );
   return { profile, loading: !profile && query.isLoading };
 }

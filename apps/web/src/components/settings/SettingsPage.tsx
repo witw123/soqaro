@@ -29,6 +29,7 @@ import { useSessionIdentity } from "@/features/session/use-session-identity";
 import { buildWorkspaceAuthHref } from "@/lib/domain/client-shell";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 import { personalizationChangedEvent } from "@/features/personalization/use-personalization-reporter";
+import { clearLocalStoredProfile } from "@/features/personalization/local-personalization-store";
 import {
   getDefaultAppSettings,
   normalizeCustomLayoutSettings,
@@ -262,7 +263,10 @@ export function SettingsPage() {
       onConfirm: async () => {
         try {
           await soqaroApi.clearPersonalizationProfile();
-          setStatusMessage("听歌画像已重置");
+          clearLocalStoredProfile(activeSession?.userId);
+          setStatusMessage("已重置听歌画像");
+          void queryClient.invalidateQueries({ queryKey: ["personalization"] });
+          window.dispatchEvent(new Event(personalizationChangedEvent));
         } catch (error) {
           setStatusMessage(error instanceof Error ? error.message : "听歌画像重置失败。");
         } finally {
@@ -270,7 +274,7 @@ export function SettingsPage() {
         }
       }
     });
-  }, []);
+  }, [activeSession?.userId, queryClient]);
 
   const handleLogout = useCallback(async () => {
     try {

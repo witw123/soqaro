@@ -35,6 +35,48 @@
     --blue-10: #0588f0;
     --blue-11: #70b8ff;
     --blue-12: #c2e6ff;
+    /* Radix Colors - Green (Dark) */
+    --green-1: #0e1511;
+    --green-2: #141b16;
+    --green-3: #132d21;
+    --green-4: #113b29;
+    --green-5: #174933;
+    --green-6: #20573e;
+    --green-7: #28684a;
+    --green-8: #2f7c57;
+    --green-9: #30a46c;
+    --green-10: #33b074;
+    --green-11: #3dd68c;
+    --green-12: #b1f1cb;
+
+    /* Radix Colors - Amber (Dark) */
+    --amber-1: #16120c;
+    --amber-2: #1d180f;
+    --amber-3: #302008;
+    --amber-4: #3f2700;
+    --amber-5: #4d3000;
+    --amber-6: #5c3b00;
+    --amber-7: #704800;
+    --amber-8: #8f5c00;
+    --amber-9: #ffc53d;
+    --amber-10: #ffd60a;
+    --amber-11: #ffca16;
+    --amber-12: #ffe7b3;
+
+    /* Radix Colors - Red (Dark) */
+    --red-1: #191111;
+    --red-2: #201314;
+    --red-3: #3b1219;
+    --red-4: #500f1c;
+    --red-5: #611623;
+    --red-6: #72232d;
+    --red-7: #8c333a;
+    --red-8: #b54548;
+    --red-9: #e5484d;
+    --red-10: #ec5d5e;
+    --red-11: #ff9592;
+    --red-12: #ffd1d9;
+
 
     --background: var(--slate-1);
     --background-secondary: var(--slate-2);
@@ -101,6 +143,48 @@
     --blue-10: #0588f0;
     --blue-11: #0d74ce;
     --blue-12: #113264;
+    /* Radix Colors - Green (Light) */
+    --green-1: #fbfdfc;
+    --green-2: #f2fcf5;
+    --green-3: #e6f7ed;
+    --green-4: #d6f1df;
+    --green-5: #c0e8ce;
+    --green-6: #a2dbb8;
+    --green-7: #7bc79e;
+    --green-8: #43ad79;
+    --green-9: #30a46c;
+    --green-10: #299764;
+    --green-11: #18794e;
+    --green-12: #153226;
+
+    /* Radix Colors - Amber (Light) */
+    --amber-1: #fefdfb;
+    --amber-2: #fefbe9;
+    --amber-3: #fff7c2;
+    --amber-4: #ffefa5;
+    --amber-5: #ffe685;
+    --amber-6: #f5d90a;
+    --amber-7: #e7c400;
+    --amber-8: #d19f00;
+    --amber-9: #ffc53d;
+    --amber-10: #ffba18;
+    --amber-11: #ab6400;
+    --amber-12: #4f3422;
+
+    /* Radix Colors - Red (Light) */
+    --red-1: #fffcfc;
+    --red-2: #fff7f7;
+    --red-3: #feebec;
+    --red-4: #ffdbdc;
+    --red-5: #ffcdce;
+    --red-6: #fdbdbe;
+    --red-7: #f4a9aa;
+    --red-8: #eb8e90;
+    --red-9: #e5484d;
+    --red-10: #dc3e42;
+    --red-11: #ce2c31;
+    --red-12: #641723;
+
 
     --background: var(--slate-1);
     --background-secondary: var(--slate-2);

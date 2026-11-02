@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { ReactNode } from "react";
 import type { AdminIncident, AdminOverview, AdminRoomSummary, AdminUserSummary } from "@soqaro/shared";
@@ -16,11 +16,38 @@ import {
   Users
 } from "lucide-react";
 
-export type AuditRow = { id: string; action: string; targetType: string; targetId: string | null; reason: string | null; result: string; createdAt: string };
+export type AuditRow = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  reason: string | null;
+  result: string;
+  createdAt: string;
+};
 
-export type IconName = "grid" | "radio" | "users" | "alert" | "file" | "server" | "refresh" | "logout" | "arrow" | "bell" | "plus";
+export type IconName =
+  | "grid"
+  | "radio"
+  | "users"
+  | "alert"
+  | "file"
+  | "server"
+  | "refresh"
+  | "logout"
+  | "arrow"
+  | "bell"
+  | "plus";
 
-export function Icon({ name, size = 16, className = "" }: { name: IconName; size?: number; className?: string }) {
+export function Icon({
+  name,
+  size = 16,
+  className = ""
+}: {
+  name: IconName;
+  size?: number;
+  className?: string;
+}) {
   const props = { size, className, "aria-hidden": true as const };
   switch (name) {
     case "grid":
@@ -50,24 +77,64 @@ export function Icon({ name, size = 16, className = "" }: { name: IconName; size
   }
 }
 
-export function Metric({ label, value, meta, color, width }: { label: string; value: number; meta: string; color: string; width: string }) {
+export function Metric({
+  label,
+  value,
+  meta,
+  tone = "default",
+  badge
+}: {
+  label: string;
+  value: ReactNode;
+  meta?: ReactNode;
+  tone?: "default" | "blue" | "green" | "amber" | "red";
+  badge?: string;
+}) {
+  const toneClasses = {
+    default: "text-foreground",
+    blue: "text-radix-blue-11",
+    green: "text-radix-green-11",
+    amber: "text-radix-amber-11",
+    red: "text-radix-red-11"
+  }[tone];
+
+  const badgeClasses = {
+    default: "bg-surface text-foreground-muted border-[var(--slate-6)]",
+    blue: "bg-radix-blue-3 text-radix-blue-11 border-radix-blue-6",
+    green: "bg-radix-green-3 text-radix-green-11 border-radix-green-6",
+    amber: "bg-radix-amber-3 text-radix-amber-11 border-radix-amber-6",
+    red: "bg-radix-red-3 text-radix-red-11 border-radix-red-6"
+  }[tone];
+
   return (
-    <div className="rounded-lg border border-surface-border bg-surface p-3.5 flex flex-col gap-1.5">
-      <div className="text-xs font-mono text-foreground-muted">{label}</div>
-      <div className="flex items-baseline justify-between">
-        <strong className="text-lg font-semibold tracking-tight">{value}</strong>
-        <span className="text-xs text-foreground-muted">{meta}</span>
+    <div className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface p-3.5 flex flex-col justify-between gap-1.5">
+      <div className="flex items-center justify-between text-xs text-foreground-muted">
+        <span>{label}</span>
+        {badge ? (
+          <span className={`px-1.5 py-0.2 rounded text-[11px] font-mono border-[0.5px] ${badgeClasses}`}>
+            {badge}
+          </span>
+        ) : null}
       </div>
-      <div className="h-1 w-full bg-surface-border/40 rounded-full overflow-hidden mt-1">
-        <div className="h-full rounded-full transition-all duration-300" style={{ width, backgroundColor: color }} />
+      <div className="flex items-baseline justify-between gap-2">
+        <strong className={`text-lg font-semibold tracking-tight ${toneClasses}`}>{value}</strong>
+        {meta ? <span className="text-xs text-foreground-muted">{meta}</span> : null}
       </div>
     </div>
   );
 }
 
-export function PanelHeader({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
+export function PanelHeader({
+  title,
+  hint,
+  action
+}: {
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="p-3.5 border-b border-surface-border flex items-center justify-between">
+    <div className="p-3.5 border-b-[0.5px] border-[var(--slate-6)] flex items-center justify-between">
       <div className="flex items-baseline gap-2">
         <div className="text-xs font-semibold text-foreground tracking-tight">{title}</div>
         {hint ? <div className="text-xs text-foreground-muted">{hint}</div> : null}
@@ -78,15 +145,15 @@ export function PanelHeader({ title, hint, action }: { title: string; hint?: str
 }
 
 export function RoomCell({ room }: { room: AdminRoomSummary }) {
-  const signalColor =
+  const dotColor =
     room.health === "critical"
-      ? "bg-red-500"
+      ? "bg-radix-red-9"
       : room.health === "degraded"
-      ? "bg-amber-500"
-      : "bg-emerald-500";
+      ? "bg-radix-amber-9"
+      : "bg-radix-green-9";
   return (
     <div className="flex items-center gap-2">
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${signalColor}`} />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
       <a
         className="font-mono font-medium hover:underline text-foreground"
         href={`/admin/rooms/${encodeURIComponent(room.id)}`}
@@ -120,45 +187,79 @@ export function RoomRow({ room }: { room: AdminRoomSummary }) {
 }
 
 export function SystemHealth({ overview }: { overview: AdminOverview | null }) {
+  const prismaUp = overview?.dependencies.prisma === "up";
+  const redisUp = overview?.dependencies.redis === "up";
+
   return (
     <div>
-      <PanelHeader title="系统健康" hint="依赖状态" />
-      <div className="p-3.5 space-y-3">
+      <PanelHeader title="服务健康状态" />
+      <div className="p-3.5 space-y-1.5">
         <HealthRow
           label="PostgreSQL 数据库"
-          value={overview?.dependencies.prisma === "up" ? "正常" : "降级"}
-          width={overview?.dependencies.prisma === "up" ? "98%" : "38%"}
-          color={overview?.dependencies.prisma === "up" ? "#10b981" : "#ef4444"}
+          value={prismaUp ? "正常" : "异常"}
+          status={prismaUp ? "healthy" : "critical"}
         />
         <HealthRow
-          label="Redis / 在线状态"
-          value={overview?.dependencies.redis === "up" ? "正常" : "降级"}
-          width={overview?.dependencies.redis === "up" ? "94%" : "30%"}
-          color={overview?.dependencies.redis === "up" ? "#10b981" : "#ef4444"}
+          label="Redis 存储服务"
+          value={
+            redisUp
+              ? `正常 (${translateRedisMode(overview?.dependencies.redisMode ?? "")})`
+              : "异常"
+          }
+          status={redisUp ? "healthy" : "critical"}
         />
         <HealthRow
-          label="应用实例"
-          value={`${overview?.instances ?? 0} 个实例上报`}
-          width={overview?.instances ? "88%" : "25%"}
-          color="#3b82f6"
+          label="服务节点实例"
+          value={`${overview?.instances ?? 0} 个在线`}
+          status="info"
         />
+        {overview?.runtime ? (
+          <>
+            <HealthRow
+              label="服务运行时长"
+              value={formatUptime(overview.runtime.uptimeSeconds)}
+              status="unknown"
+            />
+            <HealthRow
+              label="内存占用 (Heap)"
+              value={`${overview.runtime.memoryHeapUsedMb} MB / ${overview.runtime.memoryHeapTotalMb} MB`}
+              status="unknown"
+            />
+          </>
+        ) : null}
       </div>
-      <p className="px-3.5 pb-3 text-xs text-foreground-muted border-t border-surface-border/40 pt-2.5">
-        数据来自控制台心跳与最近一次 Redis 在线状态采样。
-      </p>
     </div>
   );
 }
 
-export function HealthRow({ label, value, width, color }: { label: string; value: string; width: string; color: string }) {
+export function HealthRow({
+  label,
+  value,
+  status
+}: {
+  label: string;
+  value: ReactNode;
+  status?: "healthy" | "degraded" | "critical" | "unknown" | "info";
+}) {
+  const statusClasses = {
+    healthy: "text-radix-green-11 bg-radix-green-3 border-radix-green-6",
+    degraded: "text-radix-amber-11 bg-radix-amber-3 border-radix-amber-6",
+    critical: "text-radix-red-11 bg-radix-red-3 border-radix-red-6",
+    unknown: "text-foreground-muted bg-surface border-[var(--slate-6)]",
+    info: "text-radix-blue-11 bg-radix-blue-3 border-radix-blue-6"
+  }[status ?? "unknown"];
+
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-foreground-muted">{label}</span>
-        <span className="font-medium text-foreground">{value}</span>
-      </div>
-      <div className="h-1 w-full bg-surface-border/40 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-300" style={{ width, backgroundColor: color }} />
+    <div className="flex items-center justify-between py-1 text-xs">
+      <span className="text-foreground-muted">{label}</span>
+      <div>
+        {status ? (
+          <span className={`px-2 py-0.5 rounded text-[11px] font-medium border-[0.5px] ${statusClasses}`}>
+            {value}
+          </span>
+        ) : (
+          <span className="font-mono text-foreground">{value}</span>
+        )}
       </div>
     </div>
   );
@@ -166,22 +267,22 @@ export function HealthRow({ label, value, width, color }: { label: string; value
 
 export function IncidentPanel({ rows }: { rows: AdminIncident[] }) {
   return (
-    <div className="rounded-lg border border-surface-border bg-surface flex flex-col">
-      <PanelHeader title="异常队列" hint={rows.length ? `最近 ${rows.length} 条` : "暂无异常"} />
-      <div className="divide-y divide-surface-border/60">
+    <div className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface flex flex-col">
+      <PanelHeader title="异常事件队列" hint={rows.length ? `${rows.length} 条` : undefined} />
+      <div className="divide-y divide-[var(--slate-6)]/60">
         {rows.length ? (
           rows.map((row) => (
             <div key={row.id} className="p-3 flex items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    row.severity === "CRITICAL" ? "bg-red-500" : "bg-amber-500"
+                    row.severity === "CRITICAL" ? "bg-radix-red-9" : "bg-radix-amber-9"
                   }`}
                 />
                 <div className="truncate">
                   <div className="font-medium text-foreground truncate">{row.type}</div>
                   <div className="text-xs text-foreground-muted truncate">
-                    {translateScope(row.scopeType)}：{row.scopeId ?? "全局"}
+                    {translateScope(row.scopeType)} {row.scopeId ?? "全局"}
                   </div>
                 </div>
               </div>
@@ -191,7 +292,7 @@ export function IncidentPanel({ rows }: { rows: AdminIncident[] }) {
             </div>
           ))
         ) : (
-          <div className="p-6 text-center text-xs text-foreground-muted">暂无未处理异常。</div>
+          <div className="p-6 text-center text-xs text-foreground-muted">暂无未处理异常</div>
         )}
       </div>
     </div>
@@ -200,16 +301,16 @@ export function IncidentPanel({ rows }: { rows: AdminIncident[] }) {
 
 export function AuditPanel({ rows }: { rows: AuditRow[] }) {
   return (
-    <div className="rounded-lg border border-surface-border bg-surface flex flex-col">
-      <PanelHeader title="最近管理活动" hint="审计记录" />
-      <div className="divide-y divide-surface-border/60">
+    <div className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface flex flex-col">
+      <PanelHeader title="近期管理审计" hint={rows.length ? `${rows.length} 条` : undefined} />
+      <div className="divide-y divide-[var(--slate-6)]/60">
         {rows.length ? (
           rows.map((row) => (
             <div key={row.id} className="p-3 flex items-center justify-between gap-3 text-xs">
               <div className="truncate">
                 <div className="font-medium text-foreground">{translateAction(row.action)}</div>
                 <div className="text-xs text-foreground-muted truncate">
-                  {translateScope(row.targetType)}：{row.targetId ?? "-"} / {translateResult(row.result)}
+                  {translateScope(row.targetType)} {row.targetId ?? "-"} / {translateResult(row.result)}
                 </div>
               </div>
               <span className="font-mono text-xs text-foreground-muted shrink-0">
@@ -218,7 +319,7 @@ export function AuditPanel({ rows }: { rows: AuditRow[] }) {
             </div>
           ))
         ) : (
-          <div className="p-6 text-center text-xs text-foreground-muted">暂无管理活动。</div>
+          <div className="p-6 text-center text-xs text-foreground-muted">暂无管理记录</div>
         )}
       </div>
     </div>
@@ -241,25 +342,26 @@ export function UserCell({ user }: { user: AdminUserSummary }) {
 
 export function HealthText({ value }: { value: string }) {
   const normalized = value.toLowerCase();
-  let dotColor = "bg-emerald-500";
-  let textColor = "text-foreground";
+  let dotColor = "bg-radix-green-9";
+  let textColor = "text-radix-green-11";
 
-  if (normalized.includes("critical") || normalized.includes("disabled") || normalized.includes("failed")) {
-    dotColor = "bg-red-500";
-    textColor = "text-red-400";
+  if (normalized.includes("critical") || normalized.includes("disabled") || normalized.includes("failed") || normalized.includes("down")) {
+    dotColor = "bg-radix-red-9";
+    textColor = "text-radix-red-11";
   } else if (
     normalized.includes("degraded") ||
     normalized.includes("open") ||
-    normalized.includes("reconnecting")
+    normalized.includes("reconnecting") ||
+    normalized.includes("conflict")
   ) {
-    dotColor = "bg-amber-500";
-    textColor = "text-amber-400";
+    dotColor = "bg-radix-amber-9";
+    textColor = "text-radix-amber-11";
   } else if (
     normalized.includes("unknown") ||
     normalized.includes("offline") ||
     normalized.includes("recovered")
   ) {
-    dotColor = "bg-zinc-500";
+    dotColor = "bg-[var(--slate-9)]";
     textColor = "text-foreground-muted";
   }
 
@@ -286,7 +388,8 @@ export function translateStatus(value: string) {
     online: "在线",
     reconnecting: "重连中",
     succeeded: "成功",
-    pending: "处理中"
+    pending: "处理中",
+    down: "服务异常"
   };
   return labels[value.toLowerCase()] ?? value;
 }
@@ -330,12 +433,24 @@ export function translateResult(value: string) {
 
 export function translateRedisMode(value: string) {
   const labels: Record<string, string> = {
-    pubsub: "发布订阅",
+    pubsub: "Pub/Sub",
     polling: "轮询",
     degraded: "降级",
     unknown: "未知"
   };
   return labels[value.toLowerCase()] ?? value;
+}
+
+export function formatUptime(totalSeconds: number) {
+  if (totalSeconds < 60) return `${totalSeconds} 秒`;
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) return `${hours} 小时 ${remainingMinutes} 分`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return `${days} 天 ${remainingHours} 小时`;
 }
 
 export function formatTime(value: string) {

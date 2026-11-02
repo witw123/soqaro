@@ -1,4 +1,4 @@
-﻿import { ConflictException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+﻿import { ConflictException, HttpException, HttpStatus, Injectable, NotFoundException, Optional, UnauthorizedException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { adminLoginRequestSchema, adminReasonSchema, adminUserStatusSchema, createAnnouncementRequestSchema, updateAnnouncementRequestSchema } from "@soqaro/shared";
@@ -12,6 +12,7 @@ import { RoomPresenceService } from "../room/services/room-presence.service";
 import { RoomChatService } from "../room/services/room-chat.service";
 import { PlaylistService } from "../playlist/playlist.service";
 import { RoomRealtimePublisher } from "../room/services/room-realtime.publisher";
+import { MetricsService } from "../../common/metrics/metrics.service";
 import { getCorsOrigins, getRequestOrigin, isAllowedOrigin } from "../../common/cors/get-cors-origins";
 
 export const adminSessionCookie = "soqaro_admin_session";
@@ -36,7 +37,8 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     private readonly playlistService: PlaylistService,
     private readonly roomPublisher: RoomRealtimePublisher,
     private readonly turnstile: TurnstileService,
-    private readonly roomChatService: RoomChatService
+    private readonly roomChatService: RoomChatService,
+    @Optional() private readonly metricsService?: MetricsService
   ) {}
 
   onModuleInit() {
@@ -180,7 +182,55 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     const degraded = summaries.filter((room) => room.health === "degraded").length;
     const critical = summaries.filter((room) => room.health === "critical").length;
     const unknown = summaries.filter((room) => room.health === "unknown").length;
-    return { generatedAt: now.toISOString(), dependencies: { prisma: this.prisma.isAvailable() ? "up" : "down", redis: this.redis.isAvailable() ? "up" : "down", redisMode: this.redis.getMode() }, users: { total: users.length, online: new Set(summaries.flatMap((room) => room.onlineUserIds)).size, disabled: users.filter((user) => user.status === "DISABLED").length }, rooms: { total: rooms.length, active: activeRooms.length, healthy, degraded, critical, unknown }, playback: { active: playbackActive, paused: Math.max(0, rooms.length - playbackActive) }, openIncidents: incidents, instances };
+    const mem = process.memoryUsage();
+    const metricsSnapshot = this.metricsService?.snapshot() ?? {
+      wsConnections: 0,
+      activeRooms: 0,
+      realtimeFailures: 0,
+      playbackConflicts: 0,
+      iceFailures: 0,
+      diagnosticsReports: 0,
+      diagnosticsRateLimited: 0
+    };
+    return {
+      generatedAt: now.toISOString(),
+      dependencies: {
+        prisma: this.prisma.isAvailable() ? "up" : "down",
+        redis: this.redis.isAvailable() ? "up" : "down",
+        redisMode: this.redis.getMode()
+      },
+      runtime: {
+        uptimeSeconds: Math.floor(process.uptime()),
+        memoryHeapUsedMb: Math.round((mem.heapUsed / 1024 / 1024) * 10) / 10,
+        memoryHeapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 10) / 10,
+        memoryRssMb: Math.round((mem.rss / 1024 / 1024) * 10) / 10
+      },
+      network: {
+        wsConnections: metricsSnapshot.wsConnections,
+        realtimeFailures: metricsSnapshot.realtimeFailures,
+        playbackConflicts: metricsSnapshot.playbackConflicts,
+        iceFailures: metricsSnapshot.iceFailures
+      },
+      users: {
+        total: users.length,
+        online: new Set(summaries.flatMap((room) => room.onlineUserIds)).size,
+        disabled: users.filter((user) => user.status === "DISABLED").length
+      },
+      rooms: {
+        total: rooms.length,
+        active: activeRooms.length,
+        healthy,
+        degraded,
+        critical,
+        unknown
+      },
+      playback: {
+        active: playbackActive,
+        paused: Math.max(0, rooms.length - playbackActive)
+      },
+      openIncidents: incidents,
+      instances
+    };
   }
 
   async listRooms(query: { q?: string; limit?: number }) {
@@ -705,6 +755,85 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
 
   private async publishUserInvalidated(userId: string) {
     if (this.redis.isPubSubAvailable()) await this.redis.publish("soqaro:auth:user-invalidated", { userId, at: new Date().toISOString() });
+  }
+
+
+  async getTrackStats(): Promise<import("@soqaro/shared").AdminTrackStats> {
+    if (!(await this.prisma.ensureAvailable())) {
+      return { totalTracks: 0, sourceDistribution: {} };
+    }
+    const rooms = await this.prisma.roomState.findMany({ select: { tracks: true } });
+    const distribution: Record<string, number> = {
+      bilibili: 0,
+      netease: 0,
+      qqmusic: 0,
+      local_upload: 0,
+      alist: 0,
+      other: 0
+    };
+    let total = 0;
+    for (const room of rooms) {
+      const tracks = Array.isArray(room.tracks) ? (room.tracks as Array<{ source?: string }>) : [];
+      for (const track of tracks) {
+        total += 1;
+        const source = (track.source ?? "").toLowerCase();
+        if (source === "bilibili" || source.includes("bili")) {
+          distribution.bilibili += 1;
+        } else if (source === "netease" || source.includes("163")) {
+          distribution.netease += 1;
+        } else if (source === "qqmusic" || source.includes("qq")) {
+          distribution.qqmusic += 1;
+        } else if (source === "local_upload" || source === "local") {
+          distribution.local_upload += 1;
+        } else if (source === "alist") {
+          distribution.alist += 1;
+        } else {
+          distribution.other += 1;
+        }
+      }
+    }
+    return { totalTracks: total, sourceDistribution: distribution };
+  }
+
+  async runSystemMaintenance(
+    admin: AdminPrincipal,
+    request: Request
+  ): Promise<import("@soqaro/shared").AdminMaintenanceResult> {
+    this.assertMutationsEnabled();
+    let cleanedSessions = 0;
+    let cleanedTombstones = 0;
+    if (await this.prisma.ensureAvailable()) {
+      const now = new Date();
+      const [adminSessionRes, userSessionRes, tombstoneRes] = await Promise.all([
+        this.prisma.adminSession.deleteMany({
+          where: {
+            OR: [
+              { expiresAt: { lte: now } },
+              { revokedAt: { not: null } }
+            ]
+          }
+        }).catch(() => ({ count: 0 })),
+        this.prisma.userSession.deleteMany({
+          where: { expiresAt: { lte: now } }
+        }).catch(() => ({ count: 0 })),
+        this.prisma.roomTombstone.deleteMany({
+          where: { status: "SUCCEEDED" }
+        }).catch(() => ({ count: 0 }))
+      ]);
+      cleanedSessions = adminSessionRes.count + userSessionRes.count;
+      cleanedTombstones = tombstoneRes.count;
+    }
+    const redisLatencyMs = await this.redis.ping();
+    await this.writeAudit(
+      admin.userId,
+      "system.maintenance",
+      "system",
+      null,
+      `清理会话: ${cleanedSessions}, 清理墓碑: ${cleanedTombstones}, Redis延时: ${redisLatencyMs !== null ? `${redisLatencyMs}ms` : "不可用"}`,
+      "SUCCEEDED",
+      request
+    );
+    return { cleanedSessions, cleanedTombstones, redisLatencyMs };
   }
 
   private async writeAudit(actorUserId: string, action: string, targetType: string, targetId: string | null, reason: string | null, result: string, request: Request) {

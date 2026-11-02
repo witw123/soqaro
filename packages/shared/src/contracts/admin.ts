@@ -83,6 +83,18 @@ export const adminOverviewSchema = z.object({
     redis: z.enum(["up", "down"]),
     redisMode: z.string()
   }),
+  runtime: z.object({
+    uptimeSeconds: z.number().nonnegative(),
+    memoryHeapUsedMb: z.number().nonnegative(),
+    memoryHeapTotalMb: z.number().nonnegative(),
+    memoryRssMb: z.number().nonnegative()
+  }),
+  network: z.object({
+    wsConnections: z.number().int().nonnegative(),
+    realtimeFailures: z.number().int().nonnegative(),
+    playbackConflicts: z.number().int().nonnegative(),
+    iceFailures: z.number().int().nonnegative()
+  }),
   users: z.object({ total: z.number().int().nonnegative(), online: z.number().int().nonnegative(), disabled: z.number().int().nonnegative() }),
   rooms: z.object({ total: z.number().int().nonnegative(), active: z.number().int().nonnegative(), healthy: z.number().int().nonnegative(), degraded: z.number().int().nonnegative(), critical: z.number().int().nonnegative(), unknown: z.number().int().nonnegative() }),
   playback: z.object({ active: z.number().int().nonnegative(), paused: z.number().int().nonnegative() }),
@@ -131,6 +143,17 @@ export const updateAnnouncementRequestSchema = z.object({
   isActive: z.boolean().optional()
 });
 
+export const adminTrackStatsSchema = z.object({
+  totalTracks: z.number().int().nonnegative(),
+  sourceDistribution: z.record(z.string(), z.number().int().nonnegative())
+});
+
+export const adminMaintenanceResultSchema = z.object({
+  cleanedSessions: z.number().int().nonnegative(),
+  cleanedTombstones: z.number().int().nonnegative(),
+  redisLatencyMs: z.number().nullable()
+});
+
 export type AdminRole = z.infer<typeof adminRoleSchema>;
 export type AdminUserStatus = z.infer<typeof adminUserStatusSchema>;
 export type AdminSession = z.infer<typeof adminSessionSchema>;
@@ -147,4 +170,6 @@ export type AdminProviderHealth = z.infer<typeof adminProviderHealthSchema>;
 export type SystemAnnouncement = z.infer<typeof systemAnnouncementSchema>;
 export type CreateAnnouncementRequest = z.infer<typeof createAnnouncementRequestSchema>;
 export type UpdateAnnouncementRequest = z.infer<typeof updateAnnouncementRequestSchema>;
+export type AdminTrackStats = z.infer<typeof adminTrackStatsSchema>;
+export type AdminMaintenanceResult = z.infer<typeof adminMaintenanceResultSchema>;
 

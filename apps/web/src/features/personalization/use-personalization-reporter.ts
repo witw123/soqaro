@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef } from "react";
 import type { PersonalizationTrackInput, ProviderTrackCandidate, TrackMeta } from "@soqaro/shared";
@@ -16,6 +16,8 @@ type ListeningSession = {
   occurredAt: string;
   lastProgressMs: number;
   listenedMs: number;
+  lastReportedListenedMs: number;
+  playCountRecorded: boolean;
   completed: boolean;
   completionReported: boolean;
   quickSkipReported: boolean;
@@ -40,15 +42,24 @@ export function usePersonalizationReporter(input: {
     if (!session || session.listenedMs < 1_000) return;
     try {
       session.track = await enrichPersonalizationTrack(session.track);
-      try {
-        recordLocalListeningProgress({
-          track: session.track,
-          deltaMs: session.listenedMs,
-          isNewPlay: !session.completionReported
-        });
-      } catch {
-        // Local profile update should not block telemetry
+      const incrementalDeltaMs = Math.max(0, session.listenedMs - session.lastReportedListenedMs);
+      const isNewPlay = !session.playCountRecorded;
+      session.lastReportedListenedMs = session.listenedMs;
+      session.playCountRecorded = true;
+
+      if (incrementalDeltaMs > 0 || isNewPlay) {
+        try {
+          recordLocalListeningProgress({
+            userId: session.userId,
+            track: session.track,
+            deltaMs: incrementalDeltaMs,
+            isNewPlay
+          });
+        } catch {
+          // Local profile update should not block telemetry
+        }
       }
+
       await soqaroApi.recordPersonalizationEvent({
         id: session.id,
         type: "playback",
@@ -84,7 +95,19 @@ export function usePersonalizationReporter(input: {
     }
     if (!session || session.userId !== input.userId || trackKey(session.track) !== trackKey(nextTrack)) {
       if (session) void flush(true);
-      sessionRef.current = { id: createSessionId(), userId: input.userId, track: nextTrack, occurredAt: new Date().toISOString(), lastProgressMs: Math.max(0, input.progressMs), listenedMs: 0, completed: false, completionReported: false, quickSkipReported: false };
+      sessionRef.current = {
+        id: createSessionId(),
+        userId: input.userId,
+        track: nextTrack,
+        occurredAt: new Date().toISOString(),
+        lastProgressMs: Math.max(0, input.progressMs),
+        listenedMs: 0,
+        lastReportedListenedMs: 0,
+        playCountRecorded: false,
+        completed: false,
+        completionReported: false,
+        quickSkipReported: false
+      };
       return;
     }
     if (input.isPlaying) {
@@ -123,17 +146,45 @@ function recordFavoriteEvent(track: PersonalizationTrackInput | null, isFavorite
 export function toPersonalizationTrack(track: TrackMeta | null): PersonalizationTrackInput | null {
   if (!track) return null;
   const provider = track.sourceRef?.provider ?? track.sourceType;
-  if (provider !== "local_upload" && provider !== "netease" && provider !== "qqmusic") return null;
+  if (
+    provider !== "local_upload" &&
+    provider !== "netease" &&
+    provider !== "qqmusic" &&
+    provider !== "bilibili" &&
+    provider !== "alist"
+  ) {
+    return null;
+  }
   const providerTrackId = track.sourceRef?.trackId ?? track.fileHash ?? track.id;
   if (!providerTrackId) return null;
-  return { provider, providerTrackId, access: "unknown", quality: null, title: track.title.trim() || "未命名歌曲", artist: track.artist.trim() || "未知艺人", album: track.album?.trim() || null, providerAlbumId: null, providerTags: track.providerTags, releaseTime: null, durationMs: Math.max(0, Math.round(track.durationMs)), artworkUrl: /^https?:\/\//i.test(track.artworkUrl ?? "") ? track.artworkUrl : null };
+  return {
+    provider,
+    providerTrackId,
+    access: "unknown",
+    quality: null,
+    title: track.title.trim() || "未命名歌曲",
+    artist: track.artist.trim() || "未知艺人",
+    album: track.album?.trim() || null,
+    providerAlbumId: null,
+    providerTags: track.providerTags,
+    releaseTime: null,
+    durationMs: Math.max(0, Math.round(track.durationMs)),
+    artworkUrl: /^https?:\/\//i.test(track.artworkUrl ?? "") ? track.artworkUrl : null
+  };
 }
 
 function trackKey(track: PersonalizationTrackInput) { return `${track.provider}:${track.providerTrackId}`; }
 function createSessionId() { return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}:${Math.random().toString(36).slice(2)}`; }
 
 async function enrichPersonalizationTrack(track: PersonalizationTrackInput) {
-  if (track.provider === "local_upload" || (track.providerTags?.length && track.releaseTime)) return track;
+  if (
+    track.provider === "local_upload" ||
+    track.provider === "bilibili" ||
+    track.provider === "alist" ||
+    (track.providerTags?.length && track.releaseTime)
+  ) {
+    return track;
+  }
   const key = trackKey(track);
   const cached = providerTagCache.get(key);
   if (cached) return { ...track, providerTags: cached.tags, releaseTime: cached.releaseTime };

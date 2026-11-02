@@ -69,6 +69,14 @@ export class AdminController {
   @UseGuards(AdminGuard)
   @Get("system/providers") systemProviders() { return this.admin.checkProvidersHealth(); }
   @UseGuards(AdminGuard)
+  @Get("stats/tracks")
+  trackStats() { return this.admin.getTrackStats(); }
+
+  @UseGuards(AdminGuard)
+  @Post("system/maintenance")
+  runMaintenance(@Req() request: Request & { admin?: AdminPrincipal }) { return this.admin.runSystemMaintenance(request.admin!, request); }
+
+  @UseGuards(AdminGuard)
   @Get("announcements") announcements() { return this.admin.listAnnouncements(); }
   @UseGuards(AdminGuard)
   @Post("announcements") createAnnouncement(@Body() body: unknown, @Req() request: Request & { admin?: AdminPrincipal }) { return this.admin.createAnnouncement(request.admin!, body, request); }

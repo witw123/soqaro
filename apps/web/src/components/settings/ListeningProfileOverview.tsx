@@ -25,6 +25,8 @@ import {
 const sourceConfig = {
   netease: { label: "网易云音乐", color: "bg-[#fa233b]", dot: "#fa233b", text: "text-[#fa233b]" },
   qqmusic: { label: "QQ 音乐", color: "bg-[#10b981]", dot: "#10b981", text: "text-[#10b981]" },
+  bilibili: { label: "哔哩哔哩", color: "bg-[#00aeec]", dot: "#00aeec", text: "text-[#00aeec]" },
+  alist: { label: "Alist 网盘", color: "bg-[#3b82f6]", dot: "#3b82f6", text: "text-[#3b82f6]" },
   local_upload: { label: "本地音频", color: "bg-[#94a3b8]", dot: "#94a3b8", text: "text-[#94a3b8]" }
 } as const;
 

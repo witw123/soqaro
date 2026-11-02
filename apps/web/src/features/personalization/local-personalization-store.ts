@@ -1,26 +1,40 @@
-﻿import type {
+import type {
   PersonalizationProfileResponse,
   PersonalizationTrack
 } from "@soqaro/shared";
 
-const LOCAL_PROFILE_KEY = "soqaro_local_profile";
+export function getLocalProfileKey(userId?: string | null): string {
+  return userId ? `soqaro_local_profile_${userId}` : "soqaro_local_profile_guest";
+}
 
-export function getLocalStoredProfile(): PersonalizationProfileResponse | null {
+export function getLocalStoredProfile(userId?: string | null): PersonalizationProfileResponse | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(LOCAL_PROFILE_KEY);
+    const raw = localStorage.getItem(getLocalProfileKey(userId));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export function saveLocalStoredProfile(profile: PersonalizationProfileResponse): void {
+export function saveLocalStoredProfile(profile: PersonalizationProfileResponse, userId?: string | null): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
+    localStorage.setItem(getLocalProfileKey(userId), JSON.stringify(profile));
   } catch {
     // ignore storage quota errors
+  }
+}
+
+export function clearLocalStoredProfile(userId?: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(getLocalProfileKey(userId));
+    if (!userId) {
+      localStorage.removeItem("soqaro_local_profile");
+    }
+  } catch {
+    // ignore storage errors
   }
 }
 
@@ -33,6 +47,7 @@ function toProviderType(p: string): "netease" | "qqmusic" | "bilibili" {
  * 将本地产生的收听事件即时累加到本地画像中
  */
 export function recordLocalListeningProgress(input: {
+  userId?: string | null;
   track: {
     provider: "netease" | "qqmusic" | "bilibili" | "alist" | "local_upload";
     providerTrackId: string;
@@ -45,7 +60,7 @@ export function recordLocalListeningProgress(input: {
   deltaMs: number;
   isNewPlay?: boolean;
 }): PersonalizationProfileResponse {
-  const current = getLocalStoredProfile() ?? {
+  const current = getLocalStoredProfile(input.userId) ?? {
     version: "1.0",
     startedAt: new Date().toISOString(),
     totalListenedMs: 0,
@@ -140,7 +155,17 @@ export function recordLocalListeningProgress(input: {
   );
   current.recentTracks = [recentCandidate, ...filteredRecent].slice(0, 20);
 
-  saveLocalStoredProfile(current);
+  // 更新音源分布
+  const sourceDist = current.sourceDistribution || [];
+  const foundSource = sourceDist.find((s) => s.source === input.track.provider);
+  if (foundSource) {
+    foundSource.listenedMs += delta;
+  } else {
+    sourceDist.push({ source: input.track.provider, listenedMs: delta });
+  }
+  current.sourceDistribution = sourceDist;
+
+  saveLocalStoredProfile(current, input.userId);
   return current;
 }
 
@@ -150,10 +175,17 @@ export function recordLocalListeningProgress(input: {
  */
 export function mergeProfileWithServer(
   local: PersonalizationProfileResponse | null,
-  server: PersonalizationProfileResponse | null
+  server: PersonalizationProfileResponse | null,
+  userId?: string | null
 ): PersonalizationProfileResponse | null {
   if (!local) return server;
   if (!server) return local;
+
+  // 如果服务端画像处于初始或重置状态（无启动时间且各项计数为0），不复活本地旧缓存
+  if (server.startedAt === null && server.totalPlayCount === 0 && server.totalListenedMs === 0) {
+    clearLocalStoredProfile(userId);
+    return server;
+  }
 
   // 综合两端总时长与播放数
   const totalListenedMs = Math.max(local.totalListenedMs || 0, server.totalListenedMs || 0);
@@ -214,6 +246,6 @@ export function mergeProfileWithServer(
     sourceDistribution: server.sourceDistribution?.length ? server.sourceDistribution : local.sourceDistribution || []
   };
 
-  saveLocalStoredProfile(merged);
+  saveLocalStoredProfile(merged, userId);
   return merged;
 }

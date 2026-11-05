@@ -565,7 +565,7 @@
   }
 
   .home-workspace-page .home-centered-workspace {
-    max-width: none;
+    max-width: 1200px;
   }
 
   .workspace-page__header {
@@ -752,6 +752,45 @@
   @keyframes theme-view-transition-reveal {
     to {
       clip-path: circle(150vmax at var(--theme-transition-x) var(--theme-transition-y));
+    }
+  }
+
+  /* Scoped Room Gallery & Stage Threshold View Transitions (250ms ease-out) */
+  html[data-room-transition] ::view-transition-old(root) {
+    animation: room-vt-fade-out 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    clip-path: none;
+  }
+
+  html[data-room-transition] ::view-transition-new(root) {
+    animation: room-vt-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    clip-path: none;
+  }
+
+  html[data-room-transition] ::view-transition-group(*),
+  html[data-room-transition] ::view-transition-old(*),
+  html[data-room-transition] ::view-transition-new(*) {
+    animation-duration: 250ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html[data-room-transition="threshold-close"] ::view-transition-old(root),
+  html[data-room-transition="threshold-close"] ::view-transition-new(root),
+  html[data-room-transition="threshold-close"] ::view-transition-group(*),
+  html[data-room-transition="threshold-close"] ::view-transition-old(*),
+  html[data-room-transition="threshold-close"] ::view-transition-new(*) {
+    animation-duration: 180ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes room-vt-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes room-vt-fade-in {
+    from {
+      opacity: 0;
     }
   }
 
@@ -1155,6 +1194,7 @@
 
 @layer utilities {
   .border-hairline {
+    border-style: solid;
     border-width: 0.5px;
   }
   .glass-panel {

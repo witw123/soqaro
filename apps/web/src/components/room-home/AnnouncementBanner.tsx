@@ -70,7 +70,7 @@ function formatExactTime(isoString: string): string {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
-export function AnnouncementBanner() {
+export function useAnnouncementCenter() {
   const announcementsQuery = useQuery({
     queryKey: ["system-announcements", "active"],
     queryFn: ({ signal }) => soqaroApi.getActiveAnnouncements(signal),
@@ -166,126 +166,124 @@ export function AnnouncementBanner() {
     return announcements.some((item) => !dismissedIds.has(item.id));
   }, [announcements, dismissedIds]);
 
-  return (
-    <>
-      {isDismissed || !announcements.length ? (
-        /* 默认状态：仅显示通知图标，不显示“公告 查看详情 →” */
-        <div className="flex w-full justify-end animate-fade-in">
-          <button
-            type="button"
-            onClick={() => handleOpenModal()}
-            className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-surface-border bg-surface text-foreground-muted hover:text-foreground hover:bg-surface-hover transition-colors shadow-xs cursor-pointer active:scale-95"
-            title="系统公告"
-            aria-label="查看系统公告"
-          >
-            <svg
-              aria-hidden="true"
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
-            {hasUnread ? (
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
-            ) : null}
-          </button>
-        </div>
-      ) : (
-        /* 发布通知时：从最右侧开始，从右向左循环滚动显示内容文字，一次循环只显示一个 */
-        <aside
-          aria-label="系统通知"
-          className="group relative flex w-full items-center justify-between gap-2.5 overflow-hidden rounded-xl border border-surface-border bg-surface px-3 py-1.5 text-xs text-foreground shadow-xs animate-fade-in"
-        >
-          {/* 左侧通知图标（纯图标，无文字） */}
-          <button
-            type="button"
-            onClick={() => handleOpenModal()}
-            className="flex h-5 w-5 items-center justify-center shrink-0 text-accent hover:opacity-80 transition-opacity cursor-pointer select-none"
-            title="查看所有公告"
-            aria-label="查看所有公告"
-          >
-            <svg
-              aria-hidden="true"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
-          </button>
+  const showMarquee = !isDismissed && announcements.length > 0;
 
-          {/* 中间跑马灯：循环从右向左移动，从最右侧出现，一次循环只显示一个 */}
-          <div
-            ref={containerRef}
-            onClick={() => handleOpenModal(currentAnnouncement)}
-            className="announcement-marquee-container relative flex-1 min-w-0 h-5 overflow-hidden flex items-center cursor-pointer select-none"
-            title="点击查看公告详情"
-          >
-            <div
-              key={cycle}
-              className="announcement-marquee-track text-xs font-normal text-foreground/90 group-hover:[animation-play-state:paused]"
-              style={{ animationDuration: `${marqueeDuration}s` }}
-              onAnimationEnd={() => setCycle((c) => c + 1)}
-            >
-              {currentAnnouncementText}
-            </div>
-          </div>
-
-          {/* 右侧关闭按钮：收起通知为默认图标 */}
-          <button
-            type="button"
-            onClick={handleDismissMarquee}
-            className="rounded p-1 text-foreground-muted hover:text-foreground hover:bg-surface-hover transition-colors shrink-0 cursor-pointer"
-            title="收起通知"
-            aria-label="收起通知"
-          >
-            <svg
-              aria-hidden="true"
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </aside>
-      )}
-
-      {/* 图2 界面：公告列表与详情弹窗（参考内容结构，采用收敛克制原生系统样式） */}
-      {isModalOpen ? (
-        <AnnouncementDialogModal
-          announcements={announcements}
-          selectedAnnouncement={selectedAnnouncement}
-          dismissedIds={dismissedIds}
-          onSelectAnnouncement={setSelectedAnnouncement}
-          onMarkAsRead={handleMarkAsRead}
-          onClose={() => {
-            setIsModalOpen(false);
-            setSelectedAnnouncement(null);
-          }}
-        />
+  const bellTriggerNode = !showMarquee ? (
+    <button
+      type="button"
+      onClick={() => handleOpenModal()}
+      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-hairline border-surface-border bg-surface text-foreground-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[250ms] ease-out cursor-pointer active:scale-95"
+      title="系统公告"
+      aria-label="查看系统公告"
+    >
+      <svg
+        aria-hidden="true"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      </svg>
+      {hasUnread ? (
+        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
       ) : null}
-    </>
-  );
+    </button>
+  ) : null;
+
+  const marqueeNode = showMarquee ? (
+    <aside
+      aria-label="系统通知"
+      className="group relative flex w-full items-center justify-between gap-2.5 overflow-hidden rounded-xl border-hairline border-surface-border bg-surface px-3 py-1.5 text-xs text-foreground animate-fade-in"
+    >
+      <button
+        type="button"
+        onClick={() => handleOpenModal()}
+        className="flex h-5 w-5 items-center justify-center shrink-0 text-accent hover:opacity-80 transition-opacity duration-[250ms] ease-out cursor-pointer select-none"
+        title="查看所有公告"
+        aria-label="查看所有公告"
+      >
+        <svg
+          aria-hidden="true"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        </svg>
+      </button>
+
+      <div
+        ref={containerRef}
+        onClick={() => handleOpenModal(currentAnnouncement)}
+        className="announcement-marquee-container relative flex-1 min-w-0 h-5 overflow-hidden flex items-center cursor-pointer select-none"
+        title="点击查看公告详情"
+      >
+        <div
+          key={cycle}
+          className="announcement-marquee-track text-xs font-normal text-foreground/90 group-hover:[animation-play-state:paused]"
+          style={{ animationDuration: `${marqueeDuration}s` }}
+          onAnimationEnd={() => setCycle((c) => c + 1)}
+        >
+          {currentAnnouncementText}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleDismissMarquee}
+        className="rounded p-1 text-foreground-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[250ms] ease-out shrink-0 cursor-pointer"
+        title="收起通知"
+        aria-label="收起通知"
+      >
+        <svg
+          aria-hidden="true"
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </aside>
+  ) : null;
+
+  const modalNode = isModalOpen ? (
+    <AnnouncementDialogModal
+      announcements={announcements}
+      selectedAnnouncement={selectedAnnouncement}
+      dismissedIds={dismissedIds}
+      onSelectAnnouncement={setSelectedAnnouncement}
+      onMarkAsRead={handleMarkAsRead}
+      onClose={() => {
+        setIsModalOpen(false);
+        setSelectedAnnouncement(null);
+      }}
+    />
+  ) : null;
+
+  return {
+    bellTriggerNode,
+    marqueeNode,
+    modalNode
+  };
 }
 
 /**

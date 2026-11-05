@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RotateCw, User, LayoutGrid } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type { Route } from "next";
-import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
+import type { RoomDirectoryItem } from "@soqaro/shared";
 import { useSessionIdentity } from "@/features/session/use-session-identity";
 import { buildAppEntryHref, buildWorkspaceAuthHref } from "@/lib/domain/client-shell";
 import { soqaroApi } from "@/lib/network/soqaro-api";
@@ -15,17 +14,26 @@ import {
   buildRoomJoinBootstrapSnapshot,
   storeRoomSnapshotHandoff
 } from "@/lib/domain/room-snapshot-handoff";
-import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/shell";
-import { AwayRoomReturnButton } from "./AwayRoomReturnButton";
-import { RoomDirectoryCard } from "@/components/room-card";
 import { roomAudioOutput } from "@/features/playback/room-audio-output";
 import { useWorkspacePageActive } from "@/features/workspace/page-activity";
-import { AnnouncementBanner } from "./AnnouncementBanner";
+import { AwayRoomReturnButton } from "./AwayRoomReturnButton";
+import { useAnnouncementCenter } from "./AnnouncementBanner";
 import { CreateRoomDialogModal } from "./CreateRoomDialogModal";
 import { JoinCodeDialogModal } from "./JoinCodeDialogModal";
-import { SelectedRoomDialogModal } from "./SelectedRoomDialogModal";
-import { roomTypeLabel, type CreateRoomForm } from "./room-home-types";
+import { RoomLobbyToolbar } from "./RoomLobbyToolbar";
+import { RoomCuratedGallery } from "./RoomCuratedGallery";
+import { RoomThresholdSheet } from "./RoomThresholdSheet";
+import {
+  buildCuratedGalleryPlan,
+  countRoomsByFilter,
+  type RoomFilterValue
+} from "./room-gallery-layout";
+import {
+  prewarmRoomRuntimeChunk,
+  runRoomViewTransition
+} from "./room-view-transition";
+import type { CreateRoomForm } from "./room-home-types";
 import {
   readAwayRoomId,
   requestAwayRoomResume
@@ -49,7 +57,7 @@ export function RoomsHomePage({
 }: RoomsHomePageProps = {}) {
   const router = useRouter();
   const workspaceEntryHref = buildAppEntryHref();
-  const buildRoomHref = (roomId: string) => `/room/${roomId}`;
+  const buildRoomHref = useCallback((roomId: string) => `/room/${roomId}`, []);
   const authEntryHref = buildWorkspaceAuthHref({
     redirectTo: workspaceEntryHref
   });
@@ -57,7 +65,7 @@ export function RoomsHomePage({
     activeSession,
     hydrated,
     statusMessage,
-    setStatusMessage,
+    setStatusMessage
   } = useSessionIdentity({
     sessionStorageKey: "soqaro-session",
     initialStatusMessage: ""
@@ -74,16 +82,21 @@ export function RoomsHomePage({
   const availableRooms = roomsQuery.data ?? emptyRooms;
   const roomsLoaded = !roomsQuery.isPending;
   const refreshAvailableRooms = roomsQuery.refetch;
-  const [roomTypeFilter, setRoomTypeFilter] = useState<"all" | RoomType>("all");
+
+  const [roomTypeFilter, setRoomTypeFilter] = useState<RoomFilterValue>("all");
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createFormVisibility, setCreateFormVisibility] = useState<"public" | "private">("public");
   const [selectedRoom, setSelectedRoom] = useState<RoomDirectoryItem | null>(null);
+  const [morphingStageRoomId, setMorphingStageRoomId] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [storedAwayRoomId, setStoredAwayRoomId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const joinInFlightRef = useRef(false);
+  const prefetchedRoomIdsRef = useRef(new Set<string>());
   const effectiveAwayRoomId = awayRoomId ?? storedAwayRoomId;
+
+  const announcementCenter = useAnnouncementCenter();
 
   useEffect(() => {
     if (awayRoomId !== undefined) {
@@ -94,8 +107,19 @@ export function RoomsHomePage({
     setStoredAwayRoomId(readAwayRoomId());
   }, [awayRoomId]);
 
+  const handlePrewarmRoom = useCallback(
+    (roomId: string) => {
+      prewarmRoomRuntimeChunk();
+      if (prefetchedRoomIdsRef.current.has(roomId)) return;
+      prefetchedRoomIdsRef.current.add(roomId);
+      router.prefetch(buildRoomHref(roomId) as Route);
+    },
+    [buildRoomHref, router]
+  );
+
   function handleResumeAwayRoom() {
     if (!effectiveAwayRoomId) return;
+    prewarmRoomRuntimeChunk();
     if (onResumeAwayRoom) {
       onResumeAwayRoom();
       return;
@@ -118,12 +142,22 @@ export function RoomsHomePage({
     }
   }, [pageActive, activeSession?.userId, queryClient]);
 
+  // Keep open threshold room data synced when background directory query refreshes
+  useEffect(() => {
+    if (!selectedRoom) return;
+    const updated = availableRooms.find((item) => item.room.id === selectedRoom.room.id);
+    if (updated && updated !== selectedRoom) {
+      setSelectedRoom(updated);
+    }
+  }, [availableRooms, selectedRoom]);
+
   function openCreateRoom(visibility: "public" | "private") {
     if (!activeSession) {
       setStatusMessage("创建房间需要先登录账号。");
       router.push(authEntryHref as Route);
       return;
     }
+    prewarmRoomRuntimeChunk();
     setCreateFormVisibility(visibility);
     setDialogError(null);
     setCreateDialogOpen(true);
@@ -135,12 +169,14 @@ export function RoomsHomePage({
       router.push(authEntryHref as Route);
       return;
     }
+    prewarmRoomRuntimeChunk();
     setDialogError(null);
     setJoinDialogOpen(true);
   }
 
   async function handleCreateRoom(form: CreateRoomForm) {
     primeRoomAudioFromUserGesture();
+    prewarmRoomRuntimeChunk();
     try {
       const snapshot = await soqaroApi.createRoom({
         visibility: form.visibility,
@@ -171,6 +207,7 @@ export function RoomsHomePage({
     joinInFlightRef.current = true;
 
     primeRoomAudioFromUserGesture();
+    prewarmRoomRuntimeChunk();
     try {
       const joined = await soqaroApi.joinRoomByCode(code.trim(), password);
       storeRoomSnapshotHandoff(buildRoomJoinBootstrapSnapshot(joined));
@@ -182,7 +219,7 @@ export function RoomsHomePage({
       } else {
         setStatusMessage(toUserFacingError(error));
       }
-    }    finally {
+    } finally {
       joinInFlightRef.current = false;
     }
   }
@@ -197,18 +234,100 @@ export function RoomsHomePage({
       router.push(authEntryHref as Route);
       return;
     }
-    setSelectedRoom(room);
-    setDialogError(null);
+
+    handlePrewarmRoom(room.room.id);
+
+    // Stage 1: arm the clicked card's stage with `active-room-stage` before old snapshot capture
+    flushSync(() => {
+      setMorphingStageRoomId(room.room.id);
+    });
+
+    // Stage 2: hand `active-room-stage` exclusively to RoomThresholdSheet in the new snapshot
+    runRoomViewTransition("threshold-open", () => {
+      setMorphingStageRoomId(null);
+      setSelectedRoom(room);
+      setDialogError(null);
+    });
   }
 
-  const visibleRooms = useMemo(
-    () => availableRooms
-      .filter((room) => roomTypeFilter === "all" || room.room.roomType === roomTypeFilter)
-      .sort((left, right) =>
-      right.room.directoryOnlineMemberCount - left.room.directoryOnlineMemberCount
-    ),
+  function closeRoomDetails() {
+    if (!selectedRoom) return;
+    const returningId = selectedRoom.room.id;
+    runRoomViewTransition(
+      "threshold-close",
+      () => {
+        setMorphingStageRoomId(returningId);
+        setSelectedRoom(null);
+        setDialogError(null);
+      },
+      () => {
+        setMorphingStageRoomId(null);
+      }
+    );
+  }
+
+  function handleQuickEnterRoom(room: RoomDirectoryItem) {
+    if (room.room.id === effectiveAwayRoomId) {
+      handleResumeAwayRoom();
+      return;
+    }
+    if (!activeSession) {
+      setStatusMessage("进入房间需要先登录账号。");
+      router.push(authEntryHref as Route);
+      return;
+    }
+    if (room.room.hasPassword) {
+      openRoomDetails(room);
+      return;
+    }
+    if (isPending || joinInFlightRef.current) return;
+    handlePrewarmRoom(room.room.id);
+    startTransition(() => void handleJoinRoom(room.room.joinCode));
+  }
+
+  function handleFilterChange(nextFilter: RoomFilterValue) {
+    if (nextFilter === roomTypeFilter) return;
+    runRoomViewTransition("gallery", () => {
+      setRoomTypeFilter(nextFilter);
+    });
+  }
+
+  const filterCounts = useMemo(
+    () => countRoomsByFilter(availableRooms),
+    [availableRooms]
+  );
+
+  const filteredRooms = useMemo(
+    () =>
+      availableRooms.filter(
+        (room) => roomTypeFilter === "all" || room.room.roomType === roomTypeFilter
+      ),
     [availableRooms, roomTypeFilter]
   );
+
+  const galleryPlan = useMemo(
+    () => buildCuratedGalleryPlan(filteredRooms, effectiveAwayRoomId),
+    [filteredRooms, effectiveAwayRoomId]
+  );
+
+  const selectedRoomIndex = useMemo(() => {
+    if (!selectedRoom) return -1;
+    return galleryPlan.orderedRooms.findIndex((item) => item.room.id === selectedRoom.room.id);
+  }, [galleryPlan.orderedRooms, selectedRoom]);
+
+  function handleStepSelectedRoom(direction: -1 | 1) {
+    const ordered = galleryPlan.orderedRooms;
+    if (!selectedRoom || ordered.length <= 1) return;
+    const baseIndex = selectedRoomIndex === -1 ? 0 : selectedRoomIndex;
+    const nextRoom = ordered[(baseIndex + direction + ordered.length) % ordered.length];
+    if (!nextRoom || nextRoom.room.id === selectedRoom.room.id) return;
+
+    handlePrewarmRoom(nextRoom.room.id);
+    runRoomViewTransition("threshold-step", () => {
+      setSelectedRoom(nextRoom);
+      setDialogError(null);
+    });
+  }
 
   if (!hydrated) {
     return <div className="min-h-[calc(100*var(--app-dvh))] bg-background" />;
@@ -216,7 +335,6 @@ export function RoomsHomePage({
 
   return (
     <main className="workspace-page home-workspace-page hide-scrollbar relative flex flex-col overflow-y-auto selection:bg-accent/30 selection:text-white pb-[calc(var(--room-mobile-bottom-inset)+2rem)] md:pb-[calc(12rem+env(safe-area-inset-bottom))] md:pl-[var(--app-sidebar-width)]">
-
       {showSidebar ? (
         <AppSidebar
           activeItem="home"
@@ -224,164 +342,49 @@ export function RoomsHomePage({
         />
       ) : null}
 
-      {effectiveAwayRoomId && showSidebar ? <AwayRoomReturnButton onClick={handleResumeAwayRoom} /> : null}
-
+      {effectiveAwayRoomId && showSidebar ? (
+        <AwayRoomReturnButton onClick={handleResumeAwayRoom} />
+      ) : null}
 
       <section className="workspace-page__inner home-centered-workspace relative flex w-full shrink-0 flex-col gap-4 pt-[calc(0.75rem+env(safe-area-inset-top))] md:gap-5">
-        <AnnouncementBanner />
+        {announcementCenter.marqueeNode}
 
-        {/* Mobile Header: aligned with desktop actions, restrained & compact without divider */}
-        <header className="flex items-center justify-between gap-3 md:hidden">
-          <div>
-            <h1 className="workspace-page__title text-lg font-semibold tracking-tight text-foreground">房间大厅</h1>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              className="inline-flex h-8 items-center gap-1 rounded-lg bg-accent px-2.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-accent-hover active:scale-95 cursor-pointer"
-              onClick={() => openCreateRoom("public")}
-              type="button"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>创建</span>
-            </button>
-            <button
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-surface-border bg-surface px-2.5 text-xs font-medium text-foreground-muted shadow-sm transition-all hover:bg-surface-hover hover:text-foreground active:scale-95 cursor-pointer"
-              onClick={openJoinDialog}
-              type="button"
-            >
-              <span>房间码</span>
-            </button>
-            <button
-              aria-label="刷新房间列表"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-surface-border bg-surface text-foreground-muted shadow-sm transition-all hover:bg-surface-hover hover:text-foreground active:scale-95 cursor-pointer"
-              onClick={() => startTransition(() => void refreshAvailableRooms())}
-              title="刷新房间列表"
-              type="button"
-            >
-              <RotateCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
-            </button>
-            <Link
-              aria-label="打开个人中心"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-surface-border bg-surface text-foreground-muted shadow-sm transition-all hover:bg-surface-hover hover:text-foreground active:scale-95"
-              href="/app/profile"
-            >
-              <User className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </header>
+        <RoomLobbyToolbar
+          activeFilter={roomTypeFilter}
+          announcementBell={announcementCenter.bellTriggerNode}
+          counts={filterCounts}
+          isRefreshing={isPending || roomsQuery.isFetching}
+          onCreatePublicRoom={() => openCreateRoom("public")}
+          onFilterChange={handleFilterChange}
+          onOpenJoinDialog={openJoinDialog}
+          onRefresh={() => startTransition(() => void refreshAvailableRooms())}
+          roomsLoaded={roomsLoaded}
+        />
 
-        {/* Mobile Filter Tabs directly under header */}
-        <div className="flex items-center gap-1 rounded-xl p-1 border border-surface-border/80 bg-surface/40 shadow-2xs backdrop-blur-md md:hidden" role="tablist" aria-label="房间类型筛选">
-          {(["all", "interactive", "request", "radio"] as const).map((roomType) => {
-            const isSelected = roomTypeFilter === roomType;
-            return (
-              <button
-                aria-selected={isSelected}
-                className={`flex-1 flex min-h-8 whitespace-nowrap items-center justify-center rounded-lg px-2.5 py-1 text-xs transition-all duration-150 cursor-pointer ${
-                  isSelected
-                    ? "bg-surface-elevated text-foreground font-semibold shadow-xs border border-surface-border"
-                    : "border border-transparent text-foreground-muted hover:text-foreground hover:bg-surface-hover/40"
-                }`}
-                key={roomType}
-                onClick={() => setRoomTypeFilter(roomType)}
-                role="tab"
-                type="button"
-              >
-                {roomType === "all" ? "全部" : roomTypeLabel(roomType)}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Desktop Filter Tabs & Action Buttons */}
-        <div className="hidden items-center justify-between gap-4 md:flex">
-          <div className="flex items-center gap-1 rounded-xl border border-surface-border/80 p-1 bg-surface/40 shadow-2xs backdrop-blur-md" role="tablist" aria-label="房间类型筛选">
-            {(["all", "interactive", "request", "radio"] as const).map((roomType) => {
-              const isSelected = roomTypeFilter === roomType;
-              return (
-                <button
-                  aria-selected={isSelected}
-                  className={`flex h-8 whitespace-nowrap items-center justify-center rounded-lg px-3.5 text-xs transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? "bg-surface-elevated text-foreground font-semibold shadow-xs border border-surface-border"
-                      : "border border-transparent text-foreground-muted hover:text-foreground hover:bg-surface-hover/40"
-                  }`}
-                  key={roomType}
-                  onClick={() => setRoomTypeFilter(roomType)}
-                  role="tab"
-                  type="button"
-                >
-                  {roomType === "all" ? "全部" : roomTypeLabel(roomType)}
-                </button>
-              );
-            })}
+        {statusMessage && !selectedRoom && !joinDialogOpen && !createDialogOpen ? (
+          <div
+            className="rounded-xl border-hairline border-surface-border bg-surface px-3.5 py-2 text-xs text-foreground-muted"
+            role="status"
+          >
+            {statusMessage}
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              data-testid="create-public-room"
-              size="sm"
-              className="h-8 rounded-lg px-3.5 text-xs font-medium bg-accent hover:bg-accent-hover text-white shadow-xs transition-colors"
-              onClick={() => openCreateRoom("public")}
-              type="button"
-            >
-              创建房间
-            </Button>
-            <Button
-              data-testid="open-join-room-dialog"
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-lg px-3 border border-surface-border bg-surface hover:bg-surface-hover text-foreground text-xs font-medium transition-colors"
-              onClick={openJoinDialog}
-              type="button"
-            >
-              输入房间码加入
-            </Button>
-            <Button
-              aria-label="刷新房间列表"
-              variant="ghost"
-              size="sm"
-              className="h-8 rounded-lg px-2.5 text-foreground-muted hover:text-foreground hover:bg-surface text-xs transition-colors"
-              onClick={() => startTransition(() => void refreshAvailableRooms())}
-              type="button"
-            >
-              刷新
-            </Button>
-          </div>
-        </div>
+        ) : null}
 
-        {/* Room Cards Container */}
         <div className="min-h-[240px]">
-          <div className="mb-3 flex items-center justify-between md:hidden">
-            <h2 className="text-xs font-semibold text-foreground tracking-tight">房间列表</h2>
-            <span className="text-xs text-foreground-muted">{visibleRooms.length} 个</span>
-          </div>
-          {visibleRooms.length ? (
-            <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3 xl:gap-4">
-              {visibleRooms.map((item) => (
-                <RoomDirectoryCard
-                  key={item.room.id}
-                  room={item}
-                  onOpen={() => openRoomDetails(item)}
-                />
-              ))}
-            </div>
-          ) : !roomsLoaded ? (
-            <div className="flex min-h-[260px] items-center justify-center py-14 text-center text-sm text-foreground-muted">
-              正在加载房间…
-            </div>
-          ) : (
-            <div className="flex min-h-[260px] flex-col items-center justify-center py-14 text-center opacity-85 rounded-xl border border-surface-border/50 bg-surface/30">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-surface-border bg-surface text-foreground-muted">
-                <LayoutGrid className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 font-semibold text-foreground">当前没有房间</h3>
-              <p className="max-w-sm text-sm text-foreground-muted">
-                你可以先创建一个房间等待其他人加入，或者稍后回来刷新列表。
-              </p>
-            </div>
-          )}
+          <RoomCuratedGallery
+            awayRoomId={effectiveAwayRoomId}
+            morphingStageRoomId={morphingStageRoomId}
+            onOpenRoom={openRoomDetails}
+            onPrewarmRoom={handlePrewarmRoom}
+            onQuickEnterRoom={handleQuickEnterRoom}
+            plan={galleryPlan}
+            roomsLoaded={roomsLoaded}
+            suppressCardSlotTransition={Boolean(selectedRoom || morphingStageRoomId)}
+          />
         </div>
       </section>
+
+      {announcementCenter.modalNode}
 
       {createDialogOpen ? (
         <CreateRoomDialogModal
@@ -417,10 +420,11 @@ export function RoomsHomePage({
       ) : null}
 
       {selectedRoom ? (
-        <SelectedRoomDialogModal
+        <RoomThresholdSheet
+          currentIndex={selectedRoomIndex === -1 ? 0 : selectedRoomIndex}
           dialogError={dialogError}
           isPending={isPending}
-          onClose={() => setSelectedRoom(null)}
+          onClose={closeRoomDetails}
           onConfirm={(password) => {
             setDialogError(null);
             startTransition(async () => {
@@ -431,7 +435,14 @@ export function RoomsHomePage({
               }
             });
           }}
+          onStepRoom={
+            selectedRoomIndex !== -1 && galleryPlan.orderedRooms.length > 1
+              ? handleStepSelectedRoom
+              : undefined
+          }
           room={selectedRoom}
+          stageTransitionActive={morphingStageRoomId === null}
+          totalRooms={selectedRoomIndex !== -1 ? galleryPlan.orderedRooms.length : 1}
         />
       ) : null}
     </main>
@@ -444,4 +455,3 @@ function primeRoomAudioFromUserGesture() {
   // immediately after navigation, before the listener has another gesture.
   void roomAudioOutput.primeOutputs({ localAudio: null });
 }
-

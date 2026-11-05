@@ -10,6 +10,8 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
   onOpen: () => void;
+  onPrewarm?: () => void;
+  stageTransitionName?: string;
 };
 
 type RoomCardTheme = {
@@ -51,7 +53,12 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
   }
 };
 
-export function RoomDirectoryCard({ room: directoryItem, onOpen }: RoomDirectoryCardProps) {
+export function RoomDirectoryCard({
+  room: directoryItem,
+  onOpen,
+  onPrewarm,
+  stageTransitionName
+}: RoomDirectoryCardProps) {
   const room = directoryItem.room;
   const theme = roomCardThemes[room.roomType];
   const nowPlaying = room.directoryNowPlaying;
@@ -68,6 +75,7 @@ export function RoomDirectoryCard({ room: directoryItem, onOpen }: RoomDirectory
       data-room-theme={room.roomType}
       data-room-type={room.roomType}
       data-testid="room-directory-card"
+      onPointerEnter={onPrewarm}
       style={cardStyle}
     >
       <button
@@ -75,6 +83,7 @@ export function RoomDirectoryCard({ room: directoryItem, onOpen }: RoomDirectory
         className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none"
         data-testid="room-directory-open"
         onClick={onOpen}
+        onFocus={onPrewarm}
         type="button"
       />
 
@@ -83,47 +92,13 @@ export function RoomDirectoryCard({ room: directoryItem, onOpen }: RoomDirectory
         className="relative w-full aspect-[2.4/1] shrink-0 overflow-hidden rounded-lg border border-surface-border bg-surface shadow-xs"
         data-card-scene={room.roomType}
         data-testid="room-directory-stage"
+        style={stageTransitionName ? { viewTransitionName: stageTransitionName } : undefined}
       >
-        {/* Seamless Badges Over Cover: Room Type (Left) & Online Count (Right) with high contrast in both themes */}
-        <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 dark:bg-black/60 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-medium text-slate-800 dark:text-white/90 shadow-xs backdrop-blur-md">
-            <span className="opacity-80">
-              <RoomTypeGlyph roomType={room.roomType} />
-            </span>
-            {theme.label}
-          </span>
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white/90 dark:bg-black/60 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-mono tabular-nums text-slate-700 dark:text-white/90 shadow-xs backdrop-blur-md">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {room.directoryOnlineMemberCount} 人在线
-          </span>
-        </div>
-
-        {nowPlaying?.title ? (
-          <RoomNowPlayingStageScene
-            nowPlaying={nowPlaying}
-            roomType={room.roomType}
-          />
-        ) : (
-          <ArtisticRoomStageScene roomType={room.roomType} />
-        )}
+        <RoomStageVisualContent room={room} themeLabel={theme.label} />
       </section>
 
       {/* Track Playing Information Placed BELOW the cover */}
-      {nowPlaying?.title ? (
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-surface-border bg-surface/75 px-2.5 py-1">
-          <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
-            <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.8s" }} />
-            <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
-            <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
-          </div>
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate text-xs">
-            <span className="font-medium text-foreground truncate">{nowPlaying.title}</span>
-            {nowPlaying.artist ? (
-              <span className="text-foreground-muted truncate shrink-0">/ {nowPlaying.artist}</span>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      {nowPlaying?.title ? <RoomNowPlayingBar nowPlaying={nowPlaying} className="mt-2" /> : null}
 
       <div className={nowPlaying?.title ? "pt-2" : "pt-2.5"}>
         <h3 className="truncate text-sm sm:text-base font-semibold tracking-tight text-foreground transition-colors">
@@ -134,6 +109,98 @@ export function RoomDirectoryCard({ room: directoryItem, onOpen }: RoomDirectory
         </p>
       </div>
     </article>
+  );
+}
+
+export function RoomStageSurface({
+  room: directoryItem,
+  stageTransitionName,
+  aspectClassName = "aspect-[2.15/1]"
+}: {
+  room: RoomDirectoryItem;
+  stageTransitionName?: string;
+  aspectClassName?: string;
+}) {
+  const room = directoryItem.room;
+  const theme = roomCardThemes[room.roomType];
+  const nowPlaying = room.directoryNowPlaying;
+  const surfaceStyle: RoomCardStyle = {
+    "--room-accent": theme.accent,
+    "--room-border": theme.border,
+    "--room-shadow": theme.glow,
+    "--room-soft": theme.soft,
+    ...(stageTransitionName ? { viewTransitionName: stageTransitionName } : {})
+  };
+
+  return (
+    <div className="flex flex-col gap-2" style={surfaceStyle}>
+      <div
+        className={`group relative w-full ${aspectClassName} shrink-0 overflow-hidden rounded-lg border-hairline border-surface-border bg-surface`}
+      >
+        <RoomStageVisualContent room={room} themeLabel={theme.label} />
+      </div>
+      {nowPlaying?.title ? <RoomNowPlayingBar nowPlaying={nowPlaying} /> : null}
+    </div>
+  );
+}
+
+function RoomStageVisualContent({
+  room,
+  themeLabel
+}: {
+  room: RoomDirectoryItem["room"];
+  themeLabel: string;
+}) {
+  const nowPlaying = room.directoryNowPlaying;
+  return (
+    <>
+      {/* Seamless Badges Over Cover: Room Type (Left) & Online Count (Right) with high contrast in both themes */}
+      <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 dark:bg-black/60 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-medium text-slate-800 dark:text-white/90 shadow-xs backdrop-blur-md">
+          <span className="opacity-80">
+            <RoomTypeGlyph roomType={room.roomType} />
+          </span>
+          {themeLabel}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white/90 dark:bg-black/60 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-mono tabular-nums text-slate-700 dark:text-white/90 shadow-xs backdrop-blur-md">
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          {room.directoryOnlineMemberCount} 人在线
+        </span>
+      </div>
+
+      {nowPlaying?.title ? (
+        <RoomNowPlayingStageScene
+          nowPlaying={nowPlaying}
+          roomType={room.roomType}
+        />
+      ) : (
+        <ArtisticRoomStageScene roomType={room.roomType} />
+      )}
+    </>
+  );
+}
+
+function RoomNowPlayingBar({
+  nowPlaying,
+  className = ""
+}: {
+  nowPlaying: NonNullable<RoomDirectoryItem["room"]["directoryNowPlaying"]>;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-2 rounded-lg border border-surface-border bg-surface/75 px-2.5 py-1 ${className}`}>
+      <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.8s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
+      </div>
+      <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate text-xs">
+        <span className="font-medium text-foreground truncate">{nowPlaying.title}</span>
+        {nowPlaying.artist ? (
+          <span className="text-foreground-muted truncate shrink-0">/ {nowPlaying.artist}</span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

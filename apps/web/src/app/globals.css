@@ -773,15 +773,6 @@
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  html[data-room-transition="threshold-close"] ::view-transition-old(root),
-  html[data-room-transition="threshold-close"] ::view-transition-new(root),
-  html[data-room-transition="threshold-close"] ::view-transition-group(*),
-  html[data-room-transition="threshold-close"] ::view-transition-old(*),
-  html[data-room-transition="threshold-close"] ::view-transition-new(*) {
-    animation-duration: 180ms;
-    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
   @keyframes room-vt-fade-out {
     to {
       opacity: 0;

@@ -154,34 +154,43 @@ test("room directory cards match the visual hierarchy at desktop and mobile", as
   await expect(page.getByRole("dialog")).toContainText(rooms[0].room.name);
 });
 
-test("room directory grid and threshold sheet preserve cover proportions with 10 rooms and long track titles", async ({ page }, testInfo) => {
+test("room directory grid and threshold sheet preserve clean hierarchy across short and long content", async ({ page }, testInfo) => {
   const manyRooms = Array.from({ length: 10 }, (_, index) => {
     const roomTypes = ["interactive", "request", "radio"] as const;
-    const roomType = roomTypes[index % 3]!;
     const isProgRockRoom = index === 0;
+    const isShortBioRoom = index === 1;
+    const roomType = isProgRockRoom || isShortBioRoom ? "interactive" : roomTypes[index % 3]!;
     return {
       room: {
         id: `room_multi_${index + 1}`,
-        joinCode: `GAL0${String(index + 1).padStart(2, "0")}`,
-        name: isProgRockRoom ? "前卫摇滚听歌房" : `夜航声学展厅 ${index + 1}`,
+        joinCode: isShortBioRoom ? "MKRDDD" : `GAL0${String(index + 1).padStart(2, "0")}`,
+        name: isProgRockRoom
+          ? "前卫摇滚听歌房"
+          : isShortBioRoom
+            ? "系错听歌房 (原XICBGM)"
+            : `夜航声学展厅 ${index + 1}`,
         description: isProgRockRoom
           ? "听点前卫的（以及器乐长篇组曲鉴赏）。可作为通勤、工作、学习或睡觉时的背景音乐，适合于沙发、电梯间、候车厅、咖啡馆、理发店等地点。"
-          : "多人实时同步收听，共享深夜曲库。",
+          : isShortBioRoom
+            ? "随机播放，可以刷歌"
+            : "多人实时同步收听，共享深夜曲库。",
         hasPassword: false,
         visibility: "public" as const,
         roomType,
-        directoryHostNickname: isProgRockRoom ? "系错" : "夜航主持",
+        directoryHostNickname: isProgRockRoom || isShortBioRoom ? "系错" : "夜航主持",
         directoryMemberCount: 16 - index,
-        directoryOnlineMemberCount: Math.max(1, 16 - index),
+        directoryOnlineMemberCount: isShortBioRoom ? 0 : Math.max(1, 16 - index),
         directoryIsMember: false,
-        directoryQueueDepth: (index + 1) * 3,
+        directoryQueueDepth: isShortBioRoom ? 56 : (index + 1) * 3,
         directoryPendingRequestCount: roomType === "request" ? 2 : 0,
         directoryBroadcastState: roomType === "radio" ? ("on_air" as const) : null,
         directoryNowPlaying: {
           title: isProgRockRoom
             ? "I. The Solid Time of Change, II. Total Mass Retain, III. I Get up I Get Down, IV. Seasons of Man"
-            : `Track Sequence ${index + 1}`,
-          artist: isProgRockRoom ? "Yes" : "M83",
+            : isShortBioRoom
+              ? "Your Eyes"
+              : `Track Sequence ${index + 1}`,
+          artist: isProgRockRoom ? "Yes" : isShortBioRoom ? "山下達郎" : "M83",
           artworkUrl: null
         },
         playbackStatus: "playing" as const
@@ -228,37 +237,69 @@ test("room directory grid and threshold sheet preserve cover proportions with 10
   const grid = page.getByTestId("room-directory-grid");
   await expect(grid).toBeVisible();
 
-  await page.screenshot({ path: testInfo.outputPath("room-directory-grid-desktop.png"), fullPage: true });
-
-  // Open threshold sheet on the long-title room and verify zero horizontal overflow & 2.4:1 stage proportion
+  // 1. Inspect long-description + long-track-title room on desktop
   await cards.first().getByTestId("room-directory-open").click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("前卫摇滚听歌房");
   await expect(dialog).toContainText("适合于沙发、电梯间、候车厅、咖啡馆、理发店等地点");
-  await expect(dialog.getByText("上一间")).toHaveCount(0);
-  await expect(dialog.getByText("下一间")).toHaveCount(0);
+  await expect(dialog.getByText("收起")).toHaveCount(0);
+  await expect(dialog.getByText("公开直入")).toHaveCount(0);
 
   const metrics = await dialog.evaluate((dialogEl) => {
-    const stageEl = dialogEl.querySelector(".aspect-\\[2\\.4\\/1\\]") as HTMLElement | null;
+    const artworkEl = dialogEl.querySelector('[data-testid="room-threshold-artwork"]') as HTMLElement | null;
     const confirmBtn = dialogEl.querySelector('[data-testid="room-entry-confirm"]') as HTMLElement | null;
     const dialogRect = dialogEl.getBoundingClientRect();
-    const stageRect = stageEl?.getBoundingClientRect();
+    const artRect = artworkEl?.getBoundingClientRect();
     const btnRect = confirmBtn?.getBoundingClientRect();
     return {
+      dialogWidth: dialogRect.width,
       scrollWidth: dialogEl.scrollWidth,
       clientWidth: dialogEl.clientWidth,
-      stageRatio: stageRect ? stageRect.width / stageRect.height : 0,
-      stageInsideLeft: stageRect ? stageRect.left >= dialogRect.left : false,
+      artworkSquareDelta: artRect ? Math.abs(artRect.width - artRect.height) : 999,
+      artworkSize: artRect ? artRect.width : 0,
       btnHorizontal: btnRect ? btnRect.width > btnRect.height * 1.6 : false
     };
   });
 
+  expect(metrics.dialogWidth).toBeLessThanOrEqual(440);
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
-  expect(metrics.stageRatio).toBeGreaterThan(2.2);
-  expect(metrics.stageRatio).toBeLessThan(2.6);
-  expect(metrics.stageInsideLeft).toBe(true);
+  expect(metrics.artworkSquareDelta).toBeLessThanOrEqual(1);
+  expect(metrics.artworkSize).toBeGreaterThanOrEqual(40);
   expect(metrics.btnHorizontal).toBe(true);
 
   await page.screenshot({ path: testInfo.outputPath("room-threshold-long-title-desktop.png") });
+
+  // 2. Inspect mobile modal rendering in the same batched pass
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(dialog).toBeVisible();
+  const mobileMetrics = await dialog.evaluate((dialogEl) => {
+    const rect = dialogEl.getBoundingClientRect();
+    return {
+      left: rect.left,
+      right: rect.right,
+      width: rect.width,
+      scrollWidth: dialogEl.scrollWidth,
+      clientWidth: dialogEl.clientWidth
+    };
+  });
+  expect(mobileMetrics.left).toBeGreaterThanOrEqual(12);
+  expect(mobileMetrics.right).toBeLessThanOrEqual(378);
+  expect(mobileMetrics.scrollWidth).toBeLessThanOrEqual(mobileMetrics.clientWidth + 1);
+  await page.screenshot({ path: testInfo.outputPath("room-threshold-mobile.png") });
+
+  // 3. Switch back to desktop and inspect short-description room (zero dead space check)
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await dialog.getByRole("button", { name: "关闭" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  const shortCard = cards.filter({ hasText: "系错听歌房 (原XICBGM)" });
+  await shortCard.getByTestId("room-directory-open").click();
+  await expect(dialog).toContainText("系错听歌房 (原XICBGM)");
+  await expect(dialog).toContainText("随机播放，可以刷歌");
+  await expect(dialog).toContainText("Your Eyes");
+  await expect(dialog).toContainText("56 首曲目");
+  await expect(dialog).toContainText("MKRDDD");
+
+  await page.screenshot({ path: testInfo.outputPath("room-threshold-short-bio-desktop.png") });
 });

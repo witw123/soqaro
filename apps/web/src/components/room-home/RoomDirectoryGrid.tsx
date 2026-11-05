@@ -13,7 +13,6 @@ type RoomDirectoryGridProps = {
   rooms: RoomDirectoryItem[];
   roomsLoaded: boolean;
   awayRoomId: string | null;
-  morphingStageRoomId: string | null;
   suppressCardSlotTransition?: boolean;
   onOpenRoom: (room: RoomDirectoryItem) => void;
   onPrewarmRoom: (roomId: string) => void;
@@ -23,7 +22,6 @@ export function RoomDirectoryGrid({
   rooms,
   roomsLoaded,
   awayRoomId,
-  morphingStageRoomId,
   suppressCardSlotTransition = false,
   onOpenRoom,
   onPrewarmRoom
@@ -72,10 +70,6 @@ export function RoomDirectoryGrid({
         : { viewTransitionName: `lobby-card-${toSafeViewTransitionToken(roomId)}` }),
       animationDelay: `${Math.min(staggerIndex, 8) * 24}ms`
     };
-  }
-
-  function resolveStageTransitionName(roomId: string): string | undefined {
-    return morphingStageRoomId === roomId ? "active-room-stage" : undefined;
   }
 
   if (!rooms.length) {
@@ -132,7 +126,6 @@ export function RoomDirectoryGrid({
               onOpen={() => onOpenRoom(item)}
               onPrewarm={() => onPrewarmRoom(roomId)}
               room={item}
-              stageTransitionName={resolveStageTransitionName(roomId)}
             />
           </div>
         );

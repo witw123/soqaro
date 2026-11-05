@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
@@ -88,7 +87,6 @@ export function RoomsHomePage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createFormVisibility, setCreateFormVisibility] = useState<"public" | "private">("public");
   const [selectedRoom, setSelectedRoom] = useState<RoomDirectoryItem | null>(null);
-  const [morphingStageRoomId, setMorphingStageRoomId] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [storedAwayRoomId, setStoredAwayRoomId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -236,34 +234,14 @@ export function RoomsHomePage({
     }
 
     handlePrewarmRoom(room.room.id);
-
-    // Stage 1: arm the clicked card's stage with `active-room-stage` before old snapshot capture
-    flushSync(() => {
-      setMorphingStageRoomId(room.room.id);
-    });
-
-    // Stage 2: hand `active-room-stage` exclusively to RoomThresholdSheet in the new snapshot
-    runRoomViewTransition("threshold-open", () => {
-      setMorphingStageRoomId(null);
-      setSelectedRoom(room);
-      setDialogError(null);
-    });
+    setSelectedRoom(room);
+    setDialogError(null);
   }
 
   function closeRoomDetails() {
     if (!selectedRoom) return;
-    const returningId = selectedRoom.room.id;
-    runRoomViewTransition(
-      "threshold-close",
-      () => {
-        setMorphingStageRoomId(returningId);
-        setSelectedRoom(null);
-        setDialogError(null);
-      },
-      () => {
-        setMorphingStageRoomId(null);
-      }
-    );
+    setSelectedRoom(null);
+    setDialogError(null);
   }
 
   function handleFilterChange(nextFilter: RoomFilterValue) {
@@ -335,12 +313,11 @@ export function RoomsHomePage({
         <div className="min-h-[240px]">
           <RoomDirectoryGrid
             awayRoomId={effectiveAwayRoomId}
-            morphingStageRoomId={morphingStageRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
             rooms={sortedRooms}
             roomsLoaded={roomsLoaded}
-            suppressCardSlotTransition={Boolean(selectedRoom || morphingStageRoomId)}
+            suppressCardSlotTransition={Boolean(selectedRoom)}
           />
         </div>
       </section>
@@ -396,7 +373,6 @@ export function RoomsHomePage({
             });
           }}
           room={selectedRoom}
-          stageTransitionActive={morphingStageRoomId === null}
         />
       ) : null}
     </main>

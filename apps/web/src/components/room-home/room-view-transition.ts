@@ -2,7 +2,7 @@
 
 import { flushSync } from "react-dom";
 
-export type RoomTransitionKind = "gallery" | "threshold-open" | "threshold-close" | "threshold-step" | "room-enter";
+export type RoomTransitionKind = "gallery" | "room-enter";
 
 type ViewTransitionHandle = {
   finished: Promise<void>;

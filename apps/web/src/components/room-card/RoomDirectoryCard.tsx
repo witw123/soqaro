@@ -11,7 +11,6 @@ type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
   onOpen: () => void;
   onPrewarm?: () => void;
-  stageTransitionName?: string;
 };
 
 type RoomCardTheme = {
@@ -56,8 +55,7 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
 export function RoomDirectoryCard({
   room: directoryItem,
   onOpen,
-  onPrewarm,
-  stageTransitionName
+  onPrewarm
 }: RoomDirectoryCardProps) {
   const room = directoryItem.room;
   const theme = roomCardThemes[room.roomType];
@@ -92,7 +90,6 @@ export function RoomDirectoryCard({
         className="relative w-full aspect-[2.4/1] shrink-0 overflow-hidden rounded-lg border border-surface-border bg-surface shadow-xs"
         data-card-scene={room.roomType}
         data-testid="room-directory-stage"
-        style={stageTransitionName ? { viewTransitionName: stageTransitionName } : undefined}
       >
         <RoomStageVisualContent room={room} themeLabel={theme.label} />
       </section>
@@ -109,38 +106,6 @@ export function RoomDirectoryCard({
         </p>
       </div>
     </article>
-  );
-}
-
-export function RoomStageSurface({
-  room: directoryItem,
-  stageTransitionName,
-  aspectClassName = "aspect-[2.4/1]"
-}: {
-  room: RoomDirectoryItem;
-  stageTransitionName?: string;
-  aspectClassName?: string;
-}) {
-  const room = directoryItem.room;
-  const theme = roomCardThemes[room.roomType];
-  const nowPlaying = room.directoryNowPlaying;
-  const surfaceStyle: RoomCardStyle = {
-    "--room-accent": theme.accent,
-    "--room-border": theme.border,
-    "--room-shadow": theme.glow,
-    "--room-soft": theme.soft
-  };
-
-  return (
-    <div className="flex min-w-0 w-full flex-col gap-2 overflow-hidden" style={surfaceStyle}>
-      <div
-        className={`group relative w-full ${aspectClassName} shrink-0 overflow-hidden rounded-lg border-hairline border-surface-border bg-surface`}
-        style={stageTransitionName ? { viewTransitionName: stageTransitionName } : undefined}
-      >
-        <RoomStageVisualContent room={room} themeLabel={theme.label} />
-      </div>
-      {nowPlaying?.title ? <RoomNowPlayingBar nowPlaying={nowPlaying} /> : null}
-    </div>
   );
 }
 

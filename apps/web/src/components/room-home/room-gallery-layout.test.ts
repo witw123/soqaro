@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 import {
-  buildCuratedGalleryPlan,
   countRoomsByFilter,
   formatRoomLiveMetric,
   sortCuratedRooms
@@ -61,35 +60,6 @@ describe("room-gallery-layout", () => {
       "playing_small",
       "idle_crowded"
     ]);
-  });
-
-  it("partitions rooms cleanly into scrolling rail and lower grid without single-card orphans", () => {
-    const r1 = makeRoom("r1", { online: 10, playing: true });
-    const r2 = makeRoom("r2", { online: 8, playing: true });
-    const r3 = makeRoom("r3", { online: 6, playing: true });
-
-    expect(buildCuratedGalleryPlan([]).mode).toBe("empty");
-
-    const threePlan = buildCuratedGalleryPlan([r1, r2, r3]);
-    expect(threePlan.mode).toBe("rail");
-    expect(threePlan.featuredRooms).toHaveLength(3);
-    expect(threePlan.gridRooms).toHaveLength(0);
-
-    const sevenRooms = Array.from({ length: 7 }, (_, i) =>
-      makeRoom(`room_${i}`, { online: 20 - i, playing: i < 3 })
-    );
-    const sevenPlan = buildCuratedGalleryPlan(sevenRooms);
-    expect(sevenPlan.mode).toBe("rail-and-grid");
-    expect(sevenPlan.featuredRooms).toHaveLength(5);
-    expect(sevenPlan.gridRooms).toHaveLength(2);
-
-    const sixteenRooms = Array.from({ length: 16 }, (_, i) =>
-      makeRoom(`room16_${i}`, { online: 30 - i, playing: i < 4 })
-    );
-    const sixteenPlan = buildCuratedGalleryPlan(sixteenRooms);
-    expect(sixteenPlan.mode).toBe("rail-and-grid");
-    expect(sixteenPlan.featuredRooms).toHaveLength(6);
-    expect(sixteenPlan.gridRooms).toHaveLength(10);
   });
 
   it("counts filter categories and formats live metrics cleanly", () => {

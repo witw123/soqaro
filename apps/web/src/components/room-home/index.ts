@@ -5,7 +5,7 @@ export * from "./RoomDialog";
 export * from "./CreateRoomDialogModal";
 export * from "./JoinCodeDialogModal";
 export * from "./RoomLobbyToolbar";
-export * from "./RoomCuratedGallery";
+export * from "./RoomDirectoryGrid";
 export * from "./RoomThresholdSheet";
 export * from "./AwayRoomReturnButton";
 export * from "./RoomCenterOverview";

@@ -2,17 +2,6 @@ import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 
 export type RoomFilterValue = "all" | RoomType;
 
-export type GalleryLayoutMode = "empty" | "rail" | "rail-and-grid";
-
-export type CuratedGalleryPlan = {
-  mode: GalleryLayoutMode;
-  orderedRooms: RoomDirectoryItem[];
-  featuredRooms: RoomDirectoryItem[];
-  gridRooms: RoomDirectoryItem[];
-};
-
-const FEATURED_RAIL_LIMIT = 6;
-
 export function isRoomActivelyPlaying(item: RoomDirectoryItem): boolean {
   const { room } = item;
   return room.playbackStatus === "playing" || room.directoryBroadcastState === "on_air";
@@ -65,42 +54,6 @@ export function countRoomsByFilter(
   }
 
   return counts;
-}
-
-export function buildCuratedGalleryPlan(
-  rooms: readonly RoomDirectoryItem[],
-  awayRoomId?: string | null
-): CuratedGalleryPlan {
-  const orderedRooms = sortCuratedRooms(rooms, awayRoomId);
-  const count = orderedRooms.length;
-
-  if (count === 0) {
-    return {
-      mode: "empty",
-      orderedRooms,
-      featuredRooms: [],
-      gridRooms: []
-    };
-  }
-
-  if (count <= FEATURED_RAIL_LIMIT) {
-    return {
-      mode: "rail",
-      orderedRooms,
-      featuredRooms: orderedRooms,
-      gridRooms: []
-    };
-  }
-
-  // Avoid leaving a single-card orphan in the lower grid when count === 7
-  const railSliceEnd = count === FEATURED_RAIL_LIMIT + 1 ? FEATURED_RAIL_LIMIT - 1 : FEATURED_RAIL_LIMIT;
-
-  return {
-    mode: "rail-and-grid",
-    orderedRooms,
-    featuredRooms: orderedRooms.slice(0, railSliceEnd),
-    gridRooms: orderedRooms.slice(railSliceEnd)
-  };
 }
 
 export function toSafeViewTransitionToken(id: string): string {

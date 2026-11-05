@@ -22,11 +22,11 @@ import { useAnnouncementCenter } from "./AnnouncementBanner";
 import { CreateRoomDialogModal } from "./CreateRoomDialogModal";
 import { JoinCodeDialogModal } from "./JoinCodeDialogModal";
 import { RoomLobbyToolbar } from "./RoomLobbyToolbar";
-import { RoomCuratedGallery } from "./RoomCuratedGallery";
+import { RoomDirectoryGrid } from "./RoomDirectoryGrid";
 import { RoomThresholdSheet } from "./RoomThresholdSheet";
 import {
-  buildCuratedGalleryPlan,
   countRoomsByFilter,
+  sortCuratedRooms,
   type RoomFilterValue
 } from "./room-gallery-layout";
 import {
@@ -286,21 +286,20 @@ export function RoomsHomePage({
     [availableRooms, roomTypeFilter]
   );
 
-  const galleryPlan = useMemo(
-    () => buildCuratedGalleryPlan(filteredRooms, effectiveAwayRoomId),
+  const sortedRooms = useMemo(
+    () => sortCuratedRooms(filteredRooms, effectiveAwayRoomId),
     [filteredRooms, effectiveAwayRoomId]
   );
 
   const selectedRoomIndex = useMemo(() => {
     if (!selectedRoom) return -1;
-    return galleryPlan.orderedRooms.findIndex((item) => item.room.id === selectedRoom.room.id);
-  }, [galleryPlan.orderedRooms, selectedRoom]);
+    return sortedRooms.findIndex((item) => item.room.id === selectedRoom.room.id);
+  }, [sortedRooms, selectedRoom]);
 
   function handleStepSelectedRoom(direction: -1 | 1) {
-    const ordered = galleryPlan.orderedRooms;
-    if (!selectedRoom || ordered.length <= 1) return;
+    if (!selectedRoom || sortedRooms.length <= 1) return;
     const baseIndex = selectedRoomIndex === -1 ? 0 : selectedRoomIndex;
-    const nextRoom = ordered[(baseIndex + direction + ordered.length) % ordered.length];
+    const nextRoom = sortedRooms[(baseIndex + direction + sortedRooms.length) % sortedRooms.length];
     if (!nextRoom || nextRoom.room.id === selectedRoom.room.id) return;
 
     handlePrewarmRoom(nextRoom.room.id);
@@ -352,13 +351,12 @@ export function RoomsHomePage({
         ) : null}
 
         <div className="min-h-[240px]">
-          <RoomCuratedGallery
+          <RoomDirectoryGrid
             awayRoomId={effectiveAwayRoomId}
-            filterKey={roomTypeFilter}
             morphingStageRoomId={morphingStageRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
-            plan={galleryPlan}
+            rooms={sortedRooms}
             roomsLoaded={roomsLoaded}
             suppressCardSlotTransition={Boolean(selectedRoom || morphingStageRoomId)}
           />
@@ -417,13 +415,13 @@ export function RoomsHomePage({
             });
           }}
           onStepRoom={
-            selectedRoomIndex !== -1 && galleryPlan.orderedRooms.length > 1
+            selectedRoomIndex !== -1 && sortedRooms.length > 1
               ? handleStepSelectedRoom
               : undefined
           }
           room={selectedRoom}
           stageTransitionActive={morphingStageRoomId === null}
-          totalRooms={selectedRoomIndex !== -1 ? galleryPlan.orderedRooms.length : 1}
+          totalRooms={selectedRoomIndex !== -1 ? sortedRooms.length : 1}
         />
       ) : null}
     </main>

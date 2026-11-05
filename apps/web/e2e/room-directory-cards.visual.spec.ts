@@ -154,7 +154,7 @@ test("room directory cards match the visual hierarchy at desktop and mobile", as
   await expect(page.getByRole("dialog")).toContainText(rooms[0].room.name);
 });
 
-test("scrolling gallery rail and threshold sheet preserve cover proportions with 10 rooms and long track titles", async ({ page }, testInfo) => {
+test("room directory grid and threshold sheet preserve cover proportions with 10 rooms and long track titles", async ({ page }, testInfo) => {
   const manyRooms = Array.from({ length: 10 }, (_, index) => {
     const roomTypes = ["interactive", "request", "radio"] as const;
     const roomType = roomTypes[index % 3]!;
@@ -170,7 +170,6 @@ test("scrolling gallery rail and threshold sheet preserve cover proportions with
         hasPassword: false,
         visibility: "public" as const,
         roomType,
-        radioAutopilot: { enabled: false },
         directoryHostNickname: isProgRockRoom ? "系错" : "夜航主持",
         directoryMemberCount: 16 - index,
         directoryOnlineMemberCount: Math.max(1, 16 - index),
@@ -226,23 +225,12 @@ test("scrolling gallery rail and threshold sheet preserve cover proportions with
   await authorizeStorageRoot(page, cards.first());
   await expect(cards).toHaveCount(10);
 
-  const rail = page.getByTestId("room-featured-rail");
-  await expect(rail).toBeVisible();
-  await expect(page.getByRole("heading", { name: "焦点画廊" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "更多房间" })).toBeVisible();
+  const grid = page.getByTestId("room-directory-grid");
+  await expect(grid).toBeVisible();
 
-  await page.screenshot({ path: testInfo.outputPath("room-scrolling-gallery-desktop.png"), fullPage: true });
-
-  // Verify smooth rail glide via Next button
-  const nextRailButton = page.getByRole("button", { name: "向右滑动房间画廊" });
-  await expect(nextRailButton).toBeEnabled();
-  await nextRailButton.click();
-  await expect.poll(async () => rail.evaluate((el) => el.scrollLeft)).toBeGreaterThan(120);
+  await page.screenshot({ path: testInfo.outputPath("room-directory-grid-desktop.png"), fullPage: true });
 
   // Open threshold sheet on the long-title room and verify zero horizontal overflow & 2.4:1 stage proportion
-  await rail.evaluate((el) => {
-    el.scrollLeft = 0;
-  });
   await cards.first().getByTestId("room-directory-open").click();
 
   const dialog = page.getByRole("dialog");

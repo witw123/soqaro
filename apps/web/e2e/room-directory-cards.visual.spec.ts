@@ -165,7 +165,7 @@ test("room directory grid and threshold sheet preserve cover proportions with 10
         joinCode: `GAL0${String(index + 1).padStart(2, "0")}`,
         name: isProgRockRoom ? "前卫摇滚听歌房" : `夜航声学展厅 ${index + 1}`,
         description: isProgRockRoom
-          ? "听点前卫的（以及器乐长篇组曲鉴赏）"
+          ? "听点前卫的（以及器乐长篇组曲鉴赏）。可作为通勤、工作、学习或睡觉时的背景音乐，适合于沙发、电梯间、候车厅、咖啡馆、理发店等地点。"
           : "多人实时同步收听，共享深夜曲库。",
         hasPassword: false,
         visibility: "public" as const,
@@ -235,6 +235,9 @@ test("room directory grid and threshold sheet preserve cover proportions with 10
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("前卫摇滚听歌房");
+  await expect(dialog).toContainText("适合于沙发、电梯间、候车厅、咖啡馆、理发店等地点");
+  await expect(dialog.getByText("上一间")).toHaveCount(0);
+  await expect(dialog.getByText("下一间")).toHaveCount(0);
 
   const metrics = await dialog.evaluate((dialogEl) => {
     const stageEl = dialogEl.querySelector(".aspect-\\[2\\.4\\/1\\]") as HTMLElement | null;

@@ -291,24 +291,6 @@ export function RoomsHomePage({
     [filteredRooms, effectiveAwayRoomId]
   );
 
-  const selectedRoomIndex = useMemo(() => {
-    if (!selectedRoom) return -1;
-    return sortedRooms.findIndex((item) => item.room.id === selectedRoom.room.id);
-  }, [sortedRooms, selectedRoom]);
-
-  function handleStepSelectedRoom(direction: -1 | 1) {
-    if (!selectedRoom || sortedRooms.length <= 1) return;
-    const baseIndex = selectedRoomIndex === -1 ? 0 : selectedRoomIndex;
-    const nextRoom = sortedRooms[(baseIndex + direction + sortedRooms.length) % sortedRooms.length];
-    if (!nextRoom || nextRoom.room.id === selectedRoom.room.id) return;
-
-    handlePrewarmRoom(nextRoom.room.id);
-    runRoomViewTransition("threshold-step", () => {
-      setSelectedRoom(nextRoom);
-      setDialogError(null);
-    });
-  }
-
   if (!hydrated) {
     return <div className="min-h-[calc(100*var(--app-dvh))] bg-background" />;
   }
@@ -400,7 +382,6 @@ export function RoomsHomePage({
 
       {selectedRoom ? (
         <RoomThresholdSheet
-          currentIndex={selectedRoomIndex === -1 ? 0 : selectedRoomIndex}
           dialogError={dialogError}
           isPending={isPending}
           onClose={closeRoomDetails}
@@ -414,14 +395,8 @@ export function RoomsHomePage({
               }
             });
           }}
-          onStepRoom={
-            selectedRoomIndex !== -1 && sortedRooms.length > 1
-              ? handleStepSelectedRoom
-              : undefined
-          }
           room={selectedRoom}
           stageTransitionActive={morphingStageRoomId === null}
-          totalRooms={selectedRoomIndex !== -1 ? sortedRooms.length : 1}
         />
       ) : null}
     </main>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, ChevronLeft, ChevronRight, Copy, Lock, X } from "lucide-react";
+import { Check, Copy, Lock, X } from "lucide-react";
 import type { RoomDirectoryItem } from "@soqaro/shared";
 import { Button } from "@/components/ui/button";
 import { RoomStageSurface } from "@/components/room-card";
@@ -12,26 +12,20 @@ import { formatRoomLiveMetric } from "./room-gallery-layout";
 
 type RoomThresholdSheetProps = {
   room: RoomDirectoryItem;
-  currentIndex: number;
-  totalRooms: number;
   isPending: boolean;
   dialogError: string | null;
   stageTransitionActive: boolean;
   onClose: () => void;
   onConfirm: (password: string) => void;
-  onStepRoom?: (direction: -1 | 1) => void;
 };
 
 export function RoomThresholdSheet({
   room: directoryItem,
-  currentIndex,
-  totalRooms,
   isPending,
   dialogError: initialDialogError,
   stageTransitionActive,
   onClose,
-  onConfirm,
-  onStepRoom
+  onConfirm
 }: RoomThresholdSheetProps) {
   const room = directoryItem.room;
   const [password, setPassword] = useState("");
@@ -40,37 +34,12 @@ export function RoomThresholdSheet({
 
   useBackHandler(onClose);
 
-  // Reset transient form state when stepping between rooms inside the threshold sheet
+  // Reset transient form state when room selection changes
   useEffect(() => {
     setPassword("");
     setLocalError(null);
     setCopiedCode(false);
   }, [room.id]);
-
-  // Allow Left/Right arrow stepping across gallery rooms while inspecting the threshold
-  useEffect(() => {
-    if (!onStepRoom || totalRooms <= 1) return;
-    const stepRoom = onStepRoom;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (isPending) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-      ) {
-        return;
-      }
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        stepRoom(-1);
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        stepRoom(1);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPending, onStepRoom, totalRooms]);
 
   const displayedError = localError || initialDialogError;
   const liveMetric = formatRoomLiveMetric(directoryItem);
@@ -122,54 +91,61 @@ export function RoomThresholdSheet({
           ) : null}
 
           <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1.16fr)_minmax(0,1fr)] sm:gap-5">
-            {/* Left Column: Shared-Element Stage Viewport + Gallery Stepper */}
-            <div className="flex min-w-0 flex-col justify-between gap-2.5">
+            {/* Left Column: Shared-Element Stage Viewport + Room Metadata */}
+            <div className="flex min-w-0 flex-col gap-2.5">
               <RoomStageSurface
                 aspectClassName="aspect-[2.4/1]"
                 room={directoryItem}
                 stageTransitionName={stageTransitionActive ? "active-room-stage" : undefined}
               />
 
-              {totalRooms > 1 && onStepRoom ? (
-                <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border-hairline border-surface-border bg-surface px-2 py-1 text-xs text-foreground-muted">
-                  <button
-                    aria-label="查看上一个房间"
-                    className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 transition-colors duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground disabled:opacity-40 cursor-pointer"
-                    disabled={isPending}
-                    onClick={() => onStepRoom(-1)}
-                    type="button"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                    <span>上一间</span>
-                  </button>
-                  <span className="shrink-0 font-mono tabular-nums text-foreground-muted">
-                    {currentIndex + 1} / {totalRooms}
+              {/* Concentric rounded-lg telemetry grid in bottom left */}
+              <div className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 rounded-lg border-hairline border-surface-border bg-surface p-2.5 text-xs">
+                <div className="min-w-0">
+                  <span className="block truncate text-foreground-muted">房主</span>
+                  <span className="mt-0.5 block truncate font-medium text-foreground">
+                    {room.directoryHostNickname || "未知"}
                   </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-foreground-muted">房间码</span>
                   <button
-                    aria-label="查看下一个房间"
-                    className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 transition-colors duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground disabled:opacity-40 cursor-pointer"
-                    disabled={isPending}
-                    onClick={() => onStepRoom(1)}
+                    aria-label={`复制房间码 ${room.joinCode}`}
+                    className="mt-0.5 inline-flex max-w-full items-center gap-1.5 font-mono tabular-nums text-foreground transition-colors duration-[250ms] ease-out hover:text-accent cursor-pointer"
+                    onClick={() => void handleCopyCode()}
                     type="button"
                   >
-                    <span>下一间</span>
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{copiedCode ? "已复制" : room.joinCode}</span>
+                    {copiedCode ? (
+                      <Check className="h-3 w-3 shrink-0 text-[var(--green-11)]" />
+                    ) : (
+                      <Copy className="h-3 w-3 shrink-0 opacity-65" />
+                    )}
                   </button>
                 </div>
-              ) : null}
+                <div className="min-w-0">
+                  <span className="block truncate text-foreground-muted">状态</span>
+                  <span className="mt-0.5 flex min-w-0 items-center gap-1 font-medium text-foreground">
+                    {room.hasPassword ? <Lock className="h-3 w-3 shrink-0 text-foreground-muted" /> : null}
+                    <span className="truncate">{accessLabel}</span>
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-foreground-muted">{liveMetric.label}</span>
+                  <span className="mt-0.5 block truncate font-mono tabular-nums text-foreground">
+                    {liveMetric.value}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Right Column: Telemetry & Entry Threshold Form */}
+            {/* Right Column: Title, Description & Entry Form */}
             <form className="flex min-w-0 flex-col justify-between gap-3 pt-0.5" onSubmit={handleSubmit}>
-              <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-2.5">
                 <div className="relative min-w-0 pr-8">
                   <DialogPrimitive.Title className="line-clamp-2 break-words text-lg font-semibold leading-snug tracking-tight text-foreground">
                     {room.name ?? "未命名房间"}
                   </DialogPrimitive.Title>
-                  <DialogPrimitive.Description className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-foreground-muted">
-                    {room.description?.trim() || roomTypeDescription(room.roomType)}
-                  </DialogPrimitive.Description>
-
                   <DialogPrimitive.Close
                     aria-label="关闭"
                     className="absolute right-0 top-0 inline-flex h-7 w-7 items-center justify-center rounded-lg text-foreground-muted transition-colors duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none cursor-pointer"
@@ -179,47 +155,12 @@ export function RoomThresholdSheet({
                   </DialogPrimitive.Close>
                 </div>
 
-                {/* Concentric rounded-lg telemetry grid */}
-                <div className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border-hairline border-surface-border bg-surface p-2.5 text-xs">
-                  <div className="min-w-0">
-                    <span className="block truncate text-foreground-muted">房主</span>
-                    <span className="mt-1 block truncate font-medium text-foreground">
-                      {room.directoryHostNickname || "未知"}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="block truncate text-foreground-muted">房间码</span>
-                    <button
-                      aria-label={`复制房间码 ${room.joinCode}`}
-                      className="mt-1 inline-flex max-w-full items-center gap-1.5 font-mono tabular-nums text-foreground transition-colors duration-[250ms] ease-out hover:text-accent cursor-pointer"
-                      onClick={() => void handleCopyCode()}
-                      type="button"
-                    >
-                      <span className="truncate">{copiedCode ? "已复制" : room.joinCode}</span>
-                      {copiedCode ? (
-                        <Check className="h-3 w-3 shrink-0 text-[var(--green-11)]" />
-                      ) : (
-                        <Copy className="h-3 w-3 shrink-0 opacity-65" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="block truncate text-foreground-muted">状态</span>
-                    <span className="mt-1 flex min-w-0 items-center gap-1 font-medium text-foreground">
-                      {room.hasPassword ? <Lock className="h-3 w-3 shrink-0 text-foreground-muted" /> : null}
-                      <span className="truncate">{accessLabel}</span>
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="block truncate text-foreground-muted">{liveMetric.label}</span>
-                    <span className="mt-1 block truncate font-mono tabular-nums text-foreground">
-                      {liveMetric.value}
-                    </span>
-                  </div>
-                </div>
+                <DialogPrimitive.Description className="max-h-[140px] overflow-y-auto custom-scrollbar whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground-muted">
+                  {room.description?.trim() || roomTypeDescription(room.roomType)}
+                </DialogPrimitive.Description>
 
                 {room.hasPassword ? (
-                  <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
+                  <label className="mt-1 flex flex-col gap-1.5 text-xs font-medium text-foreground">
                     <span>房间密码</span>
                     <input
                       autoCapitalize="none"
@@ -248,7 +189,7 @@ export function RoomThresholdSheet({
                 ) : null}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-1">
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <Button
                   className="h-8 shrink-0 whitespace-nowrap rounded-lg px-3 text-xs"
                   disabled={isPending}

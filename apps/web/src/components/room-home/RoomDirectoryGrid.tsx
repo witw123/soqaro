@@ -81,7 +81,7 @@ export function RoomDirectoryGrid({
   if (!rooms.length) {
     if (!roomsLoaded) {
       return (
-        <div className="grid w-full grid-cols-1 gap-3.5 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:gap-4">
+        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3.5 pt-1 xl:gap-4">
           {[0, 1, 2].map((index) => (
             <div
               key={index}
@@ -111,7 +111,7 @@ export function RoomDirectoryGrid({
 
   return (
     <div
-      className="grid w-full grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:gap-4"
+      className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3.5 xl:gap-4"
       data-testid="room-directory-grid"
       onKeyDown={handleGridKeyDown}
       ref={gridRootRef}

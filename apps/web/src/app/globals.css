@@ -565,7 +565,7 @@
   }
 
   .home-workspace-page .home-centered-workspace {
-    max-width: 1200px;
+    max-width: none;
   }
 
   .workspace-page__header {

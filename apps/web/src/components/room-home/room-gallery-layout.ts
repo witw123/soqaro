@@ -2,16 +2,16 @@ import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 
 export type RoomFilterValue = "all" | RoomType;
 
-export type GalleryLayoutMode = "empty" | "solo" | "diptych" | "trio" | "gallery";
+export type GalleryLayoutMode = "empty" | "rail" | "rail-and-grid";
 
 export type CuratedGalleryPlan = {
   mode: GalleryLayoutMode;
   orderedRooms: RoomDirectoryItem[];
-  leadRoom: RoomDirectoryItem | null;
-  diptychRooms: [RoomDirectoryItem, RoomDirectoryItem] | null;
-  pairedSubRooms: [RoomDirectoryItem, RoomDirectoryItem] | null;
-  matrixRooms: RoomDirectoryItem[];
+  featuredRooms: RoomDirectoryItem[];
+  gridRooms: RoomDirectoryItem[];
 };
+
+const FEATURED_RAIL_LIMIT = 6;
 
 export function isRoomActivelyPlaying(item: RoomDirectoryItem): boolean {
   const { room } = item;
@@ -78,53 +78,28 @@ export function buildCuratedGalleryPlan(
     return {
       mode: "empty",
       orderedRooms,
-      leadRoom: null,
-      diptychRooms: null,
-      pairedSubRooms: null,
-      matrixRooms: []
+      featuredRooms: [],
+      gridRooms: []
     };
   }
 
-  if (count === 1) {
+  if (count <= FEATURED_RAIL_LIMIT) {
     return {
-      mode: "solo",
+      mode: "rail",
       orderedRooms,
-      leadRoom: orderedRooms[0] ?? null,
-      diptychRooms: null,
-      pairedSubRooms: null,
-      matrixRooms: []
+      featuredRooms: orderedRooms,
+      gridRooms: []
     };
   }
 
-  if (count === 2) {
-    return {
-      mode: "diptych",
-      orderedRooms,
-      leadRoom: orderedRooms[0] ?? null,
-      diptychRooms: [orderedRooms[0]!, orderedRooms[1]!],
-      pairedSubRooms: null,
-      matrixRooms: []
-    };
-  }
-
-  if (count === 3) {
-    return {
-      mode: "trio",
-      orderedRooms,
-      leadRoom: orderedRooms[0] ?? null,
-      diptychRooms: null,
-      pairedSubRooms: [orderedRooms[1]!, orderedRooms[2]!],
-      matrixRooms: []
-    };
-  }
+  // Avoid leaving a single-card orphan in the lower grid when count === 7
+  const railSliceEnd = count === FEATURED_RAIL_LIMIT + 1 ? FEATURED_RAIL_LIMIT - 1 : FEATURED_RAIL_LIMIT;
 
   return {
-    mode: "gallery",
+    mode: "rail-and-grid",
     orderedRooms,
-    leadRoom: orderedRooms[0] ?? null,
-    diptychRooms: null,
-    pairedSubRooms: null,
-    matrixRooms: orderedRooms.slice(1)
+    featuredRooms: orderedRooms.slice(0, railSliceEnd),
+    gridRooms: orderedRooms.slice(railSliceEnd)
   };
 }
 

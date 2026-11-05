@@ -9,109 +9,114 @@ import {
 
 function makeRoom(
   id: string,
-  overrides: Partial<RoomDirectoryItem["room"]> & { roomType?: RoomType } = {}
+  overrides: {
+    roomType?: RoomType;
+    online?: number;
+    playing?: boolean;
+    onAir?: boolean;
+    queueDepth?: number;
+    pendingRequests?: number;
+  } = {}
 ): RoomDirectoryItem {
+  const roomType = overrides.roomType ?? "interactive";
   return {
     room: {
       id,
-      joinCode: id.toUpperCase().slice(0, 6),
+      joinCode: id.slice(0, 6).toUpperCase().padEnd(6, "0"),
       name: `Room ${id}`,
-      description: null,
+      description: "Test description",
       hasPassword: false,
       visibility: "public",
-      roomType: "interactive",
+      roomType,
       directoryHostNickname: "Host",
-      directoryMemberCount: 1,
-      directoryOnlineMemberCount: 1,
+      directoryMemberCount: overrides.online ?? 1,
+      directoryOnlineMemberCount: overrides.online ?? 1,
       directoryIsMember: false,
-      directoryQueueDepth: 0,
-      directoryPendingRequestCount: 0,
-      directoryBroadcastState: null,
-      directoryNowPlaying: null,
-      playbackStatus: "paused",
-      ...overrides
+      directoryQueueDepth: overrides.queueDepth ?? 0,
+      directoryPendingRequestCount: overrides.pendingRequests ?? 0,
+      directoryBroadcastState: overrides.onAir ? "on_air" : null,
+      directoryNowPlaying: overrides.playing
+        ? { title: "Track", artist: "Artist", artworkUrl: null }
+        : null,
+      playbackStatus: overrides.playing ? "playing" : "paused"
     }
   };
 }
 
 describe("room-gallery-layout", () => {
-  it("prioritizes away room first, then active playback, then online count", () => {
-    const idleCrowded = makeRoom("idle_crowded", {
-      directoryOnlineMemberCount: 20,
-      playbackStatus: "paused"
-    });
-    const playingSmall = makeRoom("playing_small", {
-      directoryOnlineMemberCount: 4,
-      playbackStatus: "playing",
-      directoryNowPlaying: { title: "Track", artist: "Artist", artworkUrl: null }
-    });
-    const awayIdle = makeRoom("away_idle", {
-      directoryOnlineMemberCount: 1,
-      playbackStatus: "paused"
-    });
+  it("prioritizes away room, then actively playing rooms, then online count", () => {
+    const idleCrowded = makeRoom("idle_crowded", { online: 20, playing: false });
+    const playingSmall = makeRoom("playing_small", { online: 4, playing: true });
+    const playingLarge = makeRoom("playing_large", { online: 12, playing: true });
+    const awayIdle = makeRoom("away_idle", { online: 1, playing: false });
 
     const sorted = sortCuratedRooms(
-      [idleCrowded, playingSmall, awayIdle],
+      [idleCrowded, playingSmall, playingLarge, awayIdle],
       "away_idle"
     );
 
     expect(sorted.map((item) => item.room.id)).toEqual([
       "away_idle",
+      "playing_large",
       "playing_small",
       "idle_crowded"
     ]);
   });
 
-  it("maps room counts to solo, diptych, trio, and gallery topologies", () => {
-    const r1 = makeRoom("r1", { directoryOnlineMemberCount: 10 });
-    const r2 = makeRoom("r2", { directoryOnlineMemberCount: 8, roomType: "request" });
-    const r3 = makeRoom("r3", { directoryOnlineMemberCount: 6, roomType: "radio" });
-    const r4 = makeRoom("r4", { directoryOnlineMemberCount: 3 });
+  it("partitions rooms cleanly into scrolling rail and lower grid without single-card orphans", () => {
+    const r1 = makeRoom("r1", { online: 10, playing: true });
+    const r2 = makeRoom("r2", { online: 8, playing: true });
+    const r3 = makeRoom("r3", { online: 6, playing: true });
 
     expect(buildCuratedGalleryPlan([]).mode).toBe("empty");
 
-    const solo = buildCuratedGalleryPlan([r1]);
-    expect(solo.mode).toBe("solo");
-    expect(solo.leadRoom?.room.id).toBe("r1");
+    const threePlan = buildCuratedGalleryPlan([r1, r2, r3]);
+    expect(threePlan.mode).toBe("rail");
+    expect(threePlan.featuredRooms).toHaveLength(3);
+    expect(threePlan.gridRooms).toHaveLength(0);
 
-    const diptych = buildCuratedGalleryPlan([r1, r2]);
-    expect(diptych.mode).toBe("diptych");
-    expect(diptych.diptychRooms?.map((r) => r.room.id)).toEqual(["r1", "r2"]);
+    const sevenRooms = Array.from({ length: 7 }, (_, i) =>
+      makeRoom(`room_${i}`, { online: 20 - i, playing: i < 3 })
+    );
+    const sevenPlan = buildCuratedGalleryPlan(sevenRooms);
+    expect(sevenPlan.mode).toBe("rail-and-grid");
+    expect(sevenPlan.featuredRooms).toHaveLength(5);
+    expect(sevenPlan.gridRooms).toHaveLength(2);
 
-    const trio = buildCuratedGalleryPlan([r1, r2, r3]);
-    expect(trio.mode).toBe("trio");
-    expect(trio.leadRoom?.room.id).toBe("r1");
-    expect(trio.pairedSubRooms?.map((r) => r.room.id)).toEqual(["r2", "r3"]);
-
-    const gallery = buildCuratedGalleryPlan([r1, r2, r3, r4]);
-    expect(gallery.mode).toBe("gallery");
-    expect(gallery.leadRoom?.room.id).toBe("r1");
-    expect(gallery.matrixRooms.map((r) => r.room.id)).toEqual(["r2", "r3", "r4"]);
+    const sixteenRooms = Array.from({ length: 16 }, (_, i) =>
+      makeRoom(`room16_${i}`, { online: 30 - i, playing: i < 4 })
+    );
+    const sixteenPlan = buildCuratedGalleryPlan(sixteenRooms);
+    expect(sixteenPlan.mode).toBe("rail-and-grid");
+    expect(sixteenPlan.featuredRooms).toHaveLength(6);
+    expect(sixteenPlan.gridRooms).toHaveLength(10);
   });
 
-  it("counts rooms per filter and formats format-specific metrics cleanly", () => {
-    const rooms = [
-      makeRoom("r1", { roomType: "interactive", directoryQueueDepth: 5 }),
-      makeRoom("r2", { roomType: "request", directoryPendingRequestCount: 2, directoryQueueDepth: 4 }),
-      makeRoom("r3", { roomType: "radio", directoryBroadcastState: "on_air" })
-    ];
+  it("counts filter categories and formats live metrics cleanly", () => {
+    const interactive = makeRoom("int", { roomType: "interactive", queueDepth: 6 });
+    const request = makeRoom("req", {
+      roomType: "request",
+      queueDepth: 2,
+      pendingRequests: 3
+    });
+    const radio = makeRoom("rad", { roomType: "radio", onAir: true });
 
-    expect(countRoomsByFilter(rooms)).toEqual({
+    expect(countRoomsByFilter([interactive, request, radio])).toEqual({
       all: 3,
       interactive: 1,
       request: 1,
       radio: 1
     });
 
-    expect(formatRoomLiveMetric(rooms[0]!)).toEqual({
+    expect(formatRoomLiveMetric(interactive)).toEqual({
       label: "共享队列",
-      value: "5 首曲目"
+      value: "6 首曲目"
     });
-    expect(formatRoomLiveMetric(rooms[1]!)).toEqual({
+    expect(formatRoomLiveMetric(request)).toEqual({
       label: "点歌动态",
-      value: "待处理 2 / 队列 4"
+      value: "待处理 3 / 队列 2"
     });
-    expect(formatRoomLiveMetric(rooms[2]!)).toEqual({
+    expect(formatRoomLiveMetric(radio)).toEqual({
       label: "电台信号",
       value: "正在播出"
     });

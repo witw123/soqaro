@@ -794,6 +794,21 @@
     }
   }
 
+  @keyframes room-gallery-slot-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 6px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .room-gallery-slot-enter {
+    animation: room-gallery-slot-enter 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .app-sidebar {
     /* width is a layout property — will-change cannot composite it, so drop the
        reserved layer; the 200ms collapse reflow is an occasional interaction. */
@@ -1182,7 +1197,8 @@
     }
 
     .mobile-app-route-view,
-    .mobile-player-panel {
+    .mobile-player-panel,
+    .room-gallery-slot-enter {
       animation-duration: 0.01ms;
     }
 

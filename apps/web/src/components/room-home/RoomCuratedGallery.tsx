@@ -1,36 +1,44 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { ArrowRight, Check, Copy, LayoutGrid, Lock } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent
+} from "react";
+import { ChevronLeft, ChevronRight, LayoutGrid } from "lucide-react";
 import type { RoomDirectoryItem } from "@soqaro/shared";
 import { RoomDirectoryCard } from "@/components/room-card";
-import { roomTypeDescription } from "./room-home-types";
 import {
-  formatRoomLiveMetric,
   isRoomActivelyPlaying,
   toSafeViewTransitionToken,
-  type CuratedGalleryPlan
+  type CuratedGalleryPlan,
+  type RoomFilterValue
 } from "./room-gallery-layout";
+import { isRoomMotionReduced } from "./room-view-transition";
 
 type RoomCuratedGalleryProps = {
   plan: CuratedGalleryPlan;
+  filterKey: RoomFilterValue;
   roomsLoaded: boolean;
   awayRoomId: string | null;
   morphingStageRoomId: string | null;
   suppressCardSlotTransition?: boolean;
   onOpenRoom: (room: RoomDirectoryItem) => void;
-  onQuickEnterRoom: (room: RoomDirectoryItem) => void;
   onPrewarmRoom: (roomId: string) => void;
 };
 
 export function RoomCuratedGallery({
   plan,
+  filterKey,
   roomsLoaded,
   awayRoomId,
   morphingStageRoomId,
   suppressCardSlotTransition = false,
   onOpenRoom,
-  onQuickEnterRoom,
   onPrewarmRoom
 }: RoomCuratedGalleryProps) {
   const galleryRootRef = useRef<HTMLDivElement>(null);
@@ -60,13 +68,22 @@ export function RoomCuratedGallery({
     event.preventDefault();
     const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
     const nextIndex = (currentIndex + delta + triggers.length) % triggers.length;
-    triggers[nextIndex]?.focus();
+    const nextTrigger = triggers[nextIndex];
+    if (!nextTrigger) return;
+    nextTrigger.focus({ preventScroll: true });
+    nextTrigger.scrollIntoView({
+      behavior: isRoomMotionReduced() ? "auto" : "smooth",
+      block: "nearest",
+      inline: "nearest"
+    });
   }
 
-  function buildSlotStyle(roomId: string): CSSProperties | undefined {
-    if (suppressCardSlotTransition) return undefined;
+  function buildSlotStyle(roomId: string, staggerIndex: number): CSSProperties {
     return {
-      viewTransitionName: `lobby-card-${toSafeViewTransitionToken(roomId)}`
+      ...(suppressCardSlotTransition
+        ? {}
+        : { viewTransitionName: `lobby-card-${toSafeViewTransitionToken(roomId)}` }),
+      animationDelay: `${Math.min(staggerIndex, 8) * 24}ms`
     };
   }
 
@@ -77,7 +94,7 @@ export function RoomCuratedGallery({
   if (!plan.orderedRooms.length) {
     if (!roomsLoaded) {
       return (
-        <div className="grid w-full grid-cols-1 gap-4 pt-1 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid w-full grid-cols-1 gap-3.5 pt-1 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((index) => (
             <div
               key={index}
@@ -107,65 +124,44 @@ export function RoomCuratedGallery({
 
   return (
     <div
-      className="flex w-full flex-col gap-4 md:gap-5"
+      className="flex w-full flex-col gap-5 md:gap-6"
       data-gallery-mode={plan.mode}
       onKeyDown={handleGalleryKeyDown}
       ref={galleryRootRef}
     >
-      {/* Mode 1: Solo Exhibition Frame (N = 1) */}
-      {plan.mode === "solo" && plan.leadRoom ? (
-        <div className="mx-auto w-full max-w-[880px] pt-1 md:pt-3">
-          <LeadStageShowcase
-            awayRoomId={awayRoomId}
-            item={plan.leadRoom}
-            onOpen={() => onOpenRoom(plan.leadRoom!)}
-            onPrewarm={() => onPrewarmRoom(plan.leadRoom!.room.id)}
-            onQuickEnter={() => onQuickEnterRoom(plan.leadRoom!)}
-            slotStyle={buildSlotStyle(plan.leadRoom.room.id)}
-            stageTransitionName={resolveStageTransitionName(plan.leadRoom.room.id)}
-          />
-        </div>
-      ) : null}
+      <FeaturedScrollingGalleryRail
+        awayRoomId={awayRoomId}
+        buildSlotStyle={buildSlotStyle}
+        filterKey={filterKey}
+        hasLowerGrid={plan.gridRooms.length > 0}
+        onOpenRoom={onOpenRoom}
+        onPrewarmRoom={onPrewarmRoom}
+        resolveStageTransitionName={resolveStageTransitionName}
+        rooms={plan.featuredRooms}
+      />
 
-      {/* Mode 2: Balanced Diptych Frame (N = 2) */}
-      {plan.mode === "diptych" && plan.diptychRooms ? (
-        <div className="mx-auto grid w-full max-w-[920px] grid-cols-1 gap-4 pt-1 md:grid-cols-2 md:gap-5 md:pt-2">
-          {plan.diptychRooms.map((item, index) => (
-            <DiptychGalleryFrame
-              awayRoomId={awayRoomId}
-              isPrimary={index === 0}
-              item={item}
-              key={item.room.id}
-              onOpen={() => onOpenRoom(item)}
-              onPrewarm={() => onPrewarmRoom(item.room.id)}
-              onQuickEnter={() => onQuickEnterRoom(item)}
-              slotStyle={buildSlotStyle(item.room.id)}
-              stageTransitionName={resolveStageTransitionName(item.room.id)}
-            />
-          ))}
-        </div>
-      ) : null}
+      {plan.gridRooms.length > 0 ? (
+        <section aria-label="更多房间" className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-1.5 text-xs">
+              <h2 className="font-semibold text-foreground">更多房间</h2>
+              <span className="font-mono tabular-nums text-foreground-muted">
+                {plan.gridRooms.length}
+              </span>
+            </div>
+            <div className="h-[0.5px] flex-1 bg-surface-border/60" aria-hidden="true" />
+          </div>
 
-      {/* Mode 3 & 4: Lead Stage Showcase + Paired Duet (N = 3) or Rhythm Matrix (N >= 4) */}
-      {(plan.mode === "trio" || plan.mode === "gallery") && plan.leadRoom ? (
-        <>
-          <LeadStageShowcase
-            awayRoomId={awayRoomId}
-            item={plan.leadRoom}
-            onOpen={() => onOpenRoom(plan.leadRoom!)}
-            onPrewarm={() => onPrewarmRoom(plan.leadRoom!.room.id)}
-            onQuickEnter={() => onQuickEnterRoom(plan.leadRoom!)}
-            slotStyle={buildSlotStyle(plan.leadRoom.room.id)}
-            stageTransitionName={resolveStageTransitionName(plan.leadRoom.room.id)}
-          />
-
-          {plan.mode === "trio" && plan.pairedSubRooms ? (
-            <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
-              {plan.pairedSubRooms.map((item) => (
+          <div className="grid w-full grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:gap-4">
+            {plan.gridRooms.map((item, index) => {
+              const isAway = Boolean(awayRoomId && awayRoomId === item.room.id);
+              return (
                 <div
-                  className="min-w-0"
+                  className={`room-gallery-slot-enter min-w-0 rounded-xl ${
+                    isAway ? "ring-1 ring-[var(--amber-7)]" : ""
+                  }`}
                   key={item.room.id}
-                  style={buildSlotStyle(item.room.id)}
+                  style={buildSlotStyle(item.room.id, index + 3)}
                 >
                   <RoomDirectoryCard
                     onOpen={() => onOpenRoom(item)}
@@ -174,301 +170,388 @@ export function RoomCuratedGallery({
                     stageTransitionName={resolveStageTransitionName(item.room.id)}
                   />
                 </div>
-              ))}
-            </div>
-          ) : null}
-
-          {plan.mode === "gallery" && plan.matrixRooms.length > 0 ? (
-            <div className="grid w-full grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:gap-4">
-              {plan.matrixRooms.map((item) => (
-                <div
-                  className="min-w-0"
-                  key={item.room.id}
-                  style={buildSlotStyle(item.room.id)}
-                >
-                  <RoomDirectoryCard
-                    onOpen={() => onOpenRoom(item)}
-                    onPrewarm={() => onPrewarmRoom(item.room.id)}
-                    room={item}
-                    stageTransitionName={resolveStageTransitionName(item.room.id)}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </>
+              );
+            })}
+          </div>
+        </section>
       ) : null}
     </div>
   );
 }
 
-function LeadStageShowcase({
-  item,
+function FeaturedScrollingGalleryRail({
+  rooms,
+  filterKey,
+  hasLowerGrid,
   awayRoomId,
-  slotStyle,
-  stageTransitionName,
-  onOpen,
-  onQuickEnter,
-  onPrewarm
+  buildSlotStyle,
+  resolveStageTransitionName,
+  onOpenRoom,
+  onPrewarmRoom
 }: {
-  item: RoomDirectoryItem;
+  rooms: RoomDirectoryItem[];
+  filterKey: RoomFilterValue;
+  hasLowerGrid: boolean;
   awayRoomId: string | null;
-  slotStyle?: CSSProperties;
-  stageTransitionName?: string;
-  onOpen: () => void;
-  onQuickEnter: () => void;
-  onPrewarm: () => void;
+  buildSlotStyle: (roomId: string, staggerIndex: number) => CSSProperties;
+  resolveStageTransitionName: (roomId: string) => string | undefined;
+  onOpenRoom: (room: RoomDirectoryItem) => void;
+  onPrewarmRoom: (roomId: string) => void;
 }) {
-  const { room } = item;
-  const isAway = Boolean(awayRoomId && awayRoomId === room.id);
-  const isActive = isRoomActivelyPlaying(item);
-  const liveMetric = formatRoomLiveMetric(item);
-  const nowPlaying = room.directoryNowPlaying;
+  const trackRef = useRef<HTMLDivElement>(null);
+  const slotMapRef = useRef(new Map<string, HTMLDivElement>());
+  const glideRafRef = useRef<number | null>(null);
+  const glideTargetRef = useRef<number | null>(null);
 
-  const accessText = isAway
-    ? "同步保持中"
-    : room.directoryIsMember
-      ? "已在房间中"
-      : room.hasPassword
-        ? "密码保护"
-        : room.visibility === "private"
-          ? "私密房间"
-          : "公开直入";
+  const [scrollState, setScrollState] = useState({
+    canPrev: false,
+    canNext: false,
+    activeStop: 0,
+    stopTargets: [0] as number[]
+  });
 
-  const actionLabel = isAway
-    ? "回到房间"
-    : room.hasPassword
-      ? "解锁进入"
-      : room.directoryIsMember
-        ? "回到房间"
-        : "进入房间";
+  const [inFrameMap, setInFrameMap] = useState<Record<string, boolean>>({});
 
-  const programSummary = nowPlaying?.title
-    ? nowPlaying.artist
-      ? `${nowPlaying.title} / ${nowPlaying.artist}`
-      : nowPlaying.title
-    : roomTypeDescription(room.roomType);
+  const cancelGlide = useCallback(() => {
+    if (glideRafRef.current !== null) {
+      window.cancelAnimationFrame(glideRafRef.current);
+      glideRafRef.current = null;
+    }
+    glideTargetRef.current = null;
+    const track = trackRef.current;
+    if (track) {
+      track.style.scrollSnapType = "";
+    }
+  }, []);
+
+  const syncScrollMetrics = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+    const currentLeft = Math.max(0, Math.min(maxScroll, track.scrollLeft));
+    const canPrev = currentLeft > 6;
+    const canNext = maxScroll - currentLeft > 6;
+
+    if (maxScroll <= 6) {
+      setScrollState((prev) =>
+        !prev.canPrev && !prev.canNext && prev.stopTargets.length === 1
+          ? prev
+          : { canPrev: false, canNext: false, activeStop: 0, stopTargets: [0] }
+      );
+      return;
+    }
+
+    const stride = Math.max(220, track.clientWidth * 0.8);
+    const stopCount = Math.min(8, Math.max(2, Math.ceil(maxScroll / stride) + 1));
+    const stopTargets = Array.from({ length: stopCount }, (_, index) =>
+      Math.round((index / (stopCount - 1)) * maxScroll)
+    );
+    const activeStop = Math.min(
+      stopCount - 1,
+      Math.max(0, Math.round((currentLeft / maxScroll) * (stopCount - 1)))
+    );
+
+    setScrollState((prev) => {
+      const sameStops =
+        prev.stopTargets.length === stopTargets.length &&
+        prev.stopTargets.every((val, idx) => val === stopTargets[idx]);
+      if (
+        prev.canPrev === canPrev &&
+        prev.canNext === canNext &&
+        prev.activeStop === activeStop &&
+        sameStops
+      ) {
+        return prev;
+      }
+      return { canPrev, canNext, activeStop, stopTargets };
+    });
+  }, []);
+
+  const glideToScrollLeft = useCallback(
+    (rawTarget: number) => {
+      const track = trackRef.current;
+      if (!track) return;
+      const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+      const target = Math.max(0, Math.min(maxScroll, rawTarget));
+
+      if (isRoomMotionReduced() || Math.abs(target - track.scrollLeft) < 2) {
+        cancelGlide();
+        track.scrollLeft = target;
+        syncScrollMetrics();
+        return;
+      }
+
+      if (glideRafRef.current !== null) {
+        window.cancelAnimationFrame(glideRafRef.current);
+      }
+
+      const startLeft = track.scrollLeft;
+      const delta = target - startLeft;
+      const durationMs = 320;
+      const startTime = performance.now();
+      glideTargetRef.current = target;
+      // Suspend native snap while gliding so CSS snap never fights the ease-out curve
+      track.style.scrollSnapType = "none";
+
+      const tick = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / durationMs);
+        // Quartic ease-out: fast responsive launch, silky deceleration into place
+        const eased = 1 - Math.pow(1 - progress, 4);
+        track.scrollLeft = startLeft + delta * eased;
+        syncScrollMetrics();
+
+        if (progress < 1) {
+          glideRafRef.current = window.requestAnimationFrame(tick);
+        } else {
+          glideRafRef.current = null;
+          glideTargetRef.current = null;
+          track.scrollLeft = target;
+          track.style.scrollSnapType = "";
+          syncScrollMetrics();
+        }
+      };
+
+      glideRafRef.current = window.requestAnimationFrame(tick);
+    },
+    [cancelGlide, syncScrollMetrics]
+  );
+
+  // Reset rail scroll position cleanly when switching room filter tabs
+  useEffect(() => {
+    cancelGlide();
+    const track = trackRef.current;
+    if (track) {
+      track.scrollLeft = 0;
+    }
+    syncScrollMetrics();
+  }, [cancelGlide, filterKey, syncScrollMetrics]);
+
+  // Observe container resize & room count updates to keep pagination stops accurate
+  useEffect(() => {
+    syncScrollMetrics();
+    const track = trackRef.current;
+    if (!track) return;
+
+    const handleScroll = () => {
+      if (glideRafRef.current === null) {
+        syncScrollMetrics();
+      }
+    };
+
+    track.addEventListener("scroll", handleScroll, { passive: true });
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => syncScrollMetrics());
+      resizeObserver.observe(track);
+    }
+
+    return () => {
+      track.removeEventListener("scroll", handleScroll);
+      resizeObserver?.disconnect();
+    };
+  }, [rooms.length, syncScrollMetrics]);
+
+  useEffect(() => cancelGlide, [cancelGlide]);
+
+  // Track which cards are comfortably inside the horizontal gallery frame for subtle edge bloom
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setInFrameMap((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const entry of entries) {
+            const roomId = (entry.target as HTMLElement).dataset.railRoomId;
+            if (!roomId) continue;
+            const isComfortablyInFrame = entry.intersectionRatio >= 0.55;
+            if (next[roomId] !== isComfortablyInFrame) {
+              next[roomId] = isComfortablyInFrame;
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      },
+      {
+        root: track,
+        threshold: [0.2, 0.55, 0.85]
+      }
+    );
+
+    for (const node of slotMapRef.current.values()) {
+      observer.observe(node);
+    }
+
+    return () => observer.disconnect();
+  }, [rooms]);
+
+  const isScrollable = scrollState.canPrev || scrollState.canNext;
+  const showHeader = hasLowerGrid || isScrollable;
+
+  const hasAwayInRail = useMemo(
+    () => Boolean(awayRoomId && rooms.some((item) => item.room.id === awayRoomId)),
+    [awayRoomId, rooms]
+  );
+  const hasActiveInRail = useMemo(
+    () => rooms.some((item) => isRoomActivelyPlaying(item)),
+    [rooms]
+  );
+
+  function handleStepStop(direction: -1 | 1) {
+    const { stopTargets, activeStop } = scrollState;
+    if (stopTargets.length <= 1) return;
+
+    // When clicking rapidly during an active glide, advance relative to the in-flight stop
+    let baseStop = activeStop;
+    if (glideTargetRef.current !== null) {
+      const pendingIndex = stopTargets.findIndex(
+        (val) => Math.abs(val - glideTargetRef.current!) <= 8
+      );
+      if (pendingIndex !== -1) baseStop = pendingIndex;
+    }
+
+    const nextIndex = Math.max(0, Math.min(stopTargets.length - 1, baseStop + direction));
+    glideToScrollLeft(stopTargets[nextIndex] ?? 0);
+  }
+
+  const edgeMaskStyle = useMemo((): CSSProperties | undefined => {
+    if (!isScrollable) return undefined;
+    const maskValue =
+      scrollState.canPrev && scrollState.canNext
+        ? "linear-gradient(to right, transparent 0px, black 20px, black calc(100% - 26px), transparent 100%)"
+        : scrollState.canNext
+          ? "linear-gradient(to right, black 0px, black calc(100% - 28px), transparent 100%)"
+          : "linear-gradient(to right, transparent 0px, black 22px, black 100%)";
+
+    return {
+      maskImage: maskValue,
+      WebkitMaskImage: maskValue
+    };
+  }, [isScrollable, scrollState.canNext, scrollState.canPrev]);
+
+  const slideWidthClass =
+    rooms.length === 1
+      ? "w-full max-w-[380px]"
+      : rooms.length <= 3
+        ? "w-[85%] sm:w-[calc((100%-0.875rem)/2)] lg:w-[calc((100%-1.75rem)/3)]"
+        : "w-[85%] sm:w-[calc((100%-0.875rem)/2.15)] lg:w-[calc((100%-2.625rem)/3.2)]";
 
   return (
-    <div
-      className={`grid w-full grid-cols-1 items-stretch gap-1.5 rounded-[20px] border-hairline p-2 transition-colors duration-[250ms] ease-out lg:grid-cols-[1.36fr_1fr] lg:gap-3 ${
-        isAway
-          ? "border-[var(--amber-6)] bg-[var(--amber-2)]"
-          : "border-surface-border bg-surface/35"
-      }`}
-      style={slotStyle}
-    >
-      <div className="min-w-0">
-        <RoomDirectoryCard
-          onOpen={onOpen}
-          onPrewarm={onPrewarm}
-          room={item}
-          stageTransitionName={stageTransitionName}
-        />
-      </div>
-
-      {/* Desktop Curatorial Placard: unboxed surface with 0.5px hairline ledger */}
-      <div className="hidden flex-col justify-between px-3.5 py-2.5 lg:flex">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+    <section aria-label="焦点房间画廊" className="flex flex-col gap-2.5">
+      {showHeader ? (
+        <div className="flex min-h-7 items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-1.5 text-xs">
             <span
               aria-hidden="true"
               className={`h-1.5 w-1.5 rounded-full ${
-                isAway
+                hasAwayInRail
                   ? "bg-[var(--amber-9)]"
-                  : isActive
+                  : hasActiveInRail
                     ? "bg-[var(--green-9)]"
                     : "bg-[var(--slate-8)]"
               }`}
             />
-            <span>{isAway ? "暂离同步中" : isActive ? "在播焦点现场" : "主展位房间"}</span>
-          </span>
-
-          <CopyableJoinCodeChip joinCode={room.joinCode} />
-        </div>
-
-        <dl className="my-2 border-y-[0.5px] border-surface-border/60 text-xs">
-          <div className="flex items-center justify-between gap-4 py-2.5">
-            <dt className="shrink-0 text-foreground-muted">
-              {nowPlaying?.title ? "正在播出" : "协作方式"}
-            </dt>
-            <dd className="truncate font-medium text-foreground">{programSummary}</dd>
+            <h2 className="font-semibold text-foreground">焦点画廊</h2>
+            <span className="font-mono tabular-nums text-foreground-muted">{rooms.length}</span>
           </div>
-          <div className="flex items-center justify-between gap-4 border-t-[0.5px] border-surface-border/60 py-2.5">
-            <dt className="shrink-0 text-foreground-muted">房主</dt>
-            <dd className="truncate font-medium text-foreground">
-              {room.directoryHostNickname || "未知"}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-4 border-t-[0.5px] border-surface-border/60 py-2.5">
-            <dt className="shrink-0 text-foreground-muted">{liveMetric.label}</dt>
-            <dd className="truncate font-mono tabular-nums text-foreground">
-              {liveMetric.value}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-4 border-t-[0.5px] border-surface-border/60 py-2.5">
-            <dt className="shrink-0 text-foreground-muted">准入方式</dt>
-            <dd className="inline-flex items-center gap-1 truncate font-medium text-foreground">
-              {room.hasPassword ? <Lock className="h-3 w-3 shrink-0 text-foreground-muted" /> : null}
-              <span className="truncate">{accessText}</span>
-            </dd>
-          </div>
-        </dl>
 
-        <div className="flex items-center justify-between gap-2">
-          <button
-            className="rounded-lg px-2 py-1.5 text-xs text-foreground-muted transition-colors duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground cursor-pointer"
-            onClick={onOpen}
-            onPointerEnter={onPrewarm}
-            type="button"
-          >
-            展开门廊详情
-          </button>
+          {isScrollable ? (
+            <div className="flex items-center gap-2.5">
+              {scrollState.stopTargets.length > 1 ? (
+                <div
+                  aria-label="画廊分页进度"
+                  className="hidden items-center gap-1 sm:flex"
+                >
+                  {scrollState.stopTargets.map((target, index) => {
+                    const isActive = index === scrollState.activeStop;
+                    return (
+                      <button
+                        aria-label={`跳转至画廊第 ${index + 1} 段`}
+                        aria-pressed={isActive}
+                        className={`h-1.5 rounded-full transition-[width,background-color] duration-[250ms] ease-out motion-reduce:transition-none cursor-pointer ${
+                          isActive
+                            ? "w-4 bg-accent"
+                            : "w-1.5 bg-[var(--slate-6)] hover:bg-[var(--slate-8)]"
+                        }`}
+                        key={index}
+                        onClick={() => glideToScrollLeft(target)}
+                        type="button"
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
 
-          <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-xs font-medium text-white transition-colors duration-[250ms] ease-out hover:bg-accent-hover active:scale-[0.98] cursor-pointer"
-            onClick={onQuickEnter}
-            onPointerEnter={onPrewarm}
-            type="button"
-          >
-            <span>{actionLabel}</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+              <div className="flex items-center gap-1">
+                <button
+                  aria-label="向左滑动房间画廊"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border-hairline border-surface-border bg-surface text-foreground-muted transition-all duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground active:scale-95 disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+                  disabled={!scrollState.canPrev}
+                  onClick={() => handleStepStop(-1)}
+                  type="button"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  aria-label="向右滑动房间画廊"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border-hairline border-surface-border bg-surface text-foreground-muted transition-all duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground active:scale-95 disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+                  disabled={!scrollState.canNext}
+                  onClick={() => handleStepStop(1)}
+                  type="button"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
+      ) : null}
+
+      <div
+        className="hide-scrollbar flex w-full snap-x snap-mandatory items-stretch gap-3.5 overflow-x-auto overflow-y-visible py-0.5 scroll-pl-0.5"
+        data-testid="room-featured-rail"
+        onPointerDown={cancelGlide}
+        onTouchStart={cancelGlide}
+        onWheel={cancelGlide}
+        ref={trackRef}
+        style={edgeMaskStyle}
+      >
+        {rooms.map((item, index) => {
+          const roomId = item.room.id;
+          const isAway = Boolean(awayRoomId && awayRoomId === roomId);
+          const isPeekingEdge = isScrollable && inFrameMap[roomId] === false;
+
+          return (
+            <div
+              className={`room-gallery-slot-enter ${slideWidthClass} shrink-0 snap-start rounded-xl transition-[transform,opacity] duration-[250ms] ease-out motion-reduce:transition-none ${
+                isPeekingEdge ? "scale-[0.985] opacity-75" : "scale-100 opacity-100"
+              } ${isAway ? "ring-1 ring-[var(--amber-7)]" : ""}`}
+              data-rail-room-id={roomId}
+              key={roomId}
+              ref={(node) => {
+                if (node) {
+                  slotMapRef.current.set(roomId, node);
+                } else {
+                  slotMapRef.current.delete(roomId);
+                }
+              }}
+              style={buildSlotStyle(roomId, index)}
+            >
+              <RoomDirectoryCard
+                onOpen={() => onOpenRoom(item)}
+                onPrewarm={() => onPrewarmRoom(roomId)}
+                room={item}
+                stageTransitionName={resolveStageTransitionName(roomId)}
+              />
+            </div>
+          );
+        })}
       </div>
-
-      {/* Mobile Compact Stage Plinth: single sleek footer strip keeping next cards in viewport */}
-      <div className="flex items-center justify-between gap-2 px-1.5 pt-0.5 pb-0.5 text-xs lg:hidden">
-        <div className="flex min-w-0 items-center gap-1.5 truncate text-foreground-muted">
-          {isAway ? (
-            <span className="font-medium text-[var(--amber-11)]">暂离同步中</span>
-          ) : (
-            <>
-              <span className="truncate">房主 {room.directoryHostNickname || "未知"}</span>
-              <span aria-hidden="true" className="opacity-45">/</span>
-              <span className="shrink-0 font-mono tabular-nums">{liveMetric.value}</span>
-            </>
-          )}
-        </div>
-
-        <button
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-accent px-3 text-xs font-medium text-white transition-colors duration-[250ms] ease-out hover:bg-accent-hover active:scale-[0.98] cursor-pointer"
-          onClick={onQuickEnter}
-          onPointerEnter={onPrewarm}
-          type="button"
-        >
-          <span>{actionLabel}</span>
-          <ArrowRight className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function DiptychGalleryFrame({
-  item,
-  awayRoomId,
-  isPrimary,
-  slotStyle,
-  stageTransitionName,
-  onOpen,
-  onQuickEnter,
-  onPrewarm
-}: {
-  item: RoomDirectoryItem;
-  awayRoomId: string | null;
-  isPrimary: boolean;
-  slotStyle?: CSSProperties;
-  stageTransitionName?: string;
-  onOpen: () => void;
-  onQuickEnter: () => void;
-  onPrewarm: () => void;
-}) {
-  const { room } = item;
-  const isAway = Boolean(awayRoomId && awayRoomId === room.id);
-  const liveMetric = formatRoomLiveMetric(item);
-  const actionLabel = isAway
-    ? "回到房间"
-    : room.hasPassword
-      ? "解锁进入"
-      : room.directoryIsMember
-        ? "回到房间"
-        : "进入房间";
-
-  return (
-    <div
-      className={`flex flex-col justify-between rounded-[20px] border-hairline p-2 transition-colors duration-[250ms] ease-out ${
-        isAway
-          ? "border-[var(--amber-6)] bg-[var(--amber-2)]"
-          : isPrimary
-            ? "border-surface-border bg-surface/40"
-            : "border-surface-border bg-surface/20"
-      }`}
-      style={slotStyle}
-    >
-      <div className="min-w-0 flex-1">
-        <RoomDirectoryCard
-          onOpen={onOpen}
-          onPrewarm={onPrewarm}
-          room={item}
-          stageTransitionName={stageTransitionName}
-        />
-      </div>
-
-      <div className="mt-1.5 flex items-center justify-between gap-2 px-1.5 py-0.5 text-xs">
-        <div className="flex min-w-0 items-center gap-1.5 truncate text-foreground-muted">
-          {isAway ? (
-            <span className="font-medium text-[var(--amber-11)]">暂离同步中</span>
-          ) : (
-            <>
-              <span className="truncate">房主 {room.directoryHostNickname || "未知"}</span>
-              <span aria-hidden="true" className="opacity-45">/</span>
-              <span className="shrink-0 font-mono tabular-nums">{liveMetric.value}</span>
-            </>
-          )}
-        </div>
-
-        <button
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border-hairline border-surface-border bg-background-secondary px-2.5 text-xs font-medium text-foreground transition-colors duration-[250ms] ease-out hover:border-accent hover:text-accent active:scale-[0.98] cursor-pointer"
-          onClick={onQuickEnter}
-          onPointerEnter={onPrewarm}
-          type="button"
-        >
-          <span>{actionLabel}</span>
-          <ArrowRight className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function CopyableJoinCodeChip({ joinCode }: { joinCode: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard?.writeText(joinCode);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Ignore clipboard failures in restricted webviews.
-    }
-  }
-
-  return (
-    <button
-      aria-label={`复制房间码 ${joinCode}`}
-      className="inline-flex h-6 items-center gap-1.5 rounded-md border-hairline border-surface-border bg-surface px-2 font-mono text-xs tabular-nums text-foreground-muted transition-colors duration-[250ms] ease-out hover:bg-surface-hover hover:text-foreground cursor-pointer"
-      onClick={() => void handleCopy()}
-      title="点击复制房间码"
-      type="button"
-    >
-      <span>{copied ? "已复制" : joinCode}</span>
-      {copied ? (
-        <Check className="h-3 w-3 text-[var(--green-11)]" />
-      ) : (
-        <Copy className="h-3 w-3 opacity-70" />
-      )}
-    </button>
+    </section>
   );
 }

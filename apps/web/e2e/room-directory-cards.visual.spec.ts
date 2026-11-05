@@ -153,3 +153,121 @@ test("room directory cards match the visual hierarchy at desktop and mobile", as
   await cards.first().getByTestId("room-directory-open").click();
   await expect(page.getByRole("dialog")).toContainText(rooms[0].room.name);
 });
+
+test("scrolling gallery rail and threshold sheet preserve cover proportions with 10 rooms and long track titles", async ({ page }, testInfo) => {
+  const manyRooms = Array.from({ length: 10 }, (_, index) => {
+    const roomTypes = ["interactive", "request", "radio"] as const;
+    const roomType = roomTypes[index % 3]!;
+    const isProgRockRoom = index === 0;
+    return {
+      room: {
+        id: `room_multi_${index + 1}`,
+        joinCode: `GAL0${String(index + 1).padStart(2, "0")}`,
+        name: isProgRockRoom ? "前卫摇滚听歌房" : `夜航声学展厅 ${index + 1}`,
+        description: isProgRockRoom
+          ? "听点前卫的（以及器乐长篇组曲鉴赏）"
+          : "多人实时同步收听，共享深夜曲库。",
+        hasPassword: false,
+        visibility: "public" as const,
+        roomType,
+        radioAutopilot: { enabled: false },
+        directoryHostNickname: isProgRockRoom ? "系错" : "夜航主持",
+        directoryMemberCount: 16 - index,
+        directoryOnlineMemberCount: Math.max(1, 16 - index),
+        directoryIsMember: false,
+        directoryQueueDepth: (index + 1) * 3,
+        directoryPendingRequestCount: roomType === "request" ? 2 : 0,
+        directoryBroadcastState: roomType === "radio" ? ("on_air" as const) : null,
+        directoryNowPlaying: {
+          title: isProgRockRoom
+            ? "I. The Solid Time of Change, II. Total Mass Retain, III. I Get up I Get Down, IV. Seasons of Man"
+            : `Track Sequence ${index + 1}`,
+          artist: isProgRockRoom ? "Yes" : "M83",
+          artworkUrl: null
+        },
+        playbackStatus: "playing" as const
+      }
+    };
+  });
+
+  await stubStorageRootPicker(page);
+  await page.route("**/v1/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/v1/auth/me")) {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(session) });
+      return;
+    }
+    if (pathname.endsWith("/v1/rooms")) {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(manyRooms) });
+      return;
+    }
+    if (pathname.endsWith("/v1/auth/config")) {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ enabled: false, siteKey: "" }) });
+      return;
+    }
+    if (pathname.endsWith("/v1/playlists")) {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify([]) });
+      return;
+    }
+    if (pathname.includes("/v1/rooms/recent")) {
+      await route.fulfill({ contentType: "application/json", body: "null" });
+      return;
+    }
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: "not_found", message: "Not mocked in this e2e scenario." } })
+    });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/app");
+  const cards = page.getByTestId("room-directory-card");
+  await authorizeStorageRoot(page, cards.first());
+  await expect(cards).toHaveCount(10);
+
+  const rail = page.getByTestId("room-featured-rail");
+  await expect(rail).toBeVisible();
+  await expect(page.getByRole("heading", { name: "焦点画廊" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "更多房间" })).toBeVisible();
+
+  await page.screenshot({ path: testInfo.outputPath("room-scrolling-gallery-desktop.png"), fullPage: true });
+
+  // Verify smooth rail glide via Next button
+  const nextRailButton = page.getByRole("button", { name: "向右滑动房间画廊" });
+  await expect(nextRailButton).toBeEnabled();
+  await nextRailButton.click();
+  await expect.poll(async () => rail.evaluate((el) => el.scrollLeft)).toBeGreaterThan(120);
+
+  // Open threshold sheet on the long-title room and verify zero horizontal overflow & 2.4:1 stage proportion
+  await rail.evaluate((el) => {
+    el.scrollLeft = 0;
+  });
+  await cards.first().getByTestId("room-directory-open").click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("前卫摇滚听歌房");
+
+  const metrics = await dialog.evaluate((dialogEl) => {
+    const stageEl = dialogEl.querySelector(".aspect-\\[2\\.4\\/1\\]") as HTMLElement | null;
+    const confirmBtn = dialogEl.querySelector('[data-testid="room-entry-confirm"]') as HTMLElement | null;
+    const dialogRect = dialogEl.getBoundingClientRect();
+    const stageRect = stageEl?.getBoundingClientRect();
+    const btnRect = confirmBtn?.getBoundingClientRect();
+    return {
+      scrollWidth: dialogEl.scrollWidth,
+      clientWidth: dialogEl.clientWidth,
+      stageRatio: stageRect ? stageRect.width / stageRect.height : 0,
+      stageInsideLeft: stageRect ? stageRect.left >= dialogRect.left : false,
+      btnHorizontal: btnRect ? btnRect.width > btnRect.height * 1.6 : false
+    };
+  });
+
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.stageRatio).toBeGreaterThan(2.2);
+  expect(metrics.stageRatio).toBeLessThan(2.6);
+  expect(metrics.stageInsideLeft).toBe(true);
+  expect(metrics.btnHorizontal).toBe(true);
+
+  await page.screenshot({ path: testInfo.outputPath("room-threshold-long-title-desktop.png") });
+});

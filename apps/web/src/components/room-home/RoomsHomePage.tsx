@@ -266,25 +266,6 @@ export function RoomsHomePage({
     );
   }
 
-  function handleQuickEnterRoom(room: RoomDirectoryItem) {
-    if (room.room.id === effectiveAwayRoomId) {
-      handleResumeAwayRoom();
-      return;
-    }
-    if (!activeSession) {
-      setStatusMessage("进入房间需要先登录账号。");
-      router.push(authEntryHref as Route);
-      return;
-    }
-    if (room.room.hasPassword) {
-      openRoomDetails(room);
-      return;
-    }
-    if (isPending || joinInFlightRef.current) return;
-    handlePrewarmRoom(room.room.id);
-    startTransition(() => void handleJoinRoom(room.room.joinCode));
-  }
-
   function handleFilterChange(nextFilter: RoomFilterValue) {
     if (nextFilter === roomTypeFilter) return;
     runRoomViewTransition("gallery", () => {
@@ -373,10 +354,10 @@ export function RoomsHomePage({
         <div className="min-h-[240px]">
           <RoomCuratedGallery
             awayRoomId={effectiveAwayRoomId}
+            filterKey={roomTypeFilter}
             morphingStageRoomId={morphingStageRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
-            onQuickEnterRoom={handleQuickEnterRoom}
             plan={galleryPlan}
             roomsLoaded={roomsLoaded}
             suppressCardSlotTransition={Boolean(selectedRoom || morphingStageRoomId)}

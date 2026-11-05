@@ -115,7 +115,7 @@ export function RoomDirectoryCard({
 export function RoomStageSurface({
   room: directoryItem,
   stageTransitionName,
-  aspectClassName = "aspect-[2.15/1]"
+  aspectClassName = "aspect-[2.4/1]"
 }: {
   room: RoomDirectoryItem;
   stageTransitionName?: string;
@@ -128,14 +128,14 @@ export function RoomStageSurface({
     "--room-accent": theme.accent,
     "--room-border": theme.border,
     "--room-shadow": theme.glow,
-    "--room-soft": theme.soft,
-    ...(stageTransitionName ? { viewTransitionName: stageTransitionName } : {})
+    "--room-soft": theme.soft
   };
 
   return (
-    <div className="flex flex-col gap-2" style={surfaceStyle}>
+    <div className="flex min-w-0 w-full flex-col gap-2 overflow-hidden" style={surfaceStyle}>
       <div
         className={`group relative w-full ${aspectClassName} shrink-0 overflow-hidden rounded-lg border-hairline border-surface-border bg-surface`}
+        style={stageTransitionName ? { viewTransitionName: stageTransitionName } : undefined}
       >
         <RoomStageVisualContent room={room} themeLabel={theme.label} />
       </div>
@@ -188,16 +188,16 @@ function RoomNowPlayingBar({
   className?: string;
 }) {
   return (
-    <div className={`flex items-center gap-2 rounded-lg border border-surface-border bg-surface/75 px-2.5 py-1 ${className}`}>
+    <div className={`flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-lg border border-surface-border bg-surface/75 px-2.5 py-1 ${className}`}>
       <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
         <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.8s" }} />
         <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
         <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
       </div>
-      <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate text-xs">
-        <span className="font-medium text-foreground truncate">{nowPlaying.title}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-xs">
+        <span className="min-w-0 truncate font-medium text-foreground">{nowPlaying.title}</span>
         {nowPlaying.artist ? (
-          <span className="text-foreground-muted truncate shrink-0">/ {nowPlaying.artist}</span>
+          <span className="max-w-[42%] shrink-0 truncate text-foreground-muted">/ {nowPlaying.artist}</span>
         ) : null}
       </div>
     </div>

@@ -756,19 +756,60 @@
   }
 
   /* Scoped Room Gallery & Stage Threshold View Transitions (250ms ease-out) */
-  html[data-room-transition] ::view-transition-old(root) {
+  html[data-room-transition] [data-testid="bottom-player"],
+  html[data-room-transition] [data-custom-layout-item="player"] {
+    view-transition-name: app-bottom-player;
+    background-color: var(--background-secondary) !important;
+  }
+
+  html[data-room-transition] .mobile-app-navigation {
+    view-transition-name: app-mobile-navigation;
+  }
+
+  html[data-room-transition] .app-sidebar {
+    view-transition-name: app-sidebar;
+  }
+
+  html[data-room-transition]::view-transition-group(app-bottom-player) {
+    z-index: 1000 !important;
+    animation: none !important;
+  }
+  html[data-room-transition]::view-transition-old(app-bottom-player),
+  html[data-room-transition]::view-transition-new(app-bottom-player) {
+    animation: none !important;
+  }
+
+  html[data-room-transition]::view-transition-group(app-mobile-navigation) {
+    z-index: 1001 !important;
+    animation: none !important;
+  }
+  html[data-room-transition]::view-transition-old(app-mobile-navigation),
+  html[data-room-transition]::view-transition-new(app-mobile-navigation) {
+    animation: none !important;
+  }
+
+  html[data-room-transition]::view-transition-group(app-sidebar) {
+    z-index: 999 !important;
+    animation: none !important;
+  }
+  html[data-room-transition]::view-transition-old(app-sidebar),
+  html[data-room-transition]::view-transition-new(app-sidebar) {
+    animation: none !important;
+  }
+
+  html[data-room-transition]::view-transition-old(root) {
     animation: room-vt-fade-out 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
     clip-path: none;
   }
 
-  html[data-room-transition] ::view-transition-new(root) {
+  html[data-room-transition]::view-transition-new(root) {
     animation: room-vt-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
     clip-path: none;
   }
 
-  html[data-room-transition] ::view-transition-group(*),
-  html[data-room-transition] ::view-transition-old(*),
-  html[data-room-transition] ::view-transition-new(*) {
+  html[data-room-transition]::view-transition-group(*),
+  html[data-room-transition]::view-transition-old(*),
+  html[data-room-transition]::view-transition-new(*) {
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   }

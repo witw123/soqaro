@@ -302,4 +302,32 @@ test("room directory grid and threshold sheet preserve clean hierarchy across sh
   await expect(dialog).toContainText("MKRDDD");
 
   await page.screenshot({ path: testInfo.outputPath("room-threshold-short-bio-desktop.png") });
+
+  // 4. Close dialog and test room card transition across filters with bottom player layered on top
+  await dialog.getByRole("button", { name: "关闭" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  const bottomPlayer = page.getByTestId("bottom-player");
+  await expect(bottomPlayer).toBeVisible();
+
+  // Switch filter to "点歌房" (triggers room-view-transition "gallery")
+  const requestTab = page.getByRole("tab", { name: /点歌房/ });
+  await requestTab.click();
+
+  // Verify filtered card count
+  const filteredCards = page.getByTestId("room-directory-card");
+  await expect(filteredCards).toHaveCount(2);
+
+  // Switch back to "全部" (triggers card entrance and layout transition)
+  const allTab = page.getByRole("tab", { name: /全部/ });
+  await allTab.click();
+  await expect(filteredCards).toHaveCount(10);
+
+  // Ensure bottom player remains visible and positioned cleanly
+  await expect(bottomPlayer).toBeVisible();
+  const playerRect = await bottomPlayer.boundingBox();
+  expect(playerRect).not.toBeNull();
+  expect(playerRect!.y + playerRect!.height).toBeGreaterThanOrEqual(990);
+
+  await page.screenshot({ path: testInfo.outputPath("room-filter-transition-desktop.png") });
 });

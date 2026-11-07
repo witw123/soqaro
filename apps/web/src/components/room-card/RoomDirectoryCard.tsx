@@ -80,7 +80,7 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
 
   return (
     <article
-      className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs [contain:content] transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
+      className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
       data-room-theme={room.roomType}
       data-room-type={room.roomType}
       data-testid="room-directory-card"

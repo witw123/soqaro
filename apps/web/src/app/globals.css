@@ -770,10 +770,6 @@
     view-transition-name: app-sidebar;
   }
 
-  html[data-room-transition] .mosaic-puzzle-tile {
-    content-visibility: visible !important;
-  }
-
   html[data-room-transition] [data-custom-layout-room-host="true"] .animate-in,
   html[data-room-transition] [data-custom-layout-room-host="true"] .animate-fade-in {
     animation: none !important;
@@ -820,7 +816,7 @@
     mix-blend-mode: normal !important;
   }
 
-  /* Single Active Room Shell Morph: Card <-> Modal <-> Room Workspace */
+  /* Single Active Room Shell Morph: Card / Modal <-> Room Workspace */
   html[data-room-transition]::view-transition-group(active-room-shell) {
     z-index: 950 !important;
     animation-duration: 250ms;
@@ -828,17 +824,8 @@
     overflow: hidden;
     border-radius: 12px;
   }
-  html[data-room-transition]::view-transition-image-pair(active-room-shell) {
-    isolation: isolate;
-    overflow: hidden;
-    border-radius: inherit;
-  }
   html[data-room-transition]::view-transition-old(active-room-shell),
   html[data-room-transition]::view-transition-new(active-room-shell) {
-    height: 100%;
-    width: 100%;
-    object-fit: cover;
-    object-position: center top;
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     mix-blend-mode: normal !important;
@@ -873,17 +860,6 @@
     mix-blend-mode: normal !important;
   }
 
-  /* Keep root completely static during card morphs & gallery slide */
-  html[data-room-transition="card-open"]::view-transition-old(root),
-  html[data-room-transition="card-open"]::view-transition-new(root),
-  html[data-room-transition="card-close"]::view-transition-old(root),
-  html[data-room-transition="card-close"]::view-transition-new(root),
-  html[data-room-transition="gallery"]::view-transition-old(root),
-  html[data-room-transition="gallery"]::view-transition-new(root) {
-    animation: none !important;
-    mix-blend-mode: normal !important;
-  }
-
   /* Room enter and exit root cross-fade without opacity dip */
   html[data-room-transition="room-enter"]::view-transition-old(root),
   html[data-room-transition="room-exit"]::view-transition-old(root) {
@@ -900,6 +876,11 @@
   }
 
   /* Scoped Gallery canvas tray directional glide */
+  html[data-room-transition="gallery"]::view-transition-old(root),
+  html[data-room-transition="gallery"]::view-transition-new(root) {
+    animation: none !important;
+    mix-blend-mode: normal !important;
+  }
   html[data-room-transition="gallery"]::view-transition-group(room-gallery-canvas) {
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);

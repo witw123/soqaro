@@ -49,7 +49,7 @@ import {
   requestLocalAudioDirectoryPermission,
   type LocalAudioStorageState
 } from "@/features/library/local-audio-storage";
-import { soqaroApi } from "@/lib/network/soqaro-api";
+import { playlistsChangedEventName, soqaroApi } from "@/lib/network/soqaro-api";
 import {
   isLocalPlaylistMirror,
   localPlaylistIdFromMirror,
@@ -307,6 +307,13 @@ export function PlaylistsWorkspacePage({
   useEffect(() => {
     if (!activeSession) return;
     void refresh().catch(() => setMessage("歌单数据加载失败，请刷新重试。"));
+    const handlePlaylistsChanged = () => {
+      void refresh().catch(() => undefined);
+    };
+    window.addEventListener(playlistsChangedEventName, handlePlaylistsChanged);
+    return () => {
+      window.removeEventListener(playlistsChangedEventName, handlePlaylistsChanged);
+    };
   }, [activeSession, playlistView, refresh]);
 
   useEffect(() => {

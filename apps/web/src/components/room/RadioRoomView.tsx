@@ -34,9 +34,6 @@ const RoomChatPanel = dynamic(() => import("./RoomChatOverlay").then((m) => m.Ro
 const RoomProviderTrackSearch = dynamic(() => import("./RoomProviderTrackSearch").then((m) => m.RoomProviderTrackSearch), {
   loading: RoomTabPanelPlaceholder
 });
-const RoomReactionToolbar = dynamic(() => import("./RoomReactionToolbar").then((m) => m.RoomReactionToolbar), {
-  loading: RoomTabPanelPlaceholder
-});
 const LocalAudioImport = dynamic(() => import("./LocalAudioImport").then((m) => m.LocalAudioImport), {
   loading: RoomTabPanelPlaceholder
 });
@@ -63,7 +60,6 @@ export function RadioRoomView(props: RoomDashboardViewProps) {
         () => import("./MembersPanel"),
         () => import("./RoomChatOverlay"),
         () => import("./RoomProviderTrackSearch"),
-        () => import("./RoomReactionToolbar"),
         () => import("./LocalAudioImport"),
         () => import("./LocalStorageTabPanel"),
         () => import("./LibraryTabPanel")
@@ -77,14 +73,6 @@ export function RadioRoomView(props: RoomDashboardViewProps) {
   const [leftTab, setLeftTab] = useState<RadioLeftTab>("queue");
   const [rightTab, setRightTab] = useState<RadioRightTab>("chat");
   const [mobileTab, setMobileTab] = useState<RadioMobileTab>("queue");
-
-  const targetMembers = useMemo(() => {
-    return props.roomSnapshot.room.members.map((m) => ({
-      id: m.id,
-      nickname: m.nickname,
-      isHost: m.id === props.roomSnapshot.room.hostId
-    }));
-  }, [props.roomSnapshot.room.members, props.roomSnapshot.room.hostId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setMembershipNow(Date.now()), 60_000);
@@ -245,17 +233,6 @@ export function RadioRoomView(props: RoomDashboardViewProps) {
               <RoomPanelSkeleton />
             )}
           </div>
-
-          {/* Radio Dedicated Member Interaction Bar */}
-          <div className="shrink-0 px-2.5 py-1.5 border-t border-surface-border/40 bg-surface/80 backdrop-blur-xl">
-            <RoomReactionToolbar
-              roomId={props.roomSnapshot.room.id}
-              socket={props.socket}
-              variant="radio"
-              targetMembers={targetMembers}
-              activeMemberId={props.roomSnapshot.room.hostId}
-            />
-          </div>
         </div>
       </div>
 
@@ -322,25 +299,14 @@ export function RadioRoomView(props: RoomDashboardViewProps) {
             ) : mobileTab === "desk" && isHost ? (
               <HostBroadcastDesk {...props} />
             ) : mobileTab === "chat" ? (
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <RoomChatPanel
-                    activeSession={props.activeSession}
-                    isHost={isHost}
-                    roomId={props.roomSnapshot.room.id}
-                    scrollEnabled
-                    socket={props.socket}
-                  />
-                </div>
-                <div className="shrink-0 px-2 py-1 border-t border-surface-border/40 bg-surface/80 backdrop-blur-xl">
-                  <RoomReactionToolbar
-                    roomId={props.roomSnapshot.room.id}
-                    socket={props.socket}
-                    variant="radio"
-                    targetMembers={targetMembers}
-                    activeMemberId={props.roomSnapshot.room.hostId}
-                  />
-                </div>
+              <div className="h-full min-h-0 overflow-hidden">
+                <RoomChatPanel
+                  activeSession={props.activeSession}
+                  isHost={isHost}
+                  roomId={props.roomSnapshot.room.id}
+                  scrollEnabled
+                  socket={props.socket}
+                />
               </div>
             ) : mobileTab === "library" ? (
               <RadioLibraryList isHost={isHost} onSwitchToDesk={() => setMobileTab("desk")} props={props} />

@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  useEffect,
+  memo,
   useLayoutEffect,
   useRef,
   useState,
@@ -29,7 +29,7 @@ type RoomLobbyToolbarProps = {
   onRefresh: () => void;
 };
 
-export function RoomLobbyToolbar({
+export const RoomLobbyToolbar = memo(function RoomLobbyToolbar({
   activeFilter,
   counts,
   roomsLoaded,
@@ -136,9 +136,9 @@ export function RoomLobbyToolbar({
       </div>
     </>
   );
-}
+});
 
-function SlidingRoomFilterTabs({
+const SlidingRoomFilterTabs = memo(function SlidingRoomFilterTabs({
   activeFilter,
   counts,
   roomsLoaded,
@@ -168,10 +168,13 @@ function SlidingRoomFilterTabs({
     const syncIndicator = () => {
       const target = buttonRefs.current[activeFilter];
       if (!target || target.offsetWidth === 0) return;
-      setIndicator({
-        x: target.offsetLeft,
-        width: target.offsetWidth,
-        ready: true
+      const nextX = target.offsetLeft;
+      const nextWidth = target.offsetWidth;
+      setIndicator((prev) => {
+        if (prev.ready && prev.x === nextX && prev.width === nextWidth) {
+          return prev;
+        }
+        return { x: nextX, width: nextWidth, ready: true };
       });
     };
 
@@ -181,17 +184,7 @@ function SlidingRoomFilterTabs({
     const observer = new ResizeObserver(syncIndicator);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [activeFilter, counts, roomsLoaded]);
-
-  useEffect(() => {
-    const target = buttonRefs.current[activeFilter];
-    if (!target || target.offsetWidth === 0) return;
-    setIndicator({
-      x: target.offsetLeft,
-      width: target.offsetWidth,
-      ready: true
-    });
-  }, [activeFilter]);
+  }, [activeFilter, counts.all, counts.interactive, counts.request, counts.radio, roomsLoaded]);
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: RoomFilterValue) {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -272,4 +265,4 @@ function SlidingRoomFilterTabs({
       })}
     </div>
   );
-}
+});

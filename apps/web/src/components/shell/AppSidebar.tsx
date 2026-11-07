@@ -49,7 +49,7 @@ type NavItemConfig = {
 
 const navItems: NavItemConfig[] = [
   { id: "home", label: "房间大厅", href: "/app", icon: "home", group: "explore" },
-  { id: "discover", label: "发现音乐", href: "/app/discover", icon: "discover", group: "explore" },
+  { id: "discover", label: "发现房间", href: "/app/discover", icon: "discover", group: "explore" },
   { id: "playlists", label: "我的歌单", href: "/app/playlists", icon: "playlist", group: "library" },
   { id: "profile", label: "个人主页", href: "/app/profile", icon: "profile", group: "library" }
 ];

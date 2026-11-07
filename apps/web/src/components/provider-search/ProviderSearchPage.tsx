@@ -94,7 +94,7 @@ export function ProviderSearchPage({
 }: ProviderSearchPageProps = {}) {
   const router = useRouter();
   const player = useLocalPlayer();
-  const authEntryHref = buildWorkspaceAuthHref({ redirectTo: onClose ? "/app/discover?search=1" : "/app/search" });
+  const authEntryHref = buildWorkspaceAuthHref({ redirectTo: onClose || embedded ? "/app/playlists" : "/app/search" });
   const { activeSession, hydrated } = useSessionIdentity({
     sessionStorageKey: "soqaro-session",
     initialStatusMessage: ""
@@ -717,7 +717,7 @@ export function ProviderSearchPage({
   const showBackToRecommendations = onBackToRecommendations && (isSearchActive || hasSearched || Boolean(keywords.trim()));
   const prefixAction = showBackToRecommendations ? (
     <button
-      aria-label="返回发现"
+      aria-label="返回歌单"
       className="flex h-7 items-center gap-1 rounded-full pl-1.5 pr-2.5 text-xs font-medium text-foreground-muted hover:text-foreground hover:bg-foreground/10 transition-colors shrink-0 -ml-1 mr-1"
       onClick={() => {
         setHasSearched(false);
@@ -726,19 +726,19 @@ export function ProviderSearchPage({
         onSearchActiveChange?.(false);
         onBackToRecommendations?.();
       }}
-      title="返回发现"
+      title="返回歌单"
       type="button"
     >
       <Icon name="arrow-left" />
-      <span className="hidden sm:inline text-xs">发现</span>
+      <span className="hidden sm:inline text-xs">歌单</span>
     </button>
   ) : !embedded ? (
     onClose ? (
       <button
-        aria-label="返回发现"
+        aria-label="返回歌单"
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-muted transition hover:bg-foreground/10 hover:text-foreground -ml-1 mr-1"
         onClick={onClose}
-        title="返回发现"
+        title="返回歌单"
         type="button"
       >
         <Icon name="arrow-left" />

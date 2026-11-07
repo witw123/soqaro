@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import type { CSSProperties } from "react";
+import { memo, useCallback, type CSSProperties } from "react";
 import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 import { ArtisticRoomStageScene } from "./ArtisticRoomStageScene";
 
@@ -10,8 +10,8 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
   shellTransitionName?: string;
-  onOpen: () => void;
-  onPrewarm?: () => void;
+  onOpen: (room: RoomDirectoryItem) => void;
+  onPrewarm?: (roomId: string) => void;
 };
 
 type RoomCardTheme = {
@@ -53,7 +53,7 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
   }
 };
 
-export function RoomDirectoryCard({
+export const RoomDirectoryCard = memo(function RoomDirectoryCard({
   room: directoryItem,
   shellTransitionName,
   onOpen,
@@ -70,21 +70,29 @@ export function RoomDirectoryCard({
     ...(shellTransitionName ? { viewTransitionName: shellTransitionName } : {})
   };
 
+  const handleOpen = useCallback(() => {
+    onOpen(directoryItem);
+  }, [directoryItem, onOpen]);
+
+  const handlePrewarm = useCallback(() => {
+    onPrewarm?.(room.id);
+  }, [onPrewarm, room.id]);
+
   return (
     <article
       className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs [contain:content] transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
       data-room-theme={room.roomType}
       data-room-type={room.roomType}
       data-testid="room-directory-card"
-      onPointerEnter={onPrewarm}
+      onPointerEnter={handlePrewarm}
       style={cardStyle}
     >
       <button
         aria-label={`查看 ${room.name} 的房间详情`}
         className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none"
         data-testid="room-directory-open"
-        onClick={onOpen}
-        onFocus={onPrewarm}
+        onClick={handleOpen}
+        onFocus={handlePrewarm}
         type="button"
       />
 
@@ -110,7 +118,7 @@ export function RoomDirectoryCard({
       </div>
     </article>
   );
-}
+});
 
 function RoomStageVisualContent({
   room,
@@ -158,9 +166,9 @@ function RoomNowPlayingBar({
   return (
     <div className={`flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-lg border border-surface-border bg-surface/75 px-2.5 py-1 ${className}`}>
       <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.8s" }} />
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.8s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-xs">
         <span className="min-w-0 truncate font-medium text-foreground">{nowPlaying.title}</span>
@@ -192,7 +200,7 @@ function RoomNowPlayingStageScene({
       {artworkSrc ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -inset-2 bg-cover bg-center opacity-25 dark:opacity-30 blur-lg scale-110 [contain:strict] transform-gpu"
+          className="pointer-events-none absolute -inset-2 bg-cover bg-center opacity-25 dark:opacity-30 blur-lg scale-110 [contain:strict]"
           style={{ backgroundImage: `url("${artworkSrc}")` }}
         />
       ) : null}

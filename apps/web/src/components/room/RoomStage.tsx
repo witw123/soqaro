@@ -22,7 +22,6 @@ import { SquareAlbumCover } from "@/components/bottom-player";
 import { usePlayerStyle } from "@/features/settings/use-player-style";
 import type { RoomPlaybackBarrierClock } from "@/features/playback/room-playback-clock";
 import { RoomReactionOverlay } from "./RoomReactionOverlay";
-import { RoomReactionToolbar } from "./RoomReactionToolbar";
 import type { RoomSocket } from "@/lib/network/ws-client";
 
 type RoomStageProps = {
@@ -457,17 +456,6 @@ function RoomStageBase({
               status={lyricsStatus}
               onSeek={onSeek}
             />
-
-            {/* Interactive Room Reaction Bar */}
-            {roomSnapshot.room.roomType === "interactive" && (
-              <div className="mt-3 flex justify-center">
-                <RoomReactionToolbar
-                  roomId={roomSnapshot.room.id}
-                  socket={socket}
-                  variant="interactive"
-                />
-              </div>
-            )}
           </div>
         </div>
 

@@ -86,6 +86,7 @@ export function RoomsHomePage({
 
   const [roomTypeFilter, setRoomTypeFilter] = useState<RoomFilterValue>("all");
   const [morphingRoomId, setMorphingRoomId] = useState<string | null>(null);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createFormVisibility, setCreateFormVisibility] = useState<"public" | "private">("public");
@@ -118,7 +119,7 @@ export function RoomsHomePage({
     [buildRoomHref, router]
   );
 
-  function handleResumeAwayRoom() {
+  const handleResumeAwayRoom = useCallback(() => {
     if (!effectiveAwayRoomId) return;
     prewarmRoomRuntimeChunk();
     if (onResumeAwayRoom) {
@@ -132,7 +133,7 @@ export function RoomsHomePage({
     runRoomViewTransition("room-enter", () => {
       router.push(buildRoomHref(effectiveAwayRoomId) as Route);
     });
-  }
+  }, [buildRoomHref, effectiveAwayRoomId, onResumeAwayRoom, router]);
 
   useEffect(() => {
     if (roomsQuery.error) setStatusMessage(toUserFacingError(roomsQuery.error));
@@ -236,40 +237,43 @@ export function RoomsHomePage({
     }
   }
 
-  function openRoomDetails(room: RoomDirectoryItem) {
-    if (room.room.id === effectiveAwayRoomId) {
-      handleResumeAwayRoom();
-      return;
-    }
-    if (!activeSession) {
-      setStatusMessage("进入房间需要先登录账号。");
-      router.push(authEntryHref as Route);
-      return;
-    }
-
-    handlePrewarmRoom(room.room.id);
-    const targetRoomId = room.room.id;
-    let targetCardEl: HTMLElement | null = null;
-    runRoomViewTransition(
-      "card-open",
-      () => {
-        if (targetCardEl) targetCardEl.style.viewTransitionName = "";
-        setSelectedRoom(room);
-        setDialogError(null);
-      },
-      {
-        beforeCapture: () => {
-          const slotEl = document.querySelector<HTMLElement>(
-            `[data-mosaic-slot-id="${CSS.escape(targetRoomId)}"]`
-          );
-          targetCardEl = slotEl?.querySelector<HTMLElement>('[data-testid="room-directory-card"]') ?? null;
-          if (targetCardEl) targetCardEl.style.viewTransitionName = "active-room-shell";
-        }
+  const openRoomDetails = useCallback(
+    (room: RoomDirectoryItem) => {
+      if (room.room.id === effectiveAwayRoomId) {
+        handleResumeAwayRoom();
+        return;
       }
-    );
-  }
+      if (!activeSession) {
+        setStatusMessage("进入房间需要先登录账号。");
+        router.push(authEntryHref as Route);
+        return;
+      }
 
-  function closeRoomDetails() {
+      handlePrewarmRoom(room.room.id);
+      const targetRoomId = room.room.id;
+      let targetCardEl: HTMLElement | null = null;
+      runRoomViewTransition(
+        "card-open",
+        () => {
+          if (targetCardEl) targetCardEl.style.viewTransitionName = "";
+          setSelectedRoom(room);
+          setDialogError(null);
+        },
+        {
+          beforeCapture: () => {
+            const slotEl = document.querySelector<HTMLElement>(
+              `[data-mosaic-slot-id="${CSS.escape(targetRoomId)}"]`
+            );
+            targetCardEl = slotEl?.querySelector<HTMLElement>('[data-testid="room-directory-card"]') ?? null;
+            if (targetCardEl) targetCardEl.style.viewTransitionName = "active-room-shell";
+          }
+        }
+      );
+    },
+    [activeSession, authEntryHref, effectiveAwayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]
+  );
+
+  const closeRoomDetails = useCallback(() => {
     if (!selectedRoom) return;
     const closingId = selectedRoom.room.id;
     runRoomViewTransition(
@@ -285,26 +289,54 @@ export function RoomsHomePage({
         }
       }
     );
-  }
+  }, [selectedRoom]);
 
-  function handleFilterChange(nextFilter: RoomFilterValue) {
-    if (nextFilter === roomTypeFilter) return;
-    const prevIndex = ROOM_FILTER_ORDER.indexOf(roomTypeFilter);
-    const nextIndex = ROOM_FILTER_ORDER.indexOf(nextFilter);
-    const direction = nextIndex >= prevIndex ? "forward" : "backward";
-    runRoomViewTransition(
-      "gallery",
-      () => {
-        setRoomTypeFilter(nextFilter);
-      },
-      { direction }
-    );
-  }
+  const handleFilterChange = useCallback(
+    (nextFilter: RoomFilterValue) => {
+      if (nextFilter === roomTypeFilter) return;
+      const prevIndex = ROOM_FILTER_ORDER.indexOf(roomTypeFilter);
+      const nextIndex = ROOM_FILTER_ORDER.indexOf(nextFilter);
+      const direction = nextIndex >= prevIndex ? "forward" : "backward";
+      runRoomViewTransition(
+        "gallery",
+        () => {
+          setRoomTypeFilter(nextFilter);
+        },
+        { direction }
+      );
+    },
+    [roomTypeFilter]
+  );
 
-  const filterCounts = useMemo(
+  const rawFilterCounts = useMemo(
     () => countRoomsByFilter(availableRooms),
     [availableRooms]
   );
+  const filterCountsRef = useRef(rawFilterCounts);
+  const filterCounts = useMemo(() => {
+    const prev = filterCountsRef.current;
+    if (
+      prev.all === rawFilterCounts.all &&
+      prev.interactive === rawFilterCounts.interactive &&
+      prev.request === rawFilterCounts.request &&
+      prev.radio === rawFilterCounts.radio
+    ) {
+      return prev;
+    }
+    filterCountsRef.current = rawFilterCounts;
+    return rawFilterCounts;
+  }, [rawFilterCounts]);
+
+  const handleManualRefresh = useCallback(() => {
+    setIsManualRefreshing(true);
+    startTransition(async () => {
+      try {
+        await refreshAvailableRooms();
+      } finally {
+        setIsManualRefreshing(false);
+      }
+    });
+  }, [refreshAvailableRooms]);
 
   const filteredRooms = useMemo(
     () =>
@@ -345,11 +377,11 @@ export function RoomsHomePage({
           activeFilter={roomTypeFilter}
           announcementBell={announcementCenter.bellTriggerNode}
           counts={filterCounts}
-          isRefreshing={isPending || roomsQuery.isFetching}
+          isRefreshing={isPending || isManualRefreshing}
           onCreatePublicRoom={() => openCreateRoom("public")}
           onFilterChange={handleFilterChange}
           onOpenJoinDialog={openJoinDialog}
-          onRefresh={() => startTransition(() => void refreshAvailableRooms())}
+          onRefresh={handleManualRefresh}
           roomsLoaded={roomsLoaded}
         />
 

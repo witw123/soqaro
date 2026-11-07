@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { RoomType } from "@soqaro/shared";
 
@@ -71,7 +71,7 @@ export function RequestNebulaVinylScene({ className = "" }: { className?: string
       <div className="absolute -right-4 -bottom-8 w-40 h-40 sm:w-44 sm:h-44 transition-transform duration-500 ease-out group-hover:scale-105">
         <svg
           viewBox="0 0 160 160"
-          className="w-full h-full drop-shadow-sm group-hover:animate-spin-slow full-motion-spin will-change-transform"
+          className="w-full h-full drop-shadow-sm group-hover:animate-spin-slow full-motion-spin group-hover:will-change-transform"
         >
           <defs>
             <linearGradient id="vinylBody" x1="0%" y1="0%" x2="100%" y2="100%">

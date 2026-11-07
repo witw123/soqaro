@@ -44,9 +44,6 @@ const MembersPanel = dynamic(() => import("./MembersPanel").then((m) => m.Member
 const RoomProviderTrackSearch = dynamic(() => import("./RoomProviderTrackSearch").then((m) => m.RoomProviderTrackSearch), {
   loading: RoomTabPanelPlaceholder
 });
-const RoomReactionToolbar = dynamic(() => import("./RoomReactionToolbar").then((m) => m.RoomReactionToolbar), {
-  loading: RoomTabPanelPlaceholder
-});
 
 type ProviderCandidate = NeteaseTrackCandidate | QqMusicTrackCandidate | BilibiliTrackCandidate;
 
@@ -66,8 +63,7 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
         () => import("./LibraryTabPanel"),
         () => import("./LocalStorageTabPanel"),
         () => import("./MembersPanel"),
-        () => import("./RoomProviderTrackSearch"),
-        () => import("./RoomReactionToolbar")
+        () => import("./RoomProviderTrackSearch")
       ]),
     []
   );
@@ -203,37 +199,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
     }
     setMessage(`《${track.title}》已送入房主审核队列。`);
   };
-
-  const currentPlayingRequester = useMemo(() => {
-    if (!props.currentTrack) return null;
-    const match = requests.find(
-      (r) => r.title === props.currentTrack?.title || r.id === props.currentTrack?.id
-    );
-    return match?.requesterName ?? null;
-  }, [props.currentTrack, requests]);
-
-  const selectableSongs = useMemo(() => {
-    const list: Array<{ id: string; title: string; artist?: string; requesterName?: string | null }> = [];
-    if (props.currentTrack) {
-      list.push({
-        id: props.currentTrack.id,
-        title: props.currentTrack.title,
-        artist: props.currentTrack.artist,
-        requesterName: currentPlayingRequester
-      });
-    }
-    requests.forEach((r) => {
-      if (!list.some((s) => s.title === r.title)) {
-        list.push({
-          id: r.id,
-          title: r.title,
-          artist: r.artist,
-          requesterName: r.requesterName
-        });
-      }
-    });
-    return list;
-  }, [props.currentTrack, currentPlayingRequester, requests]);
 
   const hostLeftTabs = useMemo(() => [
     { id: "inbox" as const, label: `待审核 (${pendingRequests.length})`, icon: InboxIcon },
@@ -491,17 +456,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
               <RoomPanelSkeleton />
             )}
           </div>
-
-          {/* Request Room Dedicated Song Interaction Bar */}
-          <div className="shrink-0 px-2.5 py-1.5 border-t border-surface-border/40 bg-surface/80 backdrop-blur-xl">
-            <RoomReactionToolbar
-              roomId={roomId}
-              socket={props.socket}
-              variant="request"
-              targetSongs={selectableSongs}
-              activeSongId={props.currentTrack?.id}
-            />
-          </div>
         </div>
       </div>
 
@@ -601,15 +555,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
                     tracks={props.roomSnapshot.tracks}
                     members={props.roomSnapshot.room.members}
                     currentSessionId={props.activeSession?.userId ?? null}
-                  />
-                </div>
-                <div className="shrink-0 px-2 py-1 border-t border-surface-border/40 bg-surface/80 backdrop-blur-xl">
-                  <RoomReactionToolbar
-                    roomId={roomId}
-                    socket={props.socket}
-                    variant="request"
-                    targetSongs={selectableSongs}
-                    activeSongId={props.currentTrack?.id}
                   />
                 </div>
               </div>

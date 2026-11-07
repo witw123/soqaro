@@ -17,7 +17,7 @@ describe("RadioRoomView layout", () => {
     expect(radioRoomSource).toContain("<RadioLibraryList");
     expect(radioRoomSource).toContain("<RoomChatPanel");
     expect(radioRoomSource).toContain("<RadioMembersPanel");
-    expect(radioRoomSource).toContain("<RoomReactionToolbar");
+    expect(radioRoomSource).not.toContain("<RoomReactionToolbar");
     expect(radioRoomSource).toContain('data-testid="radio-queue-panel"');
   });
 

@@ -18,7 +18,7 @@ describe("RequestRoomView layout", () => {
     expect(requestRoomSource).toContain("<LibraryTabPanel");
     expect(requestRoomSource).toContain("<LocalStorageTabPanel");
     expect(requestRoomSource).toContain("<MembersPanel");
-    expect(requestRoomSource).toContain("<RoomReactionToolbar");
+    expect(requestRoomSource).not.toContain("<RoomReactionToolbar");
     expect(requestRoomSource).toContain('data-testid="request-queue-panel"');
   });
 });

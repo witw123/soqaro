@@ -727,18 +727,18 @@
     transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
 
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
+  html.theme-transitioning::view-transition-old(root),
+  html.theme-transitioning::view-transition-new(root) {
     animation-duration: 420ms;
     animation-fill-mode: both;
     animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
-  ::view-transition-old(root) {
+  html.theme-transitioning::view-transition-old(root) {
     animation-name: theme-view-transition-out;
   }
 
-  ::view-transition-new(root) {
+  html.theme-transitioning::view-transition-new(root) {
     animation-name: theme-view-transition-reveal;
     clip-path: circle(0 at var(--theme-transition-x) var(--theme-transition-y));
   }
@@ -917,6 +917,10 @@
 
   .room-gallery-slot-enter {
     animation: room-gallery-slot-enter 180ms ease-out both;
+  }
+
+  html[data-room-transition] .room-gallery-slot-enter {
+    animation: none !important;
   }
 
   .mosaic-puzzle-grid [data-testid="room-directory-card"] {

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useMemo,
   useRef,
   type KeyboardEvent
@@ -39,7 +40,7 @@ type RoomDirectoryGridProps = {
   onPrewarmRoom: (roomId: string) => void;
 };
 
-export function RoomDirectoryGrid({
+export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
   rooms,
   roomsLoaded,
   awayRoomId,
@@ -135,7 +136,7 @@ export function RoomDirectoryGrid({
 
         return (
           <div
-            className={`room-gallery-slot-enter mosaic-puzzle-tile relative min-w-0 ${MD_SPAN_CLASS[span.mdSpan]} ${LG_SPAN_CLASS[span.lgSpan]} ${
+            className={`room-gallery-slot-enter mosaic-puzzle-tile relative min-w-0 [content-visibility:auto] [contain-intrinsic-size:280px_220px] ${MD_SPAN_CLASS[span.mdSpan]} ${LG_SPAN_CLASS[span.lgSpan]} ${
               isAway ? "z-10 ring-1 ring-inset ring-[var(--amber-7)]" : ""
             }`}
             data-mosaic-slot-id={roomId}
@@ -144,8 +145,8 @@ export function RoomDirectoryGrid({
             key={roomId}
           >
             <RoomDirectoryCard
-              onOpen={() => onOpenRoom(item)}
-              onPrewarm={() => onPrewarmRoom(roomId)}
+              onOpen={onOpenRoom}
+              onPrewarm={onPrewarmRoom}
               room={item}
               shellTransitionName={isMorphTarget ? "active-room-shell" : undefined}
             />
@@ -154,4 +155,4 @@ export function RoomDirectoryGrid({
       })}
     </div>
   );
-}
+});

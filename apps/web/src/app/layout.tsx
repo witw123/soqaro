@@ -137,7 +137,7 @@ export default function RootLayout({
         <Script id="theme-init" strategy="beforeInteractive">{themeInitScript}</Script>
         <Script id="shell-error-reporter" strategy="beforeInteractive">{shellErrorReporterScript}</Script>
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <PersistentRoomRuntime>{children}</PersistentRoomRuntime>
       </body>
     </html>

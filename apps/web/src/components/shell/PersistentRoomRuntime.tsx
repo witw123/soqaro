@@ -26,17 +26,6 @@ const SoqaroApp = dynamic(
   { ssr: false }
 );
 
-// 客户端空闲时预热 SoqaroApp 分块，确保进房帧0无缝衔接
-if (typeof window !== "undefined") {
-  const prewarm = () => {
-    void import("@/components/soqaro-app");
-  };
-  if ("requestIdleCallback" in window && typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(prewarm, { timeout: 1500 });
-  } else {
-    setTimeout(prewarm, 300);
-  }
-}
 const DesktopLyricsOverlay = dynamic(
   () => import("@/components/desktop-lyrics").then((mod) => mod.DesktopLyricsOverlay),
   { ssr: false }
@@ -47,6 +36,7 @@ export function PersistentRoomRuntime({ children }: { children: ReactNode }) {
 }
 
 function RoomRuntime({ children }: { children: ReactNode }) {
+  const [hasMounted, setHasMounted] = useState(false);
   const pathname = usePathname();
   const isLyricsWindow =
     pathname === "/desktop-lyrics" ||
@@ -56,6 +46,21 @@ function RoomRuntime({ children }: { children: ReactNode }) {
     sessionStorageKey: "soqaro-session",
     initialStatusMessage: ""
   });
+
+  useEffect(() => {
+    setHasMounted(true);
+    // 水合完成后空闲时预热运行时分块，既不影响初次水合又保证进房迅速
+    const prewarm = () => {
+      void import("@/components/soqaro-app");
+    };
+    if (typeof window !== "undefined") {
+      if ("requestIdleCallback" in window && typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(prewarm, { timeout: 2000 });
+      } else {
+        setTimeout(prewarm, 500);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (isCapacitorRuntime()) {
@@ -102,7 +107,7 @@ function RoomRuntime({ children }: { children: ReactNode }) {
         <LocalPlayerProvider active={owner === "local"}>
           {children}
           {owner === "local" ? <AppPersistentPlayer /> : null}
-          {runtimeRoomId ? (
+          {hasMounted && runtimeRoomId ? (
             <SoqaroApp
               backgroundOnly={!routeRoomId}
               initialRoomId={runtimeRoomId}

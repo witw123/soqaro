@@ -17,6 +17,7 @@ type RoomRouter = {
 };
 
 type UseRoomLifecycleActionsInput = {
+  currentRoomId?: string | null;
   workspaceOnly: boolean;
   workspaceEntryHref: string;
   authEntryHref: string;
@@ -33,6 +34,7 @@ type UseRoomLifecycleActionsInput = {
 };
 
 export function useRoomLifecycleActions({
+  currentRoomId = null,
   workspaceOnly,
   workspaceEntryHref,
   authEntryHref,
@@ -68,7 +70,7 @@ export function useRoomLifecycleActions({
   ]);
 
   const handleLeaveRoomAction = useCallback(async () => {
-    setIsNavigatingRoomExit(true);
+    const exitingRoomId = currentRoomId;
     closeDesktopLyricsNative();
     const didLeave = await leaveRoom();
     if (!didLeave) {
@@ -78,17 +80,29 @@ export function useRoomLifecycleActions({
 
     setSuppressRoomRecovery(true);
     clearAwayRoomId();
-    dispatchRoomStateEvent({ type: "local-reset" });
-    setPlaylists([]);
     if (workspaceOnly) {
-      runRoomViewTransition("room-exit", () => {
-        router.replace(workspaceEntryHref as Route);
-      });
+      runRoomViewTransition(
+        "room-exit",
+        () => {
+          router.replace(workspaceEntryHref as Route);
+        },
+        {
+          roomId: exitingRoomId,
+          onFinished: () => {
+            dispatchRoomStateEvent({ type: "local-reset" });
+            setPlaylists([]);
+            setIsNavigatingRoomExit(false);
+          }
+        }
+      );
       return;
     }
 
+    dispatchRoomStateEvent({ type: "local-reset" });
+    setPlaylists([]);
     setIsNavigatingRoomExit(false);
   }, [
+    currentRoomId,
     dispatchRoomStateEvent,
     leaveRoom,
     router,
@@ -100,7 +114,7 @@ export function useRoomLifecycleActions({
   ]);
 
   const handleDeleteRoomAction = useCallback(async () => {
-    setIsNavigatingRoomExit(true);
+    const exitingRoomId = currentRoomId;
     closeDesktopLyricsNative();
     const didDelete = await deleteRoom();
     if (!didDelete) {
@@ -110,17 +124,29 @@ export function useRoomLifecycleActions({
 
     setSuppressRoomRecovery(true);
     clearAwayRoomId();
-    dispatchRoomStateEvent({ type: "local-reset" });
-    setPlaylists([]);
     if (workspaceOnly) {
-      runRoomViewTransition("room-exit", () => {
-        router.replace(workspaceEntryHref as Route);
-      });
+      runRoomViewTransition(
+        "room-exit",
+        () => {
+          router.replace(workspaceEntryHref as Route);
+        },
+        {
+          roomId: exitingRoomId,
+          onFinished: () => {
+            dispatchRoomStateEvent({ type: "local-reset" });
+            setPlaylists([]);
+            setIsNavigatingRoomExit(false);
+          }
+        }
+      );
       return;
     }
 
+    dispatchRoomStateEvent({ type: "local-reset" });
+    setPlaylists([]);
     setIsNavigatingRoomExit(false);
   }, [
+    currentRoomId,
     dispatchRoomStateEvent,
     deleteRoom,
     router,

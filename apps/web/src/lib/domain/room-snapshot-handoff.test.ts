@@ -1,8 +1,9 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoomJoinResponse, RoomSnapshot } from "@soqaro/shared";
 import {
   buildRoomJoinBootstrapSnapshot,
   consumeRoomSnapshotHandoff,
+  peekRoomSnapshotHandoff,
   storeRoomSnapshotHandoff
 } from "./room-snapshot-handoff";
 
@@ -69,11 +70,13 @@ describe("room snapshot handoff", () => {
     Reflect.deleteProperty(globalThis, "window");
   });
 
-  it("stores and consumes a matching room snapshot", () => {
+  it("stores, peeks synchronously for initial render, and consumes a matching room snapshot", () => {
     const snapshot = buildSnapshot();
     storeRoomSnapshotHandoff(snapshot);
 
+    expect(peekRoomSnapshotHandoff(snapshot.room.id)).toEqual(snapshot);
     expect(consumeRoomSnapshotHandoff(snapshot.room.id)).toEqual(snapshot);
+    expect(peekRoomSnapshotHandoff(snapshot.room.id)).toBeNull();
     expect(consumeRoomSnapshotHandoff(snapshot.room.id)).toBeNull();
   });
 

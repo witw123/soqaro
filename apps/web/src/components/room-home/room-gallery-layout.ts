@@ -52,6 +52,11 @@ export type MosaicPackedRoom = {
   item: RoomDirectoryItem;
   span: MosaicTileSpan;
   textScore: number;
+  isLgRowEnd: boolean;
+  isLgRowBottom: boolean;
+  isMdRowEnd: boolean;
+  isMdRowBottom: boolean;
+  isMobileBottom: boolean;
 };
 
 const DESKTOP_TRIPLE_ROWS: ReadonlyArray<readonly [3 | 4 | 5, 3 | 4 | 5, 3 | 4 | 5]> = [
@@ -209,7 +214,12 @@ export function packRoomsIntoContentMosaic(
       result.push({
         item: rowItems[0]!.item,
         span: rowSpans[0]!,
-        textScore: rowItems[0]!.textScore
+        textScore: rowItems[0]!.textScore,
+        isLgRowEnd: false,
+        isLgRowBottom: false,
+        isMdRowEnd: false,
+        isMdRowBottom: false,
+        isMobileBottom: false
       });
     } else {
       // Match items to row slot spans by textScore rank:
@@ -247,12 +257,56 @@ export function packRoomsIntoContentMosaic(
         result.push({
           item: entry.item,
           span: rowSpans[slotIdx]!,
-          textScore: entry.textScore
+          textScore: entry.textScore,
+          isLgRowEnd: false,
+          isLgRowBottom: false,
+          isMdRowEnd: false,
+          isMdRowBottom: false,
+          isMobileBottom: false
         });
       }
     }
 
     cursor += rowLength;
+  }
+
+  // Annotate desktop (lg: 12-col) row-end and bottom-row boundaries
+  let lgSum = 0;
+  for (let i = 0; i < count; i += 1) {
+    lgSum += result[i]!.span.lgSpan;
+    if (lgSum >= 12 || i === count - 1) {
+      result[i]!.isLgRowEnd = true;
+      lgSum = 0;
+    }
+  }
+
+  let lastLgSum = 0;
+  for (let i = count - 1; i >= 0; i -= 1) {
+    result[i]!.isLgRowBottom = true;
+    lastLgSum += result[i]!.span.lgSpan;
+    if (lastLgSum >= 12) break;
+  }
+
+  // Annotate tablet (md: 8-col) row-end and bottom-row boundaries
+  let mdSum = 0;
+  for (let i = 0; i < count; i += 1) {
+    mdSum += result[i]!.span.mdSpan;
+    if (mdSum >= 8 || i === count - 1) {
+      result[i]!.isMdRowEnd = true;
+      mdSum = 0;
+    }
+  }
+
+  let lastMdSum = 0;
+  for (let i = count - 1; i >= 0; i -= 1) {
+    result[i]!.isMdRowBottom = true;
+    lastMdSum += result[i]!.span.mdSpan;
+    if (lastMdSum >= 8) break;
+  }
+
+  // Annotate mobile bottom boundary (single-column layout)
+  for (let i = 0; i < count; i += 1) {
+    result[i]!.isMobileBottom = i === count - 1;
   }
 
   return result;

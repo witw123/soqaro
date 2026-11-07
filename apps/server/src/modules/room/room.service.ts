@@ -374,6 +374,7 @@ export class RoomService {
             ? {
                 title: currentTrack.title,
                 artist: currentTrack.artist,
+                album: currentTrack.album ?? null,
                 artworkUrl: currentTrack.artworkUrl
               }
             : null,

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type MouseEvent } from "react";
 import { Home, Compass, ListMusic, User } from "lucide-react";
+import { storeAwayRoomId } from "@/lib/domain/away-room";
+import { runRoomViewTransition } from "@/lib/ui/room-view-transition";
 
 type MobileNavIconName = "home" | "discover" | "playlist" | "profile";
 
@@ -24,11 +26,50 @@ const items: MobileNavItem[] = [
 
 export function MobileAppNavigation({ onNavigateAway }: { onNavigateAway?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [pendingHref, setPendingHref] = useState<Route | null>(null);
+  const resolvedRoomId = pathname?.startsWith("/room/") ? pathname.split("/")[2] ?? null : null;
 
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
+
+  const handleItemClick = (event: MouseEvent<HTMLAnchorElement>, href: Route) => {
+    if (!resolvedRoomId) {
+      onNavigateAway?.();
+      return;
+    }
+
+    const isPlainLeftClick =
+      event.button === 0 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey;
+    const isRoomHostVisible =
+      typeof document !== "undefined" &&
+      Boolean(document.querySelector('[data-custom-layout-room-host="true"]'));
+
+    if (!isPlainLeftClick || !isRoomHostVisible) {
+      storeAwayRoomId(resolvedRoomId);
+      return;
+    }
+
+    event.preventDefault();
+    if (href === "/app" && onNavigateAway) {
+      onNavigateAway();
+      return;
+    }
+
+    runRoomViewTransition(
+      "room-exit",
+      () => {
+        storeAwayRoomId(resolvedRoomId);
+        router.push(href);
+      },
+      { roomId: resolvedRoomId }
+    );
+  };
 
   return (
     <nav className="mobile-app-navigation fixed inset-x-0 bottom-0 z-[70] isolate h-[calc(3.25rem+env(safe-area-inset-bottom))] md:hidden" data-custom-layout-item="mobile-navigation" aria-label="主导航">
@@ -41,7 +82,7 @@ export function MobileAppNavigation({ onNavigateAway }: { onNavigateAway?: () =>
               className={`mobile-app-navigation__item ${active ? "mobile-app-navigation__item--active" : ""}`}
               href={item.href}
               key={item.id}
-              onClick={onNavigateAway}
+              onClick={(event) => handleItemClick(event, item.href)}
               onPointerDown={() => setPendingHref(item.href)}
             >
               <MobileNavIcon name={item.icon} />

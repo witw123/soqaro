@@ -51,7 +51,6 @@ import {
   ROOM_VIBE_CATEGORIES,
   curateRecommendedRooms,
   filterCuratedRooms,
-  formatRoomFormatLabel,
   pickRandomOpenRoom,
   type CuratedRoomRecommendation,
   type RoomVibeFilterId
@@ -123,7 +122,6 @@ export function DiscoverPage() {
   const [roomTypeFilter, setRoomTypeFilter] = useState<"all" | RoomType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRoom, setSelectedRoom] = useState<RoomDirectoryItem | null>(null);
-  const [morphingRoomId, setMorphingRoomId] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [showColdStartDialog, setShowColdStartDialog] = useState(false);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
@@ -185,9 +183,13 @@ export function DiscoverPage() {
     if (!awayRoomId) return;
     prewarmRoomRuntimeChunk();
     requestAwayRoomResume(awayRoomId);
-    runRoomViewTransition("room-enter", () => {
-      router.push(`/room/${awayRoomId}` as Route);
-    });
+    runRoomViewTransition(
+      "room-enter",
+      () => {
+        router.push(`/room/${awayRoomId}` as Route);
+      },
+      { roomId: awayRoomId }
+    );
   }, [awayRoomId, router]);
 
   const openRoomDetails = useCallback(
@@ -203,23 +205,13 @@ export function DiscoverPage() {
       }
 
       handlePrewarmRoom(room.room.id);
-      const targetRoomId = room.room.id;
-      let targetCardEl: HTMLElement | null = null;
       runRoomViewTransition(
         "card-open",
         () => {
-          if (targetCardEl) targetCardEl.style.viewTransitionName = "";
           setSelectedRoom(room);
           setDialogError(null);
         },
-        {
-          beforeCapture: () => {
-            targetCardEl = document.querySelector<HTMLElement>(
-              `[data-discover-room-id="${CSS.escape(targetRoomId)}"]`
-            );
-            if (targetCardEl) targetCardEl.style.viewTransitionName = "active-room-shell";
-          }
-        }
+        { roomId: room.room.id }
       );
     },
     [activeSession, authEntryHref, awayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]
@@ -231,15 +223,10 @@ export function DiscoverPage() {
     runRoomViewTransition(
       "card-close",
       () => {
-        setMorphingRoomId(closingId);
         setSelectedRoom(null);
         setDialogError(null);
       },
-      {
-        onFinished: () => {
-          setMorphingRoomId(null);
-        }
-      }
+      { roomId: closingId }
     );
   }, [selectedRoom]);
 
@@ -253,10 +240,14 @@ export function DiscoverPage() {
       const joined = await soqaroApi.joinRoomByCode(code.trim(), password);
       storeRoomSnapshotHandoff(buildRoomJoinBootstrapSnapshot(joined));
       window.localStorage.setItem(lastRoomStorageKey, joined.roomId);
-      runRoomViewTransition("room-enter", () => {
-        setSelectedRoom(null);
-        router.push(`/room/${joined.roomId}` as Route);
-      });
+      runRoomViewTransition(
+        "room-enter",
+        () => {
+          setSelectedRoom(null);
+          router.push(`/room/${joined.roomId}` as Route);
+        },
+        { roomId: joined.roomId }
+      );
     } catch (error) {
       if (selectedRoom) {
         setDialogError(toUserFacingError(error));
@@ -567,7 +558,6 @@ export function DiscoverPage() {
                 {filteredRooms.map((entry) => (
                   <RecommendedRoomCard
                     entry={entry}
-                    isMorphing={morphingRoomId === entry.item.room.id}
                     key={entry.item.room.id}
                     onOpen={openRoomDetails}
                     onPrewarm={handlePrewarmRoom}
@@ -614,7 +604,6 @@ export function DiscoverPage() {
                   {liveSpotlightRooms.map((entry) => (
                     <LiveSpotlightRoomCard
                       entry={entry}
-                      isMorphing={morphingRoomId === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
@@ -643,7 +632,6 @@ export function DiscoverPage() {
                   {tasteMatchedRooms.slice(0, 6).map((entry) => (
                     <RecommendedRoomCard
                       entry={entry}
-                      isMorphing={morphingRoomId === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
@@ -668,7 +656,6 @@ export function DiscoverPage() {
                   {frequentRooms.slice(0, 3).map((entry) => (
                     <RecommendedRoomCard
                       entry={entry}
-                      isMorphing={morphingRoomId === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
@@ -692,7 +679,6 @@ export function DiscoverPage() {
                 {remainingRecommendedRooms.map((entry) => (
                   <RecommendedRoomCard
                     entry={entry}
-                    isMorphing={morphingRoomId === entry.item.room.id}
                     key={entry.item.room.id}
                     onOpen={openRoomDetails}
                     onPrewarm={handlePrewarmRoom}
@@ -736,12 +722,10 @@ export function DiscoverPage() {
 
 const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
   entry,
-  isMorphing,
   onOpen,
   onPrewarm
 }: {
   entry: CuratedRoomRecommendation;
-  isMorphing: boolean;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm: (roomId: string) => void;
 }) {
@@ -750,14 +734,12 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
   const artworkSrc = nowPlaying?.artworkUrl
     ? getArtworkSourceUrl(nowPlaying.artworkUrl)
     : null;
-  const formatLabel = formatRoomFormatLabel(room.roomType);
 
   return (
     <article
-      className="group relative flex min-w-0 items-center gap-3.5 rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3.5 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)]"
+      className="group relative flex min-w-0 items-center gap-3.5 rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)]"
       data-discover-room-id={room.id}
       onPointerEnter={() => onPrewarm(room.id)}
-      style={isMorphing ? { viewTransitionName: "active-room-shell" } : undefined}
     >
       <button
         aria-label={`查看 ${room.name} 的房间详情`}
@@ -768,7 +750,7 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
       />
 
       {/* Album Cover / Stage Artwork */}
-      <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)]">
+      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)]">
         {artworkSrc ? (
           <img
             alt={nowPlaying?.title ?? room.name}
@@ -783,16 +765,16 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
       </div>
 
       {/* Room & Track Info */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
-        <div className="flex items-start justify-between gap-2">
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <h3 className="truncate text-base font-semibold tracking-tight text-[var(--slate-12)]">
+            <h3 className="truncate text-sm font-semibold tracking-tight text-[var(--slate-12)]">
               {room.name}
             </h3>
             {room.hasPassword ? (
               <Lock
                 aria-label="需要密码"
-                className="h-3.5 w-3.5 shrink-0 text-[var(--slate-10)]"
+                className="h-3 w-3 shrink-0 text-[var(--slate-10)]"
               />
             ) : null}
           </div>
@@ -814,11 +796,11 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
         {nowPlaying?.title ? (
           <div className="flex min-w-0 items-center gap-2 rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)] px-2.5 py-1.5">
             <LiveEqualizerBars active={entry.isLive} />
-            <span className="truncate text-sm font-medium text-[var(--slate-12)]">
+            <span className="truncate text-xs font-medium text-[var(--slate-12)]">
               {nowPlaying.title}
             </span>
             {nowPlaying.artist ? (
-              <span className="max-w-[40%] shrink-0 truncate text-xs text-[var(--slate-11)]">
+              <span className="max-w-[45%] shrink-0 truncate text-xs text-[var(--slate-11)]">
                 / {nowPlaying.artist}
               </span>
             ) : null}
@@ -828,24 +810,6 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
             {room.description?.trim() || "多人实时同步听歌空间"}
           </p>
         )}
-
-        {/* Footer Meta & Recommendation Reason */}
-        <div className="flex items-center justify-between gap-2 pt-0.5 text-xs text-[var(--slate-11)]">
-          <div className="flex min-w-0 items-center gap-2">
-            <span>{formatLabel}</span>
-            {room.directoryHostNickname ? (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-[0.5px] shrink-0 bg-[var(--slate-6)]"
-                />
-                <span className="truncate">房主 {room.directoryHostNickname}</span>
-              </>
-            ) : null}
-          </div>
-
-          <ReasonBadge entry={entry} />
-        </div>
       </div>
     </article>
   );
@@ -853,12 +817,10 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
 
 const RecommendedRoomCard = memo(function RecommendedRoomCard({
   entry,
-  isMorphing,
   onOpen,
   onPrewarm
 }: {
   entry: CuratedRoomRecommendation;
-  isMorphing: boolean;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm: (roomId: string) => void;
 }) {
@@ -867,14 +829,12 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
   const artworkSrc = nowPlaying?.artworkUrl
     ? getArtworkSourceUrl(nowPlaying.artworkUrl)
     : null;
-  const formatLabel = formatRoomFormatLabel(room.roomType);
 
   return (
     <article
       className="group relative flex min-w-0 flex-col justify-between rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)]"
       data-discover-room-id={room.id}
       onPointerEnter={() => onPrewarm(room.id)}
-      style={isMorphing ? { viewTransitionName: "active-room-shell" } : undefined}
     >
       <button
         aria-label={`查看 ${room.name} 的房间详情`}
@@ -912,9 +872,11 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
           </span>
         </div>
 
-        <p className="mt-1 truncate text-xs text-[var(--slate-11)]">
-          {room.description?.trim() || fallbackRoomSummary(room)}
-        </p>
+        {room.description?.trim() ? (
+          <p className="mt-1 truncate text-xs text-[var(--slate-11)]">
+            {room.description.trim()}
+          </p>
+        ) : null}
 
         {/* Concentric Inner Now Playing / Queue Box */}
         <div className="mt-2.5 flex min-w-0 items-center gap-2.5 rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)] px-2.5 py-2">
@@ -960,44 +922,9 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
           )}
         </div>
       </div>
-
-      {/* Footer: Format + Host + Recommendation Reason */}
-      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-hairline border-[var(--slate-6)] pt-2 text-xs text-[var(--slate-11)]">
-        <div className="flex min-w-0 items-center gap-2">
-          <span>{formatLabel}</span>
-          {room.directoryHostNickname ? (
-            <>
-              <span
-                aria-hidden="true"
-                className="h-2.5 w-[0.5px] shrink-0 bg-[var(--slate-6)]"
-              />
-              <span className="truncate">房主 {room.directoryHostNickname}</span>
-            </>
-          ) : null}
-        </div>
-
-        <ReasonBadge entry={entry} />
-      </div>
     </article>
   );
 });
-
-function ReasonBadge({ entry }: { entry: CuratedRoomRecommendation }) {
-  const isHighlighted =
-    entry.matchKind === "taste" || entry.matchKind === "away";
-
-  return (
-    <span
-      className={`shrink-0 truncate max-w-[11rem] rounded-md px-1.5 py-0.5 text-xs ${
-        isHighlighted
-          ? "border-hairline border-[var(--blue-6)] bg-[var(--blue-3)] text-[var(--blue-11)] font-medium"
-          : "border-hairline border-[var(--slate-6)] bg-[var(--slate-3)] text-[var(--slate-11)]"
-      }`}
-    >
-      {entry.reason}
-    </span>
-  );
-}
 
 function LiveEqualizerBars({ active }: { active: boolean }) {
   if (!active) {
@@ -1036,24 +963,23 @@ function RoomModeFallbackIcon({
   roomType: RoomType;
   small?: boolean;
 }) {
-  const sizeClass = small
-    ? "h-4 w-4 text-[var(--slate-10)]"
-    : "h-6 w-6 text-[var(--slate-10)]";
   if (roomType === "radio") {
-    return <Radio className={sizeClass} />;
+    return (
+      <Radio
+        className={small ? "h-4 w-4 text-[var(--slate-10)]" : "h-6 w-6 text-[var(--slate-10)]"}
+      />
+    );
   }
   if (roomType === "request") {
-    return <Disc3 className={sizeClass} />;
+    return (
+      <Disc3
+        className={small ? "h-4 w-4 text-[var(--slate-10)]" : "h-6 w-6 text-[var(--slate-10)]"}
+      />
+    );
   }
-  return <Users className={sizeClass} />;
-}
-
-function fallbackRoomSummary(room: RoomDirectoryItem["room"]): string {
-  if (room.roomType === "request") {
-    return "成员自由点歌与队列互动";
-  }
-  if (room.roomType === "radio") {
-    return "房主实时选曲与广播陪伴";
-  }
-  return "多人协作队列同步听歌";
+  return (
+    <Users
+      className={small ? "h-4 w-4 text-[var(--slate-10)]" : "h-6 w-6 text-[var(--slate-10)]"}
+    />
+  );
 }

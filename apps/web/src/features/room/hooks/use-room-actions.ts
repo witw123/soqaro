@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import {
@@ -303,7 +303,6 @@ export function useRoomActions({
         remoteWaitMs: 150,
         completeLocalExit: async () => {
           setSuppressRoomRecovery(true);
-          dispatchRoomStateEvent({ type: "local-reset" });
           resetPlayerSurface();
           roomAudioOutput.releaseRoomAudioSession();
           closeDesktopLyricsNative();
@@ -326,7 +325,6 @@ export function useRoomActions({
     }
   }, [
     activeSession,
-    dispatchRoomStateEvent,
     roomSnapshot,
     setSuppressRoomRecovery,
     resetPlayerSurface,
@@ -345,7 +343,6 @@ export function useRoomActions({
       const trackIds = roomSnapshot.tracks.map((track) => track.id);
       await soqaroApi.deleteRoom(roomSnapshot.room.id);
       setSuppressRoomRecovery(true);
-      dispatchRoomStateEvent({ type: "local-reset" });
       resetPlayerSurface();
       roomAudioOutput.releaseRoomAudioSession();
       closeDesktopLyricsNative();
@@ -357,7 +354,7 @@ export function useRoomActions({
         // Room deletion already succeeded on the server. Do not fail the exit flow
         // if optional local cleanup cannot finish.
       }
-      await refreshAvailableRooms();
+      void refreshAvailableRooms().catch(() => undefined);
       setStatusMessage("房间已解散。");
       return true;
     } catch (error) {
@@ -366,7 +363,6 @@ export function useRoomActions({
     }
   }, [
     activeSession,
-    dispatchRoomStateEvent,
     roomSnapshot,
     onRoomDeleted,
     setSuppressRoomRecovery,

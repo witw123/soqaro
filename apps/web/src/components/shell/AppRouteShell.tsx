@@ -9,6 +9,7 @@ import { MobileAppNavigation } from "./MobileAppNavigation";
 import { awayRoomChangeEvent, readAwayRoomId, requestAwayRoomResume } from "@/lib/domain/away-room";
 import { useCustomLayoutRuntime } from "@/features/settings/use-custom-layout-runtime";
 import { WorkspacePageActivity } from "@/features/workspace/page-activity";
+import { prewarmRoomRuntimeChunk, runRoomViewTransition } from "@/lib/ui/room-view-transition";
 
 export function AppRouteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -29,8 +30,15 @@ export function AppRouteShell({ children }: { children: ReactNode }) {
 
   function handleResumeAwayRoom() {
     if (!awayRoomId) return;
+    prewarmRoomRuntimeChunk();
     requestAwayRoomResume(awayRoomId);
-    router.push(`/room/${awayRoomId}` as Route);
+    runRoomViewTransition(
+      "room-enter",
+      () => {
+        router.push(`/room/${awayRoomId}` as Route);
+      },
+      { roomId: awayRoomId }
+    );
   }
 
   return (

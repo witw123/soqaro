@@ -32,6 +32,7 @@ import {
   shouldCommitAwayRoomResume,
   storeAwayRoomId
 } from "@/lib/domain/away-room";
+import { peekRoomSnapshotHandoff } from "@/lib/domain/room-snapshot-handoff";
 import { runRoomViewTransition } from "@/components/room-home/room-view-transition";
 
 const lastRoomStorageKey = "soqaro-last-room";
@@ -55,9 +56,22 @@ export function SoqaroApp({
 
   const [roomState, dispatchRoomStateEvent] = useReducer(
     roomStateReducer,
-    initialRoomStateStore
+    initialRoomId,
+    (roomId) => {
+      if (!roomId) return initialRoomStateStore;
+      const handoff = peekRoomSnapshotHandoff(roomId);
+      if (!handoff) return initialRoomStateStore;
+      return roomStateReducer(initialRoomStateStore, {
+        type: "bootstrap-handoff",
+        snapshot: handoff
+      });
+    }
   );
-  const roomSnapshot = roomState.snapshot;
+  const handoffSnapshot =
+    initialRoomId && roomState.snapshot?.room.id !== initialRoomId
+      ? peekRoomSnapshotHandoff(initialRoomId)
+      : null;
+  const roomSnapshot = handoffSnapshot ?? roomState.snapshot;
   const [peerId, setPeerId] = useState("");
   const [awayRoomId, setAwayRoomId] = useState<string | null>(null);
   const pendingRoomResumeRef = useRef<string | null>(null);
@@ -67,30 +81,33 @@ export function SoqaroApp({
   });
 
   useEffect(() => {
-    const syncAwayRoom = () => {
-      if (!initialRoomId) {
-        setAwayRoomId(null);
-        return;
-      }
+    if (!initialRoomId) {
+      setAwayRoomId(null);
+      return;
+    }
 
-      const storedAwayRoomId = readAwayRoomId();
-      if (storedAwayRoomId === initialRoomId) {
-        setAwayRoomId(storedAwayRoomId);
-        return;
-      }
-
+    const storedAwayRoomId = readAwayRoomId();
+    if (storedAwayRoomId === initialRoomId) {
+      setAwayRoomId(storedAwayRoomId);
+    } else {
       setAwayRoomId(null);
       if (storedAwayRoomId) {
         clearAwayRoomId();
       }
+    }
+
+    const syncAwayRoomClear = () => {
+      const latestAwayRoomId = readAwayRoomId();
+      if (!latestAwayRoomId || latestAwayRoomId !== initialRoomId) {
+        setAwayRoomId(null);
+      }
     };
 
-    syncAwayRoom();
-    window.addEventListener(awayRoomChangeEvent, syncAwayRoom);
-    window.addEventListener("storage", syncAwayRoom);
+    window.addEventListener(awayRoomChangeEvent, syncAwayRoomClear);
+    window.addEventListener("storage", syncAwayRoomClear);
     return () => {
-      window.removeEventListener(awayRoomChangeEvent, syncAwayRoom);
-      window.removeEventListener("storage", syncAwayRoom);
+      window.removeEventListener(awayRoomChangeEvent, syncAwayRoomClear);
+      window.removeEventListener("storage", syncAwayRoomClear);
     };
   }, [initialRoomId]);
 
@@ -103,11 +120,15 @@ export function SoqaroApp({
       return;
     }
 
-    runRoomViewTransition("room-exit", () => {
-      storeAwayRoomId(targetRoomId);
-      setAwayRoomId(targetRoomId);
-      setStatusMessage("");
-    });
+    runRoomViewTransition(
+      "room-exit",
+      () => {
+        storeAwayRoomId(targetRoomId);
+        setAwayRoomId(targetRoomId);
+        setStatusMessage("");
+      },
+      { roomId: targetRoomId }
+    );
   }
 
   function handleResumeRoom() {
@@ -115,17 +136,25 @@ export function SoqaroApp({
     if (backgroundOnly && targetRoomId) {
       pendingRoomResumeRef.current = targetRoomId;
       requestAwayRoomResume(targetRoomId);
-      runRoomViewTransition("room-enter", () => {
-        router.push(`/room/${targetRoomId}` as Route);
-      });
+      runRoomViewTransition(
+        "room-enter",
+        () => {
+          router.push(`/room/${targetRoomId}` as Route);
+        },
+        { roomId: targetRoomId }
+      );
       return;
     }
 
-    runRoomViewTransition("room-enter", () => {
-      clearAwayRoomId();
-      setAwayRoomId(null);
-      setStatusMessage("已返回房间。");
-    });
+    runRoomViewTransition(
+      "room-enter",
+      () => {
+        clearAwayRoomId();
+        setAwayRoomId(null);
+        setStatusMessage("已返回房间。");
+      },
+      { roomId: targetRoomId }
+    );
   }
 
   const {

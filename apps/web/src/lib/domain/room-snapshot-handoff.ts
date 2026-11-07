@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { RoomJoinResponse, RoomSnapshot } from "@soqaro/shared";
 
@@ -38,6 +38,37 @@ export function storeRoomSnapshotHandoff(snapshot: RoomSnapshot) {
     window.sessionStorage.setItem(roomSnapshotHandoffStorageKey, JSON.stringify(payload));
   } catch {
     // Ignore storage errors in restricted WebView environments
+  }
+}
+
+export function peekRoomSnapshotHandoff(roomId: string): RoomSnapshot | null {
+  if (typeof window === "undefined" || !roomId) {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(roomSnapshotHandoffStorageKey);
+    if (!raw) {
+      return null;
+    }
+
+    const payload = JSON.parse(raw) as Partial<RoomSnapshotHandoffPayload>;
+    const isExpired =
+      typeof payload.savedAt === "number" &&
+      Date.now() - payload.savedAt > roomSnapshotHandoffTtlMs;
+
+    if (isExpired) {
+      window.sessionStorage.removeItem(roomSnapshotHandoffStorageKey);
+      return null;
+    }
+
+    if (payload.roomId !== roomId || !payload.snapshot) {
+      return null;
+    }
+
+    return payload.snapshot;
+  } catch {
+    return null;
   }
 }
 

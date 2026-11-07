@@ -770,6 +770,17 @@
     view-transition-name: app-sidebar;
   }
 
+  html[data-room-transition] .mosaic-puzzle-tile {
+    content-visibility: visible !important;
+  }
+
+  html[data-room-transition] [data-custom-layout-room-host="true"] .animate-in,
+  html[data-room-transition] [data-custom-layout-room-host="true"] .animate-fade-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
   html[data-room-transition="room-enter"] [data-custom-layout-room-host="true"],
   html[data-room-transition="room-exit"] [data-custom-layout-room-host="true"] {
     view-transition-name: active-room-shell;
@@ -786,6 +797,7 @@
   html[data-room-transition]::view-transition-old(app-bottom-player),
   html[data-room-transition]::view-transition-new(app-bottom-player) {
     animation: none !important;
+    mix-blend-mode: normal !important;
   }
 
   html[data-room-transition]::view-transition-group(app-mobile-navigation) {
@@ -795,6 +807,7 @@
   html[data-room-transition]::view-transition-old(app-mobile-navigation),
   html[data-room-transition]::view-transition-new(app-mobile-navigation) {
     animation: none !important;
+    mix-blend-mode: normal !important;
   }
 
   html[data-room-transition]::view-transition-group(app-sidebar) {
@@ -804,15 +817,60 @@
   html[data-room-transition]::view-transition-old(app-sidebar),
   html[data-room-transition]::view-transition-new(app-sidebar) {
     animation: none !important;
+    mix-blend-mode: normal !important;
   }
 
   /* Single Active Room Shell Morph: Card <-> Modal <-> Room Workspace */
   html[data-room-transition]::view-transition-group(active-room-shell) {
     z-index: 950 !important;
-    animation-duration: 260ms;
-    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-duration: 250ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     overflow: hidden;
     border-radius: 12px;
+  }
+  html[data-room-transition]::view-transition-image-pair(active-room-shell) {
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+  html[data-room-transition]::view-transition-old(active-room-shell),
+  html[data-room-transition]::view-transition-new(active-room-shell) {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+    object-position: center top;
+    animation-duration: 250ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    mix-blend-mode: normal !important;
+  }
+  html[data-room-transition]::view-transition-old(active-room-shell) {
+    animation-name: room-vt-shell-hold;
+  }
+  html[data-room-transition]::view-transition-new(active-room-shell) {
+    animation-name: room-vt-fade-in;
+  }
+  html[data-room-transition="room-enter"]::view-transition-new(active-room-shell):only-child {
+    animation-name: room-vt-shell-enter-only;
+  }
+  html[data-room-transition="room-exit"]::view-transition-old(active-room-shell):only-child {
+    animation-name: room-vt-shell-exit-only;
+  }
+
+  /* Modal Backdrop Overlay Isolation */
+  html[data-room-transition] [data-dialog-backdrop="room-threshold"] {
+    animation: none !important;
+    view-transition-name: room-dialog-backdrop;
+  }
+  html[data-room-transition]::view-transition-group(room-dialog-backdrop) {
+    z-index: 940 !important;
+    animation-duration: 250ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-room-transition]::view-transition-old(room-dialog-backdrop),
+  html[data-room-transition]::view-transition-new(room-dialog-backdrop) {
+    animation-duration: 250ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    mix-blend-mode: normal !important;
   }
 
   /* Keep root completely static during card morphs & gallery slide */
@@ -823,50 +881,81 @@
   html[data-room-transition="gallery"]::view-transition-old(root),
   html[data-room-transition="gallery"]::view-transition-new(root) {
     animation: none !important;
+    mix-blend-mode: normal !important;
   }
 
-  /* Room enter and exit root fade */
+  /* Room enter and exit root cross-fade without opacity dip */
   html[data-room-transition="room-enter"]::view-transition-old(root),
   html[data-room-transition="room-exit"]::view-transition-old(root) {
-    animation: room-vt-fade-out 180ms ease-out both;
+    animation: none !important;
+    mix-blend-mode: normal !important;
     clip-path: none;
   }
 
   html[data-room-transition="room-enter"]::view-transition-new(root),
   html[data-room-transition="room-exit"]::view-transition-new(root) {
-    animation: room-vt-fade-in 220ms ease-out both;
+    animation: room-vt-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    mix-blend-mode: normal !important;
     clip-path: none;
   }
 
   /* Scoped Gallery canvas tray directional glide */
   html[data-room-transition="gallery"]::view-transition-group(room-gallery-canvas) {
     animation-duration: 250ms;
-    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     overflow: hidden;
   }
 
   html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-old(room-gallery-canvas) {
-    animation: room-vt-slide-out-left 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: room-vt-slide-out-left 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-new(room-gallery-canvas) {
-    animation: room-vt-slide-in-right 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: room-vt-slide-in-right 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-old(room-gallery-canvas) {
-    animation: room-vt-slide-out-right 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: room-vt-slide-out-right 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-new(room-gallery-canvas) {
-    animation: room-vt-slide-in-left 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: room-vt-slide-in-left 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  @keyframes room-vt-fade-out {
+  @keyframes room-vt-shell-hold {
+    from {
+      opacity: 1;
+    }
     to {
-      opacity: 0;
+      opacity: 1;
     }
   }
 
   @keyframes room-vt-fade-in {
     from {
       opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes room-vt-shell-enter-only {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes room-vt-shell-exit-only {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.94);
     }
   }
 
@@ -906,29 +995,69 @@
     }
   }
 
-  @keyframes room-gallery-slot-enter {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
 
-  .room-gallery-slot-enter {
-    animation: room-gallery-slot-enter 180ms ease-out both;
-  }
-
-  html[data-room-transition] .room-gallery-slot-enter {
-    animation: none !important;
-  }
-
+  /* Bento Mosaic Puzzle: zero-gap flush interlocking grid inside framed tray */
   .mosaic-puzzle-grid [data-testid="room-directory-card"] {
     border-radius: 0 !important;
-    border-width: 0 0.5px 0.5px 0 !important;
+    border-top-width: 0 !important;
+    border-left-width: 0 !important;
+    border-right-width: 0 !important;
+    border-bottom-width: 0.5px !important;
     border-style: solid !important;
     border-color: var(--slate-6) !important;
+    background-color: var(--slate-2) !important;
     box-shadow: none !important;
+  }
+
+  .mosaic-puzzle-grid .mosaic-puzzle-tile[data-mosaic-row-bottom-sm="true"] [data-testid="room-directory-card"] {
+    border-bottom-width: 0 !important;
+  }
+
+  .mosaic-puzzle-grid .mosaic-puzzle-skeleton {
+    border-radius: 0 !important;
+    border-top-width: 0 !important;
+    border-left-width: 0 !important;
+    border-right-width: 0 !important;
+    border-bottom-width: 0.5px !important;
+    border-style: solid !important;
+    border-color: var(--slate-6) !important;
+    background-color: rgba(255, 255, 255, 0.02) !important;
+  }
+
+  .mosaic-puzzle-grid .mosaic-puzzle-skeleton[data-mosaic-row-bottom-sm="true"] {
+    border-bottom-width: 0 !important;
+  }
+
+  @media (min-width: 768px) and (max-width: 1023.98px) {
+    .mosaic-puzzle-grid [data-testid="room-directory-card"],
+    .mosaic-puzzle-grid .mosaic-puzzle-skeleton {
+      border-right-width: 0.5px !important;
+      border-bottom-width: 0.5px !important;
+    }
+    .mosaic-puzzle-grid .mosaic-puzzle-tile[data-mosaic-row-end-md="true"] [data-testid="room-directory-card"],
+    .mosaic-puzzle-grid .mosaic-puzzle-skeleton[data-mosaic-row-end-md="true"] {
+      border-right-width: 0 !important;
+    }
+    .mosaic-puzzle-grid .mosaic-puzzle-tile[data-mosaic-row-bottom-md="true"] [data-testid="room-directory-card"],
+    .mosaic-puzzle-grid .mosaic-puzzle-skeleton[data-mosaic-row-bottom-md="true"] {
+      border-bottom-width: 0 !important;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .mosaic-puzzle-grid [data-testid="room-directory-card"],
+    .mosaic-puzzle-grid .mosaic-puzzle-skeleton {
+      border-right-width: 0.5px !important;
+      border-bottom-width: 0.5px !important;
+    }
+    .mosaic-puzzle-grid .mosaic-puzzle-tile[data-mosaic-row-end-lg="true"] [data-testid="room-directory-card"],
+    .mosaic-puzzle-grid .mosaic-puzzle-skeleton[data-mosaic-row-end-lg="true"] {
+      border-right-width: 0 !important;
+    }
+    .mosaic-puzzle-grid .mosaic-puzzle-tile[data-mosaic-row-bottom-lg="true"] [data-testid="room-directory-card"],
+    .mosaic-puzzle-grid .mosaic-puzzle-skeleton[data-mosaic-row-bottom-lg="true"] {
+      border-bottom-width: 0 !important;
+    }
   }
 
   .mosaic-puzzle-grid [data-testid="room-directory-card"]:hover,
@@ -1332,8 +1461,7 @@
     }
 
     .mobile-app-route-view,
-    .mobile-player-panel,
-    .room-gallery-slot-enter {
+    .mobile-player-panel {
       animation-duration: 0.01ms;
     }
 

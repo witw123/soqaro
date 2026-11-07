@@ -92,19 +92,38 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
 
   if (!packedRooms.length) {
     if (!roomsLoaded) {
-      const skeletonSpans: Array<MosaicTileSpan["lgSpan"]> = [5, 4, 3, 3, 5, 4];
+      const skeletonSpans: Array<{ lg: MosaicTileSpan["lgSpan"]; md: MosaicTileSpan["mdSpan"] }> = [
+        { lg: 5, md: 4 },
+        { lg: 4, md: 4 },
+        { lg: 3, md: 4 },
+        { lg: 3, md: 4 },
+        { lg: 5, md: 4 },
+        { lg: 4, md: 4 }
+      ];
       return (
         <div className="mosaic-puzzle-grid grid w-full grid-cols-1 gap-0 md:grid-cols-8 lg:grid-cols-12">
-          {skeletonSpans.map((span, index) => (
-            <div
-              key={index}
-              className={`flex flex-col gap-2.5 border-r-[0.5px] border-b-[0.5px] border-surface-border bg-surface/40 p-3 animate-pulse md:col-span-4 ${LG_SPAN_CLASS[span]}`}
-            >
-              <div className="room-directory-stage-frame w-full aspect-[2.4/1] md:aspect-auto md:h-[148px] xl:h-[160px] rounded-lg bg-surface-hover/70" />
-              <div className="h-4 w-2/5 rounded bg-surface-hover/70" />
-              <div className="h-3 w-4/5 rounded bg-surface-hover/50" />
-            </div>
-          ))}
+          {skeletonSpans.map((sp, index) => {
+            const isLgRowEnd = index === 2 || index === 5;
+            const isLgRowBottom = index >= 3;
+            const isMdRowEnd = index === 1 || index === 3 || index === 5;
+            const isMdRowBottom = index >= 4;
+            const isMobileBottom = index === skeletonSpans.length - 1;
+            return (
+              <div
+                key={index}
+                className={`mosaic-puzzle-skeleton flex flex-col gap-2.5 p-3 animate-pulse md:col-span-4 ${LG_SPAN_CLASS[sp.lg]}`}
+                data-mosaic-row-bottom-lg={isLgRowBottom ? "true" : undefined}
+                data-mosaic-row-bottom-md={isMdRowBottom ? "true" : undefined}
+                data-mosaic-row-bottom-sm={isMobileBottom ? "true" : undefined}
+                data-mosaic-row-end-lg={isLgRowEnd ? "true" : undefined}
+                data-mosaic-row-end-md={isMdRowEnd ? "true" : undefined}
+              >
+                <div className="room-directory-stage-frame w-full aspect-[2.4/1] md:aspect-auto md:h-[148px] xl:h-[160px] rounded-lg bg-surface-hover/70" />
+                <div className="h-4 w-2/5 rounded bg-surface-hover/70" />
+                <div className="h-3 w-4/5 rounded bg-surface-hover/50" />
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -129,30 +148,46 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
       onKeyDown={handleGridKeyDown}
       ref={gridRootRef}
     >
-      {packedRooms.map(({ item, span, textScore }) => {
-        const roomId = item.room.id;
-        const isAway = Boolean(awayRoomId && awayRoomId === roomId);
-        const isMorphTarget = morphingRoomId === roomId;
+      {packedRooms.map(
+        ({
+          item,
+          span,
+          textScore,
+          isLgRowEnd,
+          isLgRowBottom,
+          isMdRowEnd,
+          isMdRowBottom,
+          isMobileBottom
+        }) => {
+          const roomId = item.room.id;
+          const isAway = Boolean(awayRoomId && awayRoomId === roomId);
+          const isMorphTarget = morphingRoomId === roomId;
 
-        return (
-          <div
-            className={`room-gallery-slot-enter mosaic-puzzle-tile relative min-w-0 [content-visibility:auto] [contain-intrinsic-size:280px_220px] ${MD_SPAN_CLASS[span.mdSpan]} ${LG_SPAN_CLASS[span.lgSpan]} ${
-              isAway ? "z-10 ring-1 ring-inset ring-[var(--amber-7)]" : ""
-            }`}
-            data-mosaic-slot-id={roomId}
-            data-mosaic-span={span.lgSpan}
-            data-mosaic-text-score={Math.round(textScore)}
-            key={roomId}
-          >
-            <RoomDirectoryCard
-              onOpen={onOpenRoom}
-              onPrewarm={onPrewarmRoom}
-              room={item}
-              shellTransitionName={isMorphTarget ? "active-room-shell" : undefined}
-            />
-          </div>
-        );
-      })}
+          return (
+            <div
+              className={`mosaic-puzzle-tile relative min-w-0 [content-visibility:auto] [contain-intrinsic-size:280px_220px] ${MD_SPAN_CLASS[span.mdSpan]} ${LG_SPAN_CLASS[span.lgSpan]} ${
+                isAway ? "z-10 ring-1 ring-inset ring-[var(--amber-7)]" : ""
+              }`}
+              data-mosaic-row-bottom-lg={isLgRowBottom ? "true" : undefined}
+              data-mosaic-row-bottom-md={isMdRowBottom ? "true" : undefined}
+              data-mosaic-row-bottom-sm={isMobileBottom ? "true" : undefined}
+              data-mosaic-row-end-lg={isLgRowEnd ? "true" : undefined}
+              data-mosaic-row-end-md={isMdRowEnd ? "true" : undefined}
+              data-mosaic-slot-id={roomId}
+              data-mosaic-span={span.lgSpan}
+              data-mosaic-text-score={Math.round(textScore)}
+              key={roomId}
+            >
+              <RoomDirectoryCard
+                onOpen={onOpenRoom}
+                onPrewarm={onPrewarmRoom}
+                room={item}
+                shellTransitionName={isMorphTarget ? "active-room-shell" : undefined}
+              />
+            </div>
+          );
+        }
+      )}
     </div>
   );
 });

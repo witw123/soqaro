@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type MouseEvent } from "react";
 import type { Route } from "next";
 import {
   Compass,
@@ -18,6 +18,7 @@ import {
   User
 } from "lucide-react";
 import { storeAwayRoomId } from "@/lib/domain/away-room";
+import { runRoomViewTransition } from "@/lib/ui/room-view-transition";
 import {
   applyAppTheme,
   appSettingsChangeEvent,
@@ -74,6 +75,7 @@ export function AppSidebar({
   onAwayRoom
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [pendingItemId, setPendingItemId] = useState<AppNavItemId | null>(null);
   const currentItem = pendingItemId ?? activeItem ?? resolveActiveItem(pathname);
   const [collapsed, setCollapsed] = useState(true);
@@ -85,11 +87,37 @@ export function AppSidebar({
 
   const resolvedRoomId = roomId ?? (pathname.startsWith("/room/") ? pathname.split("/")[2] : null);
 
-  const handleNavigateAway = () => {
-    if (resolvedRoomId) {
+  const handleNavigateAway = (event: MouseEvent<HTMLAnchorElement>, targetHref: string) => {
+    if (!resolvedRoomId) return;
+    const isPlainLeftClick =
+      event.button === 0 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey;
+    const isRoomHostVisible =
+      typeof document !== "undefined" &&
+      Boolean(document.querySelector('[data-custom-layout-room-host="true"]'));
+
+    if (!isPlainLeftClick || !isRoomHostVisible) {
       storeAwayRoomId(resolvedRoomId);
+      return;
     }
-    onAwayRoom?.();
+
+    event.preventDefault();
+    if (targetHref === "/app" && onAwayRoom) {
+      onAwayRoom();
+      return;
+    }
+
+    runRoomViewTransition(
+      "room-exit",
+      () => {
+        storeAwayRoomId(resolvedRoomId);
+        router.push(targetHref as Route);
+      },
+      { roomId: resolvedRoomId }
+    );
   };
 
   useEffect(() => {
@@ -168,11 +196,7 @@ export function AppSidebar({
           href="/app"
           className={`flex min-w-0 items-center gap-3 ${collapsed ? "md:justify-center" : ""}`}
           aria-label="返回首页"
-          onClick={() => {
-            if (roomId) {
-              storeAwayRoomId(roomId);
-            }
-          }}
+          onClick={(event) => handleNavigateAway(event, "/app")}
         >
           <span className={`flex shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm ${compactMobile ? "h-8 w-8" : "h-9 w-9"} md:h-9 md:w-9`}>
             <Music size={18} strokeWidth={2} aria-hidden="true" />
@@ -200,7 +224,7 @@ export function AppSidebar({
                   key={item.id}
                   href={item.href as Route}
                   aria-current={isActive ? "page" : undefined}
-                  onClick={handleNavigateAway}
+                  onClick={(event) => handleNavigateAway(event, item.href)}
                   onPointerDown={() => setPendingItemId(item.id)}
                   title={collapsed ? item.label : undefined}
                   className={`app-sidebar__nav-item group relative flex min-h-10 min-w-0 flex-1 flex-col items-center justify-center rounded-xl font-medium transition-all duration-150 sm:flex-row sm:gap-2.5 sm:px-3 sm:py-2 sm:text-xs md:flex-none md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm ${compactMobile ? "gap-0.5 px-0.5 py-1.5 text-xs" : "gap-1 px-1 py-2 text-xs"} ${
@@ -229,7 +253,7 @@ export function AppSidebar({
                   key={item.id}
                   href={item.href as Route}
                   aria-current={isActive ? "page" : undefined}
-                  onClick={handleNavigateAway}
+                  onClick={(event) => handleNavigateAway(event, item.href)}
                   onPointerDown={() => setPendingItemId(item.id)}
                   title={collapsed ? item.label : undefined}
                   className={`app-sidebar__nav-item group relative flex min-h-10 min-w-0 flex-1 flex-col items-center justify-center rounded-xl font-medium transition-all duration-150 sm:flex-row sm:gap-2.5 sm:px-3 sm:py-2 sm:text-xs md:flex-none md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm ${compactMobile ? "gap-0.5 px-0.5 py-1.5 text-xs" : "gap-1 px-1 py-2 text-xs"} ${
@@ -248,7 +272,7 @@ export function AppSidebar({
         <div className={`app-sidebar__footer hidden flex-col border-t border-surface-border md:flex ${collapsed ? "md:items-center md:gap-2 md:px-0 md:pb-1 md:pt-2.5" : "md:items-stretch md:gap-1 md:px-0 md:pb-1 md:pt-2.5"}`}>
           <Link
             href={"/app/settings" as Route}
-            onClick={handleNavigateAway}
+            onClick={(event) => handleNavigateAway(event, "/app/settings")}
             className={`app-sidebar__footer-control group flex min-w-0 items-center justify-center gap-2.5 font-medium text-foreground-muted hover:text-foreground hover:bg-surface rounded-xl transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${footerControlSizeClass} ${collapsed ? "md:justify-center" : "md:justify-start"}`}
             title="设置与偏好"
           >

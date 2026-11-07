@@ -166,4 +166,26 @@ describe("room-gallery-layout", () => {
       { id: "short_copy", lgSpan: 3 }
     ]);
   });
+
+  it("annotates mosaic tile boundaries correctly for flush outer grid alignment", () => {
+    const rooms = Array.from({ length: 5 }, (_, i) =>
+      makeRoom(`room_${i}`, { name: `Room ${i}`, description: `Desc ${i}` })
+    );
+
+    const packed = packRoomsIntoContentMosaic(rooms);
+    expect(packed).toHaveLength(5);
+
+    // Desktop (12-cols): Row 0 is [5,4,3] -> index 2 is row end; Row 1 is [7,5] -> index 4 is row end
+    expect(packed.map((p) => p.isLgRowEnd)).toEqual([false, false, true, false, true]);
+    // Desktop: Row 1 items (indices 3, 4) are bottom row
+    expect(packed.map((p) => p.isLgRowBottom)).toEqual([false, false, false, true, true]);
+
+    // Tablet (8-cols): [5, 3] -> index 1 end; [3, 5] -> index 3 end; [8] -> index 4 end
+    expect(packed.map((p) => p.isMdRowEnd)).toEqual([false, true, false, true, true]);
+    // Tablet: Row 2 is single [8] -> index 4 is bottom row
+    expect(packed.map((p) => p.isMdRowBottom)).toEqual([false, false, false, false, true]);
+
+    // Mobile (1-col): only last item is bottom
+    expect(packed.map((p) => p.isMobileBottom)).toEqual([false, false, false, false, true]);
+  });
 });

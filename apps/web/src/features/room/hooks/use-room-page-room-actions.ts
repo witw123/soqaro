@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   useCallback,
@@ -9,6 +9,7 @@ import {
   type RefObject,
   type SetStateAction
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   Playlist,
   RoomDirectoryItem,
@@ -105,17 +106,19 @@ export function useRoomPageRoomActions({
     }
     setPeerId(nextPeerId);
   }, [peerStorageKey, setPeerId]);
+  const queryClient = useQueryClient();
   const getCurrentPeerId = useCallback(() => peerId || null, [peerId]);
   const playlistRefreshVersionRef = useRef(0);
 
   const refreshAvailableRooms = useCallback(async () => {
     try {
       const rooms = await soqaroApi.listRooms();
+      queryClient.setQueryData(["rooms", activeSession?.userId ?? null], rooms);
       setAvailableRooms(filterOpenPublicRooms(rooms));
     } catch {
       setAvailableRooms([]);
     }
-  }, [setAvailableRooms]);
+  }, [activeSession?.userId, queryClient, setAvailableRooms]);
 
   const refreshPlaylists = useCallback(async () => {
     const version = ++playlistRefreshVersionRef.current;
@@ -265,6 +268,7 @@ export function useRoomPageRoomActions({
     handleDeleteRoomAction,
     handleLogout
   } = useRoomLifecycleActions({
+    currentRoomId: roomSnapshot?.room.id ?? null,
     workspaceOnly,
     workspaceEntryHref,
     authEntryHref,

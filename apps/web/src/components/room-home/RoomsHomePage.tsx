@@ -85,7 +85,6 @@ export function RoomsHomePage({
   const refreshAvailableRooms = roomsQuery.refetch;
 
   const [roomTypeFilter, setRoomTypeFilter] = useState<RoomFilterValue>("all");
-  const [morphingRoomId, setMorphingRoomId] = useState<string | null>(null);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -123,16 +122,18 @@ export function RoomsHomePage({
     if (!effectiveAwayRoomId) return;
     prewarmRoomRuntimeChunk();
     if (onResumeAwayRoom) {
-      runRoomViewTransition("room-enter", () => {
-        onResumeAwayRoom();
-      });
+      onResumeAwayRoom();
       return;
     }
 
     requestAwayRoomResume(effectiveAwayRoomId);
-    runRoomViewTransition("room-enter", () => {
-      router.push(buildRoomHref(effectiveAwayRoomId) as Route);
-    });
+    runRoomViewTransition(
+      "room-enter",
+      () => {
+        router.push(buildRoomHref(effectiveAwayRoomId) as Route);
+      },
+      { roomId: effectiveAwayRoomId }
+    );
   }, [buildRoomHref, effectiveAwayRoomId, onResumeAwayRoom, router]);
 
   useEffect(() => {
@@ -196,10 +197,14 @@ export function RoomsHomePage({
       });
       storeRoomSnapshotHandoff(snapshot);
       window.localStorage.setItem(lastRoomStorageKey, snapshot.room.id);
-      runRoomViewTransition("room-enter", () => {
-        setCreateDialogOpen(false);
-        router.push(buildRoomHref(snapshot.room.id) as Route);
-      });
+      runRoomViewTransition(
+        "room-enter",
+        () => {
+          setCreateDialogOpen(false);
+          router.push(buildRoomHref(snapshot.room.id) as Route);
+        },
+        { roomId: snapshot.room.id }
+      );
     } catch (error) {
       setDialogError(toUserFacingError(error));
     }
@@ -221,11 +226,15 @@ export function RoomsHomePage({
       const joined = await soqaroApi.joinRoomByCode(code.trim(), password);
       storeRoomSnapshotHandoff(buildRoomJoinBootstrapSnapshot(joined));
       window.localStorage.setItem(lastRoomStorageKey, joined.roomId);
-      runRoomViewTransition("room-enter", () => {
-        setSelectedRoom(null);
-        setJoinDialogOpen(false);
-        router.push(buildRoomHref(joined.roomId) as Route);
-      });
+      runRoomViewTransition(
+        "room-enter",
+        () => {
+          setSelectedRoom(null);
+          setJoinDialogOpen(false);
+          router.push(buildRoomHref(joined.roomId) as Route);
+        },
+        { roomId: joined.roomId }
+      );
     } catch (error) {
       if (selectedRoom) {
         setDialogError(toUserFacingError(error));
@@ -250,24 +259,13 @@ export function RoomsHomePage({
       }
 
       handlePrewarmRoom(room.room.id);
-      const targetRoomId = room.room.id;
-      let targetCardEl: HTMLElement | null = null;
       runRoomViewTransition(
         "card-open",
         () => {
-          if (targetCardEl) targetCardEl.style.viewTransitionName = "";
           setSelectedRoom(room);
           setDialogError(null);
         },
-        {
-          beforeCapture: () => {
-            const slotEl = document.querySelector<HTMLElement>(
-              `[data-mosaic-slot-id="${CSS.escape(targetRoomId)}"]`
-            );
-            targetCardEl = slotEl?.querySelector<HTMLElement>('[data-testid="room-directory-card"]') ?? null;
-            if (targetCardEl) targetCardEl.style.viewTransitionName = "active-room-shell";
-          }
-        }
+        { roomId: room.room.id }
       );
     },
     [activeSession, authEntryHref, effectiveAwayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]
@@ -279,15 +277,10 @@ export function RoomsHomePage({
     runRoomViewTransition(
       "card-close",
       () => {
-        setMorphingRoomId(closingId);
         setSelectedRoom(null);
         setDialogError(null);
       },
-      {
-        onFinished: () => {
-          setMorphingRoomId(null);
-        }
-      }
+      { roomId: closingId }
     );
   }, [selectedRoom]);
 
@@ -407,7 +400,6 @@ export function RoomsHomePage({
           />
           <RoomDirectoryGrid
             awayRoomId={effectiveAwayRoomId}
-            morphingRoomId={morphingRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
             rooms={sortedRooms}

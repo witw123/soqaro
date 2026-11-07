@@ -126,6 +126,7 @@ export function SoqaroApp({
         storeAwayRoomId(targetRoomId);
         setAwayRoomId(targetRoomId);
         setStatusMessage("");
+        router.push("/app" as Route);
       },
       { roomId: targetRoomId }
     );

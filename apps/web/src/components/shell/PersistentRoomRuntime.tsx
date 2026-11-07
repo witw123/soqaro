@@ -20,11 +20,23 @@ import { WorkspaceQueryProvider } from "@/features/workspace/workspace-query-pro
 import { StorageRootGate } from "./StorageRootGate";
 
 // 房间运行时(实时引擎/P2P/音频编码)体量很大且只在进房后渲染,
-// 动态加载让落地页/发现页/登录页等无需下载这 ~1MB 的运行时。
+// 动态加载让落地页/发现页/登录页等无需首屏下载这 ~1MB 的运行时。
 const SoqaroApp = dynamic(
   () => import("@/components/soqaro-app").then((mod) => mod.SoqaroApp),
   { ssr: false }
 );
+
+// 客户端空闲时预热 SoqaroApp 分块，确保进房帧0无缝衔接
+if (typeof window !== "undefined") {
+  const prewarm = () => {
+    void import("@/components/soqaro-app");
+  };
+  if ("requestIdleCallback" in window && typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(prewarm, { timeout: 1500 });
+  } else {
+    setTimeout(prewarm, 300);
+  }
+}
 const DesktopLyricsOverlay = dynamic(
   () => import("@/components/desktop-lyrics").then((mod) => mod.DesktopLyricsOverlay),
   { ssr: false }

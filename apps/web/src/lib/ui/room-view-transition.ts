@@ -21,7 +21,7 @@ type ViewTransitionCapableDocument = Document & {
   startViewTransition?: (updateCallback: () => void | Promise<void>) => ViewTransitionHandle;
 };
 
-const MAX_ASYNC_ROUTE_WAIT_MS = 280;
+const MAX_ASYNC_ROUTE_WAIT_MS = 1500;
 
 let activeTaggedElement: HTMLElement | null = null;
 
@@ -234,7 +234,10 @@ export function runRoomViewTransition(
           }
           return;
         }
-        return waitForDomCondition(() => !isRoomHostMounted()).then(() => {
+        return waitForDomCondition(
+          () => !isRoomHostMounted() && (!targetRoomId || Boolean(findRoomCardElement(targetRoomId))),
+          MAX_ASYNC_ROUTE_WAIT_MS
+        ).then(() => {
           if (!isRoomHostMounted() && targetRoomId) {
             tagElementForShellMorph(findRoomCardElement(targetRoomId));
           }

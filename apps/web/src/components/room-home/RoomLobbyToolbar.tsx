@@ -13,7 +13,6 @@ import { Plus, RotateCw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { roomTypeLabel } from "./room-home-types";
 import {
-  ROOM_CHANNEL_THEMES,
   ROOM_FILTER_ORDER,
   type RoomFilterValue
 } from "./room-gallery-layout";
@@ -165,8 +164,6 @@ function SlidingRoomFilterTabs({
     ready: false
   });
 
-  const activeTheme = ROOM_CHANNEL_THEMES[activeFilter];
-
   useLayoutEffect(() => {
     const syncIndicator = () => {
       const target = buttonRefs.current[activeFilter];
@@ -210,7 +207,7 @@ function SlidingRoomFilterTabs({
   return (
     <div
       aria-label="房间类型筛选"
-      className={`relative items-center gap-1 rounded-xl border-hairline border-surface-border bg-surface p-1 ${
+      className={`relative items-center gap-1 rounded-xl bg-surface p-1 ${
         fullWidth ? "flex w-full" : "inline-flex"
       }`}
       ref={containerRef}
@@ -219,18 +216,12 @@ function SlidingRoomFilterTabs({
       {indicator.ready ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-1 bottom-1 left-0 overflow-hidden rounded-lg border-hairline bg-surface-elevated transition-[transform,width,border-color] duration-[250ms] ease-out motion-reduce:transition-none"
+          className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg bg-surface-elevated shadow-xs transition-[transform,width] duration-[250ms] ease-out motion-reduce:transition-none"
           style={{
             width: `${indicator.width}px`,
-            transform: `translate3d(${indicator.x}px, 0, 0)`,
-            borderColor: activeTheme.border
+            transform: `translate3d(${indicator.x}px, 0, 0)`
           }}
-        >
-          <span
-            className="absolute inset-x-2 bottom-0 h-[1.5px] rounded-full transition-colors duration-[250ms] ease-out"
-            style={{ backgroundColor: activeTheme.accent }}
-          />
-        </span>
+        />
       ) : null}
 
       {ROOM_FILTER_ORDER.map((item) => {
@@ -238,7 +229,6 @@ function SlidingRoomFilterTabs({
         const count = counts[item];
         const isEmptyCategory = roomsLoaded && item !== "all" && count === 0;
         const label = item === "all" ? "全部" : roomTypeLabel(item);
-        const itemTheme = ROOM_CHANNEL_THEMES[item];
 
         return (
           <button
@@ -248,7 +238,7 @@ function SlidingRoomFilterTabs({
             } ${
               isSelected
                 ? !indicator.ready
-                  ? "bg-surface-elevated border-hairline border-surface-border text-foreground font-semibold"
+                  ? "bg-surface-elevated text-foreground font-semibold shadow-xs"
                   : "text-foreground font-semibold"
                 : isEmptyCategory
                   ? "text-foreground-muted/50 hover:text-foreground-muted"
@@ -266,16 +256,6 @@ function SlidingRoomFilterTabs({
             tabIndex={isSelected ? 0 : -1}
             type="button"
           >
-            {item !== "all" ? (
-              <span
-                aria-hidden="true"
-                className="h-1.5 w-1.5 shrink-0 rounded-full transition-opacity duration-[250ms] ease-out"
-                style={{
-                  backgroundColor: itemTheme.accent,
-                  opacity: isSelected ? 1 : 0.45
-                }}
-              />
-            ) : null}
             <span>{label}</span>
             {roomsLoaded ? (
               <span

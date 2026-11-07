@@ -135,10 +135,10 @@ export function RoomThresholdSheet({
           style={{ zIndex: "var(--z-modal)" }}
         />
         <DialogPrimitive.Content
-          className="light-dialog-surface custom-scrollbar fixed left-1/2 top-1/2 max-h-[85dvh] w-[calc(100vw_-_2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] text-[var(--slate-12)] shadow-[0_16px_40px_rgba(0,0,0,0.45)] transition-opacity duration-250 ease-out"
+          className="light-dialog-surface custom-scrollbar fixed left-1/2 top-1/2 max-h-[85dvh] w-[calc(100vw-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] text-[var(--slate-12)] shadow-[0_16px_40px_rgba(0,0,0,0.45)] animate-fade-in"
           style={{
             zIndex: "var(--z-modal-high)",
-            viewTransitionName: "active-room-shell"
+            ...(isPending ? { viewTransitionName: "active-room-shell" } : {})
           }}
         >
           <div

@@ -25,7 +25,6 @@ import { RoomDirectoryGrid } from "./RoomDirectoryGrid";
 import { RoomThresholdSheet } from "./RoomThresholdSheet";
 import {
   ROOM_CHANNEL_THEMES,
-  ROOM_FILTER_ORDER,
   countRoomsByFilter,
   sortCuratedRooms,
   type RoomFilterValue
@@ -89,7 +88,6 @@ export function RoomsHomePage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createFormVisibility, setCreateFormVisibility] = useState<"public" | "private">("public");
   const [selectedRoom, setSelectedRoom] = useState<RoomDirectoryItem | null>(null);
-  const [morphingRoomId, setMorphingRoomId] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [storedAwayRoomId, setStoredAwayRoomId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -244,70 +242,20 @@ export function RoomsHomePage({
     }
 
     handlePrewarmRoom(room.room.id);
-    const targetRoomId = room.room.id;
-    let capturedSlotEl: HTMLElement | null = null;
-    let capturedCardEl: HTMLElement | null = null;
-    let prevSlotTransitionName = "";
-
-    runRoomViewTransition(
-      "card-open",
-      () => {
-        if (capturedCardEl) {
-          capturedCardEl.style.viewTransitionName = "";
-        }
-        if (capturedSlotEl) {
-          capturedSlotEl.style.viewTransitionName = prevSlotTransitionName;
-        }
-        setSelectedRoom(room);
-        setDialogError(null);
-      },
-      {
-        beforeCapture: () => {
-          const slotEl = document.querySelector<HTMLElement>(
-            `[data-mosaic-slot-id="${CSS.escape(targetRoomId)}"]`
-          );
-          const cardEl = slotEl?.querySelector<HTMLElement>('[data-testid="room-directory-card"]') ?? null;
-          if (slotEl && cardEl) {
-            capturedSlotEl = slotEl;
-            capturedCardEl = cardEl;
-            prevSlotTransitionName = slotEl.style.viewTransitionName;
-            slotEl.style.viewTransitionName = "none";
-            cardEl.style.viewTransitionName = "active-room-shell";
-          }
-        }
-      }
-    );
+    setSelectedRoom(room);
+    setDialogError(null);
   }
 
   function closeRoomDetails() {
-    if (!selectedRoom) return;
-    const closingId = selectedRoom.room.id;
-    runRoomViewTransition(
-      "card-close",
-      () => {
-        setMorphingRoomId(closingId);
-        setSelectedRoom(null);
-        setDialogError(null);
-      },
-      () => {
-        setMorphingRoomId(null);
-      }
-    );
+    setSelectedRoom(null);
+    setDialogError(null);
   }
 
   function handleFilterChange(nextFilter: RoomFilterValue) {
     if (nextFilter === roomTypeFilter) return;
-    const prevIndex = ROOM_FILTER_ORDER.indexOf(roomTypeFilter);
-    const nextIndex = ROOM_FILTER_ORDER.indexOf(nextFilter);
-    const direction = nextIndex >= prevIndex ? "forward" : "backward";
-
-    runRoomViewTransition(
-      "gallery",
-      () => {
-        setRoomTypeFilter(nextFilter);
-      },
-      { direction }
-    );
+    startTransition(() => {
+      setRoomTypeFilter(nextFilter);
+    });
   }
 
   const filterCounts = useMemo(
@@ -373,25 +321,21 @@ export function RoomsHomePage({
 
         {/* Framed Bento Mosaic Canvas Tray (Zero-Gap Flush Shared Borders) */}
         <div
-          className={`room-mosaic-canvas-tray relative min-h-[240px] overflow-hidden rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-0 transition-[transform,opacity,border-color] duration-[300ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            selectedRoom ? "scale-[0.988] opacity-85" : "scale-100 opacity-100"
-          }`}
+          className="room-mosaic-canvas-tray relative min-h-[240px] overflow-hidden rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-0"
           data-channel={roomTypeFilter}
           data-testid="room-mosaic-canvas-tray"
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 z-30 h-[1px] transition-all duration-[250ms] ease-out"
+            className="pointer-events-none absolute inset-x-0 top-0 z-30 h-[1px] transition-colors duration-[250ms] ease-out"
             style={{ background: activeChannelTheme.topLine }}
           />
           <RoomDirectoryGrid
             awayRoomId={effectiveAwayRoomId}
-            morphingRoomId={morphingRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
             rooms={sortedRooms}
             roomsLoaded={roomsLoaded}
-            suppressCardSlotTransition={Boolean(selectedRoom)}
           />
         </div>
       </section>

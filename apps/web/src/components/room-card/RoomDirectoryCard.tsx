@@ -9,7 +9,6 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
-  shellTransitionName?: string;
   onOpen: () => void;
   onPrewarm?: () => void;
 };
@@ -55,7 +54,6 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
 
 export function RoomDirectoryCard({
   room: directoryItem,
-  shellTransitionName,
   onOpen,
   onPrewarm
 }: RoomDirectoryCardProps) {
@@ -66,13 +64,12 @@ export function RoomDirectoryCard({
     "--room-accent": theme.accent,
     "--room-border": theme.border,
     "--room-shadow": theme.glow,
-    "--room-soft": theme.soft,
-    ...(shellTransitionName ? { viewTransitionName: shellTransitionName } : {})
+    "--room-soft": theme.soft
   };
 
   return (
     <article
-      className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
+      className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs [contain:content] transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
       data-room-theme={room.roomType}
       data-room-type={room.roomType}
       data-testid="room-directory-card"
@@ -192,7 +189,7 @@ function RoomNowPlayingStageScene({
       {artworkSrc ? (
         <div
           aria-hidden="true"
-          className="absolute -inset-4 bg-cover bg-center opacity-30 dark:opacity-35 blur-2xl scale-125 transition-transform duration-700 group-hover:scale-130"
+          className="pointer-events-none absolute -inset-2 bg-cover bg-center opacity-25 dark:opacity-30 blur-lg scale-110 [contain:strict] transform-gpu"
           style={{ backgroundImage: `url("${artworkSrc}")` }}
         />
       ) : null}

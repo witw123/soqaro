@@ -801,49 +801,22 @@
     animation: none !important;
   }
 
-  html[data-room-transition]::view-transition-group(active-room-shell) {
+  html[data-room-transition="room-enter"]::view-transition-group(active-room-shell) {
     z-index: 950 !important;
-    animation-duration: 280ms;
+    animation-duration: 240ms;
     animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
     border-radius: 12px;
   }
 
-  html[data-room-transition]::view-transition-old(root) {
-    animation: room-vt-fade-out 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  html[data-room-transition="room-enter"]::view-transition-old(root) {
+    animation: room-vt-fade-out 180ms ease-out both;
     clip-path: none;
   }
 
-  html[data-room-transition]::view-transition-new(root) {
-    animation: room-vt-fade-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  html[data-room-transition="room-enter"]::view-transition-new(root) {
+    animation: room-vt-fade-in 220ms ease-out both;
     clip-path: none;
-  }
-
-  html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-old(root) {
-    animation: room-vt-slide-out-left 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    clip-path: none;
-  }
-
-  html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-new(root) {
-    animation: room-vt-slide-in-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    clip-path: none;
-  }
-
-  html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-old(root) {
-    animation: room-vt-slide-out-right 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    clip-path: none;
-  }
-
-  html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-new(root) {
-    animation: room-vt-slide-in-left 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    clip-path: none;
-  }
-
-  html[data-room-transition]::view-transition-group(*),
-  html[data-room-transition]::view-transition-old(*),
-  html[data-room-transition]::view-transition-new(*) {
-    animation-duration: 280ms;
-    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @keyframes room-vt-fade-out {
@@ -858,55 +831,17 @@
     }
   }
 
-  @keyframes room-vt-slide-out-left {
-    to {
-      opacity: 0;
-      transform: translate3d(-18px, 0, 0);
-    }
-  }
-
-  @keyframes room-vt-slide-in-right {
-    from {
-      opacity: 0;
-      transform: translate3d(18px, 0, 0);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
-  }
-
-  @keyframes room-vt-slide-out-right {
-    to {
-      opacity: 0;
-      transform: translate3d(18px, 0, 0);
-    }
-  }
-
-  @keyframes room-vt-slide-in-left {
-    from {
-      opacity: 0;
-      transform: translate3d(-18px, 0, 0);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
-  }
-
   @keyframes room-gallery-slot-enter {
     from {
       opacity: 0;
-      transform: translate3d(0, 8px, 0) scale(0.975);
     }
     to {
       opacity: 1;
-      transform: none;
     }
   }
 
   .room-gallery-slot-enter {
-    animation: room-gallery-slot-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: room-gallery-slot-enter 180ms ease-out both;
   }
 
   .mosaic-puzzle-grid [data-testid="room-directory-card"] {

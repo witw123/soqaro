@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -9,6 +9,7 @@ import type { RoomStateEvent } from "@/features/room/room-state-reducer";
 import { roomAudioOutput } from "@/features/playback/room-audio-output";
 import { clearAwayRoomId } from "@/lib/domain/away-room";
 import { closeDesktopLyricsNative } from "@/features/playback/desktop-lyrics-context";
+import { runRoomViewTransition } from "@/lib/ui/room-view-transition";
 
 type RoomRouter = {
   push: (href: Route) => void;
@@ -80,7 +81,9 @@ export function useRoomLifecycleActions({
     dispatchRoomStateEvent({ type: "local-reset" });
     setPlaylists([]);
     if (workspaceOnly) {
-      router.replace(workspaceEntryHref as Route);
+      runRoomViewTransition("room-exit", () => {
+        router.replace(workspaceEntryHref as Route);
+      });
       return;
     }
 
@@ -110,7 +113,9 @@ export function useRoomLifecycleActions({
     dispatchRoomStateEvent({ type: "local-reset" });
     setPlaylists([]);
     if (workspaceOnly) {
-      router.replace(workspaceEntryHref as Route);
+      runRoomViewTransition("room-exit", () => {
+        router.replace(workspaceEntryHref as Route);
+      });
       return;
     }
 

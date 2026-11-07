@@ -9,6 +9,7 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
+  shellTransitionName?: string;
   onOpen: () => void;
   onPrewarm?: () => void;
 };
@@ -54,6 +55,7 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
 
 export function RoomDirectoryCard({
   room: directoryItem,
+  shellTransitionName,
   onOpen,
   onPrewarm
 }: RoomDirectoryCardProps) {
@@ -64,7 +66,8 @@ export function RoomDirectoryCard({
     "--room-accent": theme.accent,
     "--room-border": theme.border,
     "--room-shadow": theme.glow,
-    "--room-soft": theme.soft
+    "--room-soft": theme.soft,
+    ...(shellTransitionName ? { viewTransitionName: shellTransitionName } : {})
   };
 
   return (

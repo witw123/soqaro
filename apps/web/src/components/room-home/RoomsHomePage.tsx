@@ -25,6 +25,7 @@ import { RoomDirectoryGrid } from "./RoomDirectoryGrid";
 import { RoomThresholdSheet } from "./RoomThresholdSheet";
 import {
   ROOM_CHANNEL_THEMES,
+  ROOM_FILTER_ORDER,
   countRoomsByFilter,
   sortCuratedRooms,
   type RoomFilterValue
@@ -84,6 +85,7 @@ export function RoomsHomePage({
   const refreshAvailableRooms = roomsQuery.refetch;
 
   const [roomTypeFilter, setRoomTypeFilter] = useState<RoomFilterValue>("all");
+  const [morphingRoomId, setMorphingRoomId] = useState<string | null>(null);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createFormVisibility, setCreateFormVisibility] = useState<"public" | "private">("public");
@@ -120,12 +122,16 @@ export function RoomsHomePage({
     if (!effectiveAwayRoomId) return;
     prewarmRoomRuntimeChunk();
     if (onResumeAwayRoom) {
-      onResumeAwayRoom();
+      runRoomViewTransition("room-enter", () => {
+        onResumeAwayRoom();
+      });
       return;
     }
 
     requestAwayRoomResume(effectiveAwayRoomId);
-    router.push(buildRoomHref(effectiveAwayRoomId) as Route);
+    runRoomViewTransition("room-enter", () => {
+      router.push(buildRoomHref(effectiveAwayRoomId) as Route);
+    });
   }
 
   useEffect(() => {
@@ -242,20 +248,57 @@ export function RoomsHomePage({
     }
 
     handlePrewarmRoom(room.room.id);
-    setSelectedRoom(room);
-    setDialogError(null);
+    const targetRoomId = room.room.id;
+    let targetCardEl: HTMLElement | null = null;
+    runRoomViewTransition(
+      "card-open",
+      () => {
+        if (targetCardEl) targetCardEl.style.viewTransitionName = "";
+        setSelectedRoom(room);
+        setDialogError(null);
+      },
+      {
+        beforeCapture: () => {
+          const slotEl = document.querySelector<HTMLElement>(
+            `[data-mosaic-slot-id="${CSS.escape(targetRoomId)}"]`
+          );
+          targetCardEl = slotEl?.querySelector<HTMLElement>('[data-testid="room-directory-card"]') ?? null;
+          if (targetCardEl) targetCardEl.style.viewTransitionName = "active-room-shell";
+        }
+      }
+    );
   }
 
   function closeRoomDetails() {
-    setSelectedRoom(null);
-    setDialogError(null);
+    if (!selectedRoom) return;
+    const closingId = selectedRoom.room.id;
+    runRoomViewTransition(
+      "card-close",
+      () => {
+        setMorphingRoomId(closingId);
+        setSelectedRoom(null);
+        setDialogError(null);
+      },
+      {
+        onFinished: () => {
+          setMorphingRoomId(null);
+        }
+      }
+    );
   }
 
   function handleFilterChange(nextFilter: RoomFilterValue) {
     if (nextFilter === roomTypeFilter) return;
-    startTransition(() => {
-      setRoomTypeFilter(nextFilter);
-    });
+    const prevIndex = ROOM_FILTER_ORDER.indexOf(roomTypeFilter);
+    const nextIndex = ROOM_FILTER_ORDER.indexOf(nextFilter);
+    const direction = nextIndex >= prevIndex ? "forward" : "backward";
+    runRoomViewTransition(
+      "gallery",
+      () => {
+        setRoomTypeFilter(nextFilter);
+      },
+      { direction }
+    );
   }
 
   const filterCounts = useMemo(
@@ -332,6 +375,7 @@ export function RoomsHomePage({
           />
           <RoomDirectoryGrid
             awayRoomId={effectiveAwayRoomId}
+            morphingRoomId={morphingRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
             rooms={sortedRooms}

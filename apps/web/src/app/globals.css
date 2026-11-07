@@ -770,8 +770,13 @@
     view-transition-name: app-sidebar;
   }
 
-  html[data-room-transition="room-enter"] [data-custom-layout-room-host="true"] {
+  html[data-room-transition="room-enter"] [data-custom-layout-room-host="true"],
+  html[data-room-transition="room-exit"] [data-custom-layout-room-host="true"] {
     view-transition-name: active-room-shell;
+  }
+
+  html[data-room-transition="gallery"] [data-testid="room-mosaic-canvas-tray"] {
+    view-transition-name: room-gallery-canvas;
   }
 
   html[data-room-transition]::view-transition-group(app-bottom-player) {
@@ -801,22 +806,56 @@
     animation: none !important;
   }
 
-  html[data-room-transition="room-enter"]::view-transition-group(active-room-shell) {
+  /* Single Active Room Shell Morph: Card <-> Modal <-> Room Workspace */
+  html[data-room-transition]::view-transition-group(active-room-shell) {
     z-index: 950 !important;
-    animation-duration: 240ms;
+    animation-duration: 260ms;
     animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
     border-radius: 12px;
   }
 
-  html[data-room-transition="room-enter"]::view-transition-old(root) {
+  /* Keep root completely static during card morphs & gallery slide */
+  html[data-room-transition="card-open"]::view-transition-old(root),
+  html[data-room-transition="card-open"]::view-transition-new(root),
+  html[data-room-transition="card-close"]::view-transition-old(root),
+  html[data-room-transition="card-close"]::view-transition-new(root),
+  html[data-room-transition="gallery"]::view-transition-old(root),
+  html[data-room-transition="gallery"]::view-transition-new(root) {
+    animation: none !important;
+  }
+
+  /* Room enter and exit root fade */
+  html[data-room-transition="room-enter"]::view-transition-old(root),
+  html[data-room-transition="room-exit"]::view-transition-old(root) {
     animation: room-vt-fade-out 180ms ease-out both;
     clip-path: none;
   }
 
-  html[data-room-transition="room-enter"]::view-transition-new(root) {
+  html[data-room-transition="room-enter"]::view-transition-new(root),
+  html[data-room-transition="room-exit"]::view-transition-new(root) {
     animation: room-vt-fade-in 220ms ease-out both;
     clip-path: none;
+  }
+
+  /* Scoped Gallery canvas tray directional glide */
+  html[data-room-transition="gallery"]::view-transition-group(room-gallery-canvas) {
+    animation-duration: 250ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+  }
+
+  html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-old(room-gallery-canvas) {
+    animation: room-vt-slide-out-left 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-new(room-gallery-canvas) {
+    animation: room-vt-slide-in-right 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-old(room-gallery-canvas) {
+    animation: room-vt-slide-out-right 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-new(room-gallery-canvas) {
+    animation: room-vt-slide-in-left 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   @keyframes room-vt-fade-out {
@@ -828,6 +867,42 @@
   @keyframes room-vt-fade-in {
     from {
       opacity: 0;
+    }
+  }
+
+  @keyframes room-vt-slide-out-left {
+    to {
+      opacity: 0;
+      transform: translate3d(-18px, 0, 0);
+    }
+  }
+
+  @keyframes room-vt-slide-in-right {
+    from {
+      opacity: 0;
+      transform: translate3d(18px, 0, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes room-vt-slide-out-right {
+    to {
+      opacity: 0;
+      transform: translate3d(18px, 0, 0);
+    }
+  }
+
+  @keyframes room-vt-slide-in-left {
+    from {
+      opacity: 0;
+      transform: translate3d(-18px, 0, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
     }
   }
 

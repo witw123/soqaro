@@ -34,6 +34,7 @@ type RoomDirectoryGridProps = {
   rooms: RoomDirectoryItem[];
   roomsLoaded: boolean;
   awayRoomId: string | null;
+  morphingRoomId?: string | null;
   onOpenRoom: (room: RoomDirectoryItem) => void;
   onPrewarmRoom: (roomId: string) => void;
 };
@@ -42,6 +43,7 @@ export function RoomDirectoryGrid({
   rooms,
   roomsLoaded,
   awayRoomId,
+  morphingRoomId = null,
   onOpenRoom,
   onPrewarmRoom
 }: RoomDirectoryGridProps) {
@@ -129,6 +131,7 @@ export function RoomDirectoryGrid({
       {packedRooms.map(({ item, span, textScore }) => {
         const roomId = item.room.id;
         const isAway = Boolean(awayRoomId && awayRoomId === roomId);
+        const isMorphTarget = morphingRoomId === roomId;
 
         return (
           <div
@@ -144,6 +147,7 @@ export function RoomDirectoryGrid({
               onOpen={() => onOpenRoom(item)}
               onPrewarm={() => onPrewarmRoom(roomId)}
               room={item}
+              shellTransitionName={isMorphTarget ? "active-room-shell" : undefined}
             />
           </div>
         );

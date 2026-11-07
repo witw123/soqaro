@@ -32,6 +32,7 @@ import {
   shouldCommitAwayRoomResume,
   storeAwayRoomId
 } from "@/lib/domain/away-room";
+import { runRoomViewTransition } from "@/components/room-home/room-view-transition";
 
 const lastRoomStorageKey = "soqaro-last-room";
 const peerStorageKey = "soqaro-peer-id";
@@ -102,9 +103,11 @@ export function SoqaroApp({
       return;
     }
 
-    storeAwayRoomId(targetRoomId);
-    setAwayRoomId(targetRoomId);
-    setStatusMessage("");
+    runRoomViewTransition("room-exit", () => {
+      storeAwayRoomId(targetRoomId);
+      setAwayRoomId(targetRoomId);
+      setStatusMessage("");
+    });
   }
 
   function handleResumeRoom() {
@@ -112,13 +115,17 @@ export function SoqaroApp({
     if (backgroundOnly && targetRoomId) {
       pendingRoomResumeRef.current = targetRoomId;
       requestAwayRoomResume(targetRoomId);
-      router.push(`/room/${targetRoomId}` as Route);
+      runRoomViewTransition("room-enter", () => {
+        router.push(`/room/${targetRoomId}` as Route);
+      });
       return;
     }
 
-    clearAwayRoomId();
-    setAwayRoomId(null);
-    setStatusMessage("已返回房间。");
+    runRoomViewTransition("room-enter", () => {
+      clearAwayRoomId();
+      setAwayRoomId(null);
+      setStatusMessage("已返回房间。");
+    });
   }
 
   const {

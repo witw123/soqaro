@@ -20,7 +20,7 @@ export function InteractiveStarfieldScene({ className = "" }: { className?: stri
   return (
     <div
       aria-hidden="true"
-      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0b0e14] select-none [contain:layout_paint] ${className}`}
+      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0b0e14] select-none ${className}`}
     >
       {/* Crisp Geometric Soundwaves */}
       <svg
@@ -65,7 +65,7 @@ export function RequestNebulaVinylScene({ className = "" }: { className?: string
   return (
     <div
       aria-hidden="true"
-      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0e0c13] select-none [contain:layout_paint] ${className}`}
+      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0e0c13] select-none ${className}`}
     >
       {/* Vinyl Record */}
       <div className="absolute -right-4 -bottom-8 w-40 h-40 sm:w-44 sm:h-44 transition-transform duration-500 ease-out group-hover:scale-105">
@@ -117,7 +117,7 @@ export function RadioAuroraPulseScene({ className = "" }: { className?: string }
   return (
     <div
       aria-hidden="true"
-      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#071113] select-none [contain:layout_paint] ${className}`}
+      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#071113] select-none ${className}`}
     >
       {/* Concentric Radial Broadcast Waves */}
       <svg

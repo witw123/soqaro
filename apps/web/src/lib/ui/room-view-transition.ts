@@ -2,7 +2,7 @@
 
 import { flushSync } from "react-dom";
 
-export type RoomTransitionKind = "gallery" | "room-enter" | "room-exit";
+export type RoomTransitionKind = "gallery" | "card-open" | "card-close" | "room-enter" | "room-exit";
 export type RoomTransitionDirection = "forward" | "backward";
 
 export type RoomViewTransitionOptions = {
@@ -195,19 +195,31 @@ export function runRoomViewTransition(
   }
 
   try {
-    if (kind === "room-enter" && options.roomId && !isThresholdSheetOpen()) {
+    if (kind === "card-open" && options.roomId) {
+      tagElementForShellMorph(findRoomCardElement(options.roomId));
+    } else if (kind === "room-enter" && options.roomId && !isThresholdSheetOpen()) {
       tagElementForShellMorph(findRoomCardElement(options.roomId));
     }
 
     options.beforeCapture?.();
 
     const transition = doc.startViewTransition(() => {
+      if (kind === "card-open" || kind === "room-enter") {
+        clearActiveTaggedElement();
+      }
+
       flushSync(() => {
         commitUpdate();
       });
 
+      if (kind === "card-close") {
+        if (options.roomId) {
+          tagElementForShellMorph(findRoomCardElement(options.roomId));
+        }
+        return;
+      }
+
       if (kind === "room-enter") {
-        clearActiveTaggedElement();
         if (isRoomHostMounted()) {
           return;
         }

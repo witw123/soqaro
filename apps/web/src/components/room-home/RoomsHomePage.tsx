@@ -259,16 +259,30 @@ export function RoomsHomePage({
       }
 
       handlePrewarmRoom(room.room.id);
-      setSelectedRoom(room);
-      setDialogError(null);
+      runRoomViewTransition(
+        "card-open",
+        () => {
+          setSelectedRoom(room);
+          setDialogError(null);
+        },
+        { roomId: room.room.id }
+      );
     },
     [activeSession, authEntryHref, effectiveAwayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]
   );
 
   const closeRoomDetails = useCallback(() => {
-    setSelectedRoom(null);
-    setDialogError(null);
-  }, []);
+    if (!selectedRoom) return;
+    const closingId = selectedRoom.room.id;
+    runRoomViewTransition(
+      "card-close",
+      () => {
+        setSelectedRoom(null);
+        setDialogError(null);
+      },
+      { roomId: closingId }
+    );
+  }, [selectedRoom]);
 
   const handleFilterChange = useCallback(
     (nextFilter: RoomFilterValue) => {

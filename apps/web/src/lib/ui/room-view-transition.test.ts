@@ -166,4 +166,95 @@ describe("room-view-transition", () => {
     await Promise.resolve();
     expect(card99.style.viewTransitionName).toBe("");
   });
+
+  it("handles card-open by tagging source card and clearing inside callback", async () => {
+    const cardEl = createMockElement("card-open-1", { visibleRect: true });
+    let capturedOldTransitionName = "";
+    let resolveFinished!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      resolveFinished = resolve;
+    });
+
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false }),
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis)
+    });
+
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {} },
+      querySelector: () => null,
+      querySelectorAll: (selector: string) => {
+        if (selector.includes("data-mosaic-slot-id")) return [cardEl];
+        return [];
+      },
+      startViewTransition: vi.fn((cb: () => void | Promise<void>) => {
+        capturedOldTransitionName = cardEl.style.viewTransitionName;
+        cb();
+        return { finished };
+      })
+    });
+
+    let commitCalled = false;
+    runRoomViewTransition(
+      "card-open",
+      () => {
+        commitCalled = true;
+      },
+      { roomId: "room_open_1" }
+    );
+
+    expect(capturedOldTransitionName).toBe("active-room-shell");
+    expect(commitCalled).toBe(true);
+    expect(cardEl.style.viewTransitionName).toBe("");
+
+    resolveFinished();
+    await finished;
+    await Promise.resolve();
+    expect(cardEl.style.viewTransitionName).toBe("");
+  });
+
+  it("handles card-close by tagging target card inside callback for morph shrink", async () => {
+    const cardEl = createMockElement("card-close-1", { visibleRect: true });
+    let resolveFinished!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      resolveFinished = resolve;
+    });
+
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false }),
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis)
+    });
+
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {} },
+      querySelector: () => null,
+      querySelectorAll: (selector: string) => {
+        if (selector.includes("data-mosaic-slot-id")) return [cardEl];
+        return [];
+      },
+      startViewTransition: vi.fn((cb: () => void | Promise<void>) => {
+        cb();
+        return { finished };
+      })
+    });
+
+    let commitCalled = false;
+    runRoomViewTransition(
+      "card-close",
+      () => {
+        commitCalled = true;
+      },
+      { roomId: "room_close_1" }
+    );
+
+    expect(commitCalled).toBe(true);
+    expect(cardEl.style.viewTransitionName).toBe("active-room-shell");
+
+    resolveFinished();
+    await finished;
+    await Promise.resolve();
+    expect(cardEl.style.viewTransitionName).toBe("");
+  });
 });

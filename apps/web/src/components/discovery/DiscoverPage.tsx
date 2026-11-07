@@ -205,16 +205,30 @@ export function DiscoverPage() {
       }
 
       handlePrewarmRoom(room.room.id);
-      setSelectedRoom(room);
-      setDialogError(null);
+      runRoomViewTransition(
+        "card-open",
+        () => {
+          setSelectedRoom(room);
+          setDialogError(null);
+        },
+        { roomId: room.room.id }
+      );
     },
     [activeSession, authEntryHref, awayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]
   );
 
   const closeRoomDetails = useCallback(() => {
-    setSelectedRoom(null);
-    setDialogError(null);
-  }, []);
+    if (!selectedRoom) return;
+    const closingId = selectedRoom.room.id;
+    runRoomViewTransition(
+      "card-close",
+      () => {
+        setSelectedRoom(null);
+        setDialogError(null);
+      },
+      { roomId: closingId }
+    );
+  }, [selectedRoom]);
 
   async function handleJoinRoom(code: string, password?: string) {
     if (!code.trim() || joinInFlightRef.current) return;

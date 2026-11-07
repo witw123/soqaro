@@ -200,7 +200,7 @@ function RoomNowPlayingStageScene({
       {artworkSrc ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -inset-2 bg-cover bg-center opacity-25 dark:opacity-30 blur-lg scale-110 [contain:strict]"
+          className="pointer-events-none absolute -inset-2 bg-cover bg-center opacity-25 dark:opacity-30 blur-lg scale-110"
           style={{ backgroundImage: `url("${artworkSrc}")` }}
         />
       ) : null}

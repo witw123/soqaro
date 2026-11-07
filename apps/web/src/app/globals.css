@@ -875,7 +875,11 @@
     clip-path: none;
   }
 
-  /* Scoped Gallery canvas tray directional glide */
+  /* Keep root completely static during card morphs & gallery slide */
+  html[data-room-transition="card-open"]::view-transition-old(root),
+  html[data-room-transition="card-open"]::view-transition-new(root),
+  html[data-room-transition="card-close"]::view-transition-old(root),
+  html[data-room-transition="card-close"]::view-transition-new(root),
   html[data-room-transition="gallery"]::view-transition-old(root),
   html[data-room-transition="gallery"]::view-transition-new(root) {
     animation: none !important;

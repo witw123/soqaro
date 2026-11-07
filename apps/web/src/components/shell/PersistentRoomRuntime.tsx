@@ -109,6 +109,7 @@ function RoomRuntime({ children }: { children: ReactNode }) {
           {owner === "local" ? <AppPersistentPlayer /> : null}
           {hasMounted && runtimeRoomId ? (
             <SoqaroApp
+              key={runtimeRoomId}
               backgroundOnly={!routeRoomId}
               initialRoomId={runtimeRoomId}
               workspaceOnly

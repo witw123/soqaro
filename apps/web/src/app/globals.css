@@ -787,7 +787,7 @@
   }
 
   html[data-room-transition]::view-transition-group(app-bottom-player) {
-    z-index: 1000 !important;
+    z-index: 910 !important;
     animation: none !important;
   }
   html[data-room-transition]::view-transition-old(app-bottom-player),
@@ -797,7 +797,7 @@
   }
 
   html[data-room-transition]::view-transition-group(app-mobile-navigation) {
-    z-index: 1001 !important;
+    z-index: 915 !important;
     animation: none !important;
   }
   html[data-room-transition]::view-transition-old(app-mobile-navigation),
@@ -807,7 +807,7 @@
   }
 
   html[data-room-transition]::view-transition-group(app-sidebar) {
-    z-index: 999 !important;
+    z-index: 900 !important;
     animation: none !important;
   }
   html[data-room-transition]::view-transition-old(app-sidebar),
@@ -818,7 +818,7 @@
 
   /* Single Active Room Shell Morph: Card / Modal <-> Room Workspace */
   html[data-room-transition]::view-transition-group(active-room-shell) {
-    z-index: 950 !important;
+    z-index: 990 !important;
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     overflow: hidden;
@@ -849,7 +849,7 @@
     view-transition-name: room-dialog-backdrop;
   }
   html[data-room-transition]::view-transition-group(room-dialog-backdrop) {
-    z-index: 940 !important;
+    z-index: 980 !important;
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   }
@@ -858,6 +858,12 @@
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     mix-blend-mode: normal !important;
+  }
+  html[data-room-transition]::view-transition-new(room-dialog-backdrop) {
+    animation-name: room-vt-fade-in;
+  }
+  html[data-room-transition]::view-transition-old(room-dialog-backdrop) {
+    animation-name: room-vt-fade-out;
   }
 
   /* Room enter and exit root cross-fade without opacity dip */
@@ -919,6 +925,15 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  @keyframes room-vt-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
     }
   }
 

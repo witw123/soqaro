@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { PlaybackSnapshot, RoomMember, RoomSnapshot, TrackMeta } from "@soqaro/shared";
 import {
@@ -266,7 +266,7 @@ export function roomStateReducer(
       return initialRoomStateStore;
 
     case "bootstrap-handoff": {
-      if (current.source === "authoritative") {
+      if (current.source === "authoritative" && current.snapshot?.room.id === event.snapshot.room.id) {
         return current;
       }
 

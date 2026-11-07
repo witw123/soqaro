@@ -160,6 +160,16 @@ test("room directory grid and threshold sheet preserve clean hierarchy across sh
     const isProgRockRoom = index === 0;
     const isShortBioRoom = index === 1;
     const roomType = isProgRockRoom || isShortBioRoom ? "interactive" : roomTypes[index % 3]!;
+    const variedDescriptions = [
+      "多人实时同步收听，共享深夜曲库。",
+      "黑胶母带与合成器浪潮连播，适合深夜写代码与专注工作时收听。",
+      "即兴点歌。",
+      "后摇滚与独立流行专题夜，欢迎投递你私藏的冷门现场版本与器乐曲目。",
+      "周末晚间自由广播，主理人实时混音。",
+      "纯音乐轻听。",
+      "爵士融合与复古都市流行精选，从傍晚日落一直播放到午夜收台。",
+      "安静听歌。"
+    ];
     return {
       room: {
         id: `room_multi_${index + 1}`,
@@ -173,7 +183,7 @@ test("room directory grid and threshold sheet preserve clean hierarchy across sh
           ? "听点前卫的（以及器乐长篇组曲鉴赏）。可作为通勤、工作、学习或睡觉时的背景音乐，适合于沙发、电梯间、候车厅、咖啡馆、理发店等地点。"
           : isShortBioRoom
             ? "随机播放，可以刷歌"
-            : "多人实时同步收听，共享深夜曲库。",
+            : variedDescriptions[(index - 2) % variedDescriptions.length]!,
         hasPassword: false,
         visibility: "public" as const,
         roomType,
@@ -234,8 +244,48 @@ test("room directory grid and threshold sheet preserve clean hierarchy across sh
   await authorizeStorageRoot(page, cards.first());
   await expect(cards).toHaveCount(10);
 
+  const canvasTray = page.getByTestId("room-mosaic-canvas-tray");
+  await expect(canvasTray).toBeVisible();
+
   const grid = page.getByTestId("room-directory-grid");
   await expect(grid).toBeVisible();
+
+  // Verify Bento Mosaic interlocking row geometry (5:4:3 on Row 1, 3:5:4 on Row 2, flush heights)
+  const mosaicGeometry = await grid.evaluate((gridEl) => {
+    const tiles = Array.from(gridEl.querySelectorAll<HTMLElement>("[data-mosaic-slot-id]"));
+    const rects = tiles.slice(0, 6).map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        span: Number(el.dataset.mosaicSpan),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        width: Math.round(r.width),
+        height: Math.round(r.height)
+      };
+    });
+    return rects;
+  });
+
+  expect(mosaicGeometry.map((t) => t.span)).toEqual([5, 4, 3, 3, 5, 4]);
+  // Row 1 tiles share identical top and bottom edges and descending widths (5 > 4 > 3)
+  expect(Math.abs(mosaicGeometry[0]!.top - mosaicGeometry[1]!.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[1]!.top - mosaicGeometry[2]!.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[0]!.bottom - mosaicGeometry[2]!.bottom)).toBeLessThanOrEqual(1);
+  expect(mosaicGeometry[0]!.width).toBeGreaterThan(mosaicGeometry[1]!.width + 30);
+  expect(mosaicGeometry[1]!.width).toBeGreaterThan(mosaicGeometry[2]!.width + 30);
+  // Row 1 and Row 2 vertical seams are staggered (Row 1 first right edge != Row 2 first right edge)
+  expect(Math.abs(mosaicGeometry[0]!.right - mosaicGeometry[3]!.right)).toBeGreaterThan(40);
+  // Row 1 and Row 2 outer left and right edges are 100% flush
+  expect(Math.abs(mosaicGeometry[0]!.left - mosaicGeometry[3]!.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[2]!.right - mosaicGeometry[5]!.right)).toBeLessThanOrEqual(1);
+  // Zero-gap flush borders: adjacent horizontal and vertical tiles touch tightly with 0px gap
+  expect(Math.abs(mosaicGeometry[0]!.right - mosaicGeometry[1]!.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[1]!.right - mosaicGeometry[2]!.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[3]!.right - mosaicGeometry[4]!.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[4]!.right - mosaicGeometry[5]!.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(mosaicGeometry[0]!.bottom - mosaicGeometry[3]!.top)).toBeLessThanOrEqual(1);
 
   // 1. Inspect long-description + long-track-title room on desktop
   await cards.first().getByTestId("room-directory-open").click();

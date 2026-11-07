@@ -9,6 +9,7 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
+  shellTransitionName?: string;
   onOpen: () => void;
   onPrewarm?: () => void;
 };
@@ -54,6 +55,7 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
 
 export function RoomDirectoryCard({
   room: directoryItem,
+  shellTransitionName,
   onOpen,
   onPrewarm
 }: RoomDirectoryCardProps) {
@@ -64,12 +66,13 @@ export function RoomDirectoryCard({
     "--room-accent": theme.accent,
     "--room-border": theme.border,
     "--room-shadow": theme.glow,
-    "--room-soft": theme.soft
+    "--room-soft": theme.soft,
+    ...(shellTransitionName ? { viewTransitionName: shellTransitionName } : {})
   };
 
   return (
     <article
-      className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs transition-all duration-200 hover:border-accent/40 focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
+      className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border border-surface-border bg-surface-elevated p-3 shadow-xs transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
       data-room-theme={room.roomType}
       data-room-type={room.roomType}
       data-testid="room-directory-card"
@@ -87,7 +90,7 @@ export function RoomDirectoryCard({
 
       {/* Room Visual Cover: Integrates Room Type Badge and Online Status inside the cover */}
       <section
-        className="relative w-full aspect-[2.4/1] shrink-0 overflow-hidden rounded-lg border border-surface-border bg-surface shadow-xs"
+        className="room-directory-stage-frame relative w-full aspect-[2.4/1] md:aspect-auto md:h-[148px] xl:h-[160px] shrink-0 overflow-hidden rounded-lg border border-surface-border bg-surface shadow-xs"
         data-card-scene={room.roomType}
         data-testid="room-directory-stage"
       >
@@ -101,7 +104,7 @@ export function RoomDirectoryCard({
         <h3 className="truncate text-sm sm:text-base font-semibold tracking-tight text-foreground transition-colors">
           {room.name}
         </h3>
-        <p className="mt-0.5 line-clamp-2 min-h-[2rem] break-words text-xs leading-relaxed text-foreground-muted/80">
+        <p className="mt-0.5 line-clamp-2 break-words text-xs leading-relaxed text-foreground-muted/80">
           {room.description?.trim() || fallbackDescription(room)}
         </p>
       </div>

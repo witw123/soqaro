@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 import {
+  computeRoomTextScore,
   countRoomsByFilter,
   formatRoomLiveMetric,
+  packRoomsIntoContentMosaic,
+  resolveMosaicSpanPattern,
   sortCuratedRooms
 } from "./room-gallery-layout";
 
 function makeRoom(
   id: string,
   overrides: {
+    name?: string;
+    description?: string;
     roomType?: RoomType;
     online?: number;
     playing?: boolean;
@@ -22,8 +27,8 @@ function makeRoom(
     room: {
       id,
       joinCode: id.slice(0, 6).toUpperCase().padEnd(6, "0"),
-      name: `Room ${id}`,
-      description: "Test description",
+      name: overrides.name ?? `Room ${id}`,
+      description: overrides.description ?? "Test description",
       hasPassword: false,
       visibility: "public",
       roomType,
@@ -90,5 +95,75 @@ describe("room-gallery-layout", () => {
       label: "电台信号",
       value: "正在播出"
     });
+  });
+
+  it("builds flush interlocking 12-column Bento Mosaic span patterns with staggered seams", () => {
+    expect(resolveMosaicSpanPattern(0)).toEqual([]);
+    expect(resolveMosaicSpanPattern(1)).toEqual([{ lgSpan: 6, mdSpan: 6 }]);
+
+    for (const count of [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16]) {
+      const spans = resolveMosaicSpanPattern(count);
+      expect(spans).toHaveLength(count);
+
+      // Partition into 12-column rows and verify every row sums to 12 and seams stagger
+      const rowsSeamSets: number[][] = [];
+      let currentSum = 0;
+      let currentSeams: number[] = [];
+
+      for (const item of spans) {
+        currentSum += item.lgSpan;
+        if (currentSum < 12) {
+          currentSeams.push(currentSum);
+        } else {
+          expect(currentSum).toBe(12);
+          rowsSeamSets.push(currentSeams);
+          currentSum = 0;
+          currentSeams = [];
+        }
+      }
+      expect(currentSum).toBe(0);
+
+      for (let r = 1; r < rowsSeamSets.length; r += 1) {
+        const prevSeams = rowsSeamSets[r - 1]!;
+        const nextSeams = rowsSeamSets[r]!;
+        for (const seam of nextSeams) {
+          expect(prevSeams).not.toContain(seam);
+        }
+      }
+    }
+  });
+
+  it("assigns rooms with longer titles and descriptions to wider mosaic slots within each row", () => {
+    const shortRoom = makeRoom("short_copy", {
+      name: "短房",
+      description: "随手放歌",
+      online: 15,
+      playing: true
+    });
+    const mediumRoom = makeRoom("medium_copy", {
+      name: "城市夜航电台",
+      description: "多人实时同步收听，共享深夜曲库与独立摇滚。",
+      online: 14,
+      playing: true
+    });
+    const longRoom = makeRoom("long_copy", {
+      name: "前卫摇滚与器乐长篇组曲鉴赏听歌房",
+      description:
+        "听点前卫的（以及器乐长篇组曲鉴赏）。可作为通勤、工作、学习或睡觉时的背景音乐，适合于沙发、电梯间、候车厅、咖啡馆。",
+      online: 13,
+      playing: true
+    });
+
+    expect(computeRoomTextScore(longRoom)).toBeGreaterThan(computeRoomTextScore(mediumRoom));
+    expect(computeRoomTextScore(mediumRoom)).toBeGreaterThan(computeRoomTextScore(shortRoom));
+
+    // Row 0 template is [5, 4, 3]: even though shortRoom has the highest online count,
+    // within Row 0 longRoom must receive the 5-col slot, mediumRoom the 4-col slot, and shortRoom the 3-col slot
+    const packed = packRoomsIntoContentMosaic([shortRoom, mediumRoom, longRoom]);
+    expect(packed.map((entry) => ({ id: entry.item.room.id, lgSpan: entry.span.lgSpan }))).toEqual([
+      { id: "long_copy", lgSpan: 5 },
+      { id: "medium_copy", lgSpan: 4 },
+      { id: "short_copy", lgSpan: 3 }
+    ]);
   });
 });

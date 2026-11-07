@@ -23,6 +23,12 @@ const roomFormatLabels: Record<RoomType, string> = {
   radio: "自由电台"
 };
 
+const roomFormatAccentColors: Record<RoomType, string> = {
+  interactive: "#0070f3",
+  request: "#c026d3",
+  radio: "#00a9d6"
+};
+
 function resolveActivityMetric(room: RoomDirectoryItem["room"]): string | null {
   if (room.roomType === "request") {
     if (room.directoryPendingRequestCount > 0) {
@@ -130,16 +136,25 @@ export function RoomThresholdSheet({
         />
         <DialogPrimitive.Content
           className="light-dialog-surface custom-scrollbar fixed left-1/2 top-1/2 max-h-[85dvh] w-[calc(100vw_-_2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] text-[var(--slate-12)] shadow-[0_16px_40px_rgba(0,0,0,0.45)] transition-opacity duration-250 ease-out"
-          style={{ zIndex: "var(--z-modal-high)" }}
+          style={{
+            zIndex: "var(--z-modal-high)",
+            viewTransitionName: "active-room-shell"
+          }}
         >
-          {isPending ? (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] overflow-hidden bg-[var(--slate-4)]"
-            >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] overflow-hidden"
+            style={{
+              background: isPending
+                ? "var(--slate-4)"
+                : `linear-gradient(90deg, transparent 0%, ${roomFormatAccentColors[room.roomType]} 50%, transparent 100%)`,
+              opacity: isPending ? 1 : 0.75
+            }}
+          >
+            {isPending ? (
               <div className="h-full w-2/3 animate-pulse bg-[var(--blue-9)]" />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
 
           {/* Header: Identity, Inline Meta, and Full Description */}
           <div className="px-4 pt-4 pb-3.5">

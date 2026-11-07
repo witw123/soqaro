@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode
+} from "react";
 import Link from "next/link";
 import { Plus, RotateCw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { roomTypeLabel } from "./room-home-types";
-import type { RoomFilterValue } from "./room-gallery-layout";
-
-const filterItems: readonly RoomFilterValue[] = ["all", "interactive", "request", "radio"];
+import {
+  ROOM_CHANNEL_THEMES,
+  ROOM_FILTER_ORDER,
+  type RoomFilterValue
+} from "./room-gallery-layout";
 
 type RoomLobbyToolbarProps = {
   activeFilter: RoomFilterValue;
@@ -83,7 +92,7 @@ export function RoomLobbyToolbar({
         />
       </div>
 
-      {/* Desktop Optically Aligned Toolbar */}
+      {/* Desktop Optically Aligned Top Navigation Deck */}
       <div className="hidden items-center justify-between gap-4 md:flex">
         <SlidingRoomFilterTabs
           activeFilter={activeFilter}
@@ -156,6 +165,8 @@ function SlidingRoomFilterTabs({
     ready: false
   });
 
+  const activeTheme = ROOM_CHANNEL_THEMES[activeFilter];
+
   useLayoutEffect(() => {
     const syncIndicator = () => {
       const target = buttonRefs.current[activeFilter];
@@ -175,7 +186,6 @@ function SlidingRoomFilterTabs({
     return () => observer.disconnect();
   }, [activeFilter, counts, roomsLoaded]);
 
-  // Recalculate once fonts settle on initial mount
   useEffect(() => {
     const target = buttonRefs.current[activeFilter];
     if (!target || target.offsetWidth === 0) return;
@@ -190,8 +200,9 @@ function SlidingRoomFilterTabs({
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    const currentIndex = filterItems.indexOf(current);
-    const nextFilter = filterItems[(currentIndex + step + filterItems.length) % filterItems.length]!;
+    const currentIndex = ROOM_FILTER_ORDER.indexOf(current);
+    const nextFilter =
+      ROOM_FILTER_ORDER[(currentIndex + step + ROOM_FILTER_ORDER.length) % ROOM_FILTER_ORDER.length]!;
     onFilterChange(nextFilter);
     buttonRefs.current[nextFilter]?.focus();
   }
@@ -208,19 +219,26 @@ function SlidingRoomFilterTabs({
       {indicator.ready ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg border-hairline border-surface-border bg-surface-elevated transition-[transform,width] duration-[250ms] ease-out motion-reduce:transition-none"
+          className="pointer-events-none absolute top-1 bottom-1 left-0 overflow-hidden rounded-lg border-hairline bg-surface-elevated transition-[transform,width,border-color] duration-[250ms] ease-out motion-reduce:transition-none"
           style={{
             width: `${indicator.width}px`,
-            transform: `translate3d(${indicator.x}px, 0, 0)`
+            transform: `translate3d(${indicator.x}px, 0, 0)`,
+            borderColor: activeTheme.border
           }}
-        />
+        >
+          <span
+            className="absolute inset-x-2 bottom-0 h-[1.5px] rounded-full transition-colors duration-[250ms] ease-out"
+            style={{ backgroundColor: activeTheme.accent }}
+          />
+        </span>
       ) : null}
 
-      {filterItems.map((item) => {
+      {ROOM_FILTER_ORDER.map((item) => {
         const isSelected = activeFilter === item;
         const count = counts[item];
         const isEmptyCategory = roomsLoaded && item !== "all" && count === 0;
         const label = item === "all" ? "全部" : roomTypeLabel(item);
+        const itemTheme = ROOM_CHANNEL_THEMES[item];
 
         return (
           <button
@@ -248,12 +266,22 @@ function SlidingRoomFilterTabs({
             tabIndex={isSelected ? 0 : -1}
             type="button"
           >
+            {item !== "all" ? (
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 rounded-full transition-opacity duration-[250ms] ease-out"
+                style={{
+                  backgroundColor: itemTheme.accent,
+                  opacity: isSelected ? 1 : 0.45
+                }}
+              />
+            ) : null}
             <span>{label}</span>
             {roomsLoaded ? (
               <span
                 aria-hidden="true"
-                className={`font-mono tabular-nums ${
-                  isSelected ? "text-foreground-muted" : "opacity-65"
+                className={`font-mono tabular-nums transition-colors duration-[250ms] ease-out ${
+                  isSelected ? "text-foreground" : "opacity-65"
                 }`}
               >
                 {count}

@@ -755,7 +755,7 @@
     }
   }
 
-  /* Scoped Room Gallery & Stage Threshold View Transitions (250ms ease-out) */
+  /* Scoped Room Gallery & Stage Threshold View Transitions */
   html[data-room-transition] [data-testid="bottom-player"],
   html[data-room-transition] [data-custom-layout-item="player"] {
     view-transition-name: app-bottom-player;
@@ -768,6 +768,10 @@
 
   html[data-room-transition] .app-sidebar {
     view-transition-name: app-sidebar;
+  }
+
+  html[data-room-transition="room-enter"] [data-custom-layout-room-host="true"] {
+    view-transition-name: active-room-shell;
   }
 
   html[data-room-transition]::view-transition-group(app-bottom-player) {
@@ -797,21 +801,49 @@
     animation: none !important;
   }
 
+  html[data-room-transition]::view-transition-group(active-room-shell) {
+    z-index: 950 !important;
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    border-radius: 12px;
+  }
+
   html[data-room-transition]::view-transition-old(root) {
-    animation: room-vt-fade-out 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: room-vt-fade-out 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
     clip-path: none;
   }
 
   html[data-room-transition]::view-transition-new(root) {
-    animation: room-vt-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: room-vt-fade-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    clip-path: none;
+  }
+
+  html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-old(root) {
+    animation: room-vt-slide-out-left 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    clip-path: none;
+  }
+
+  html[data-room-transition="gallery"][data-room-direction="forward"]::view-transition-new(root) {
+    animation: room-vt-slide-in-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    clip-path: none;
+  }
+
+  html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-old(root) {
+    animation: room-vt-slide-out-right 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    clip-path: none;
+  }
+
+  html[data-room-transition="gallery"][data-room-direction="backward"]::view-transition-new(root) {
+    animation: room-vt-slide-in-left 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
     clip-path: none;
   }
 
   html[data-room-transition]::view-transition-group(*),
   html[data-room-transition]::view-transition-old(*),
   html[data-room-transition]::view-transition-new(*) {
-    animation-duration: 250ms;
-    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @keyframes room-vt-fade-out {
@@ -826,10 +858,46 @@
     }
   }
 
+  @keyframes room-vt-slide-out-left {
+    to {
+      opacity: 0;
+      transform: translate3d(-18px, 0, 0);
+    }
+  }
+
+  @keyframes room-vt-slide-in-right {
+    from {
+      opacity: 0;
+      transform: translate3d(18px, 0, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes room-vt-slide-out-right {
+    to {
+      opacity: 0;
+      transform: translate3d(18px, 0, 0);
+    }
+  }
+
+  @keyframes room-vt-slide-in-left {
+    from {
+      opacity: 0;
+      transform: translate3d(-18px, 0, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
   @keyframes room-gallery-slot-enter {
     from {
       opacity: 0;
-      transform: translate3d(0, 6px, 0);
+      transform: translate3d(0, 8px, 0) scale(0.975);
     }
     to {
       opacity: 1;
@@ -838,7 +906,28 @@
   }
 
   .room-gallery-slot-enter {
-    animation: room-gallery-slot-enter 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: room-gallery-slot-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .mosaic-puzzle-grid [data-testid="room-directory-card"] {
+    border-radius: 0 !important;
+    border-width: 0 0.5px 0.5px 0 !important;
+    border-style: solid !important;
+    border-color: var(--slate-6) !important;
+    box-shadow: none !important;
+  }
+
+  .mosaic-puzzle-grid [data-testid="room-directory-card"]:hover,
+  .mosaic-puzzle-grid [data-testid="room-directory-card"]:focus-within {
+    z-index: 20;
+    box-shadow: inset 0 0 0 1px var(--room-border) !important;
+  }
+
+  @media (min-width: 768px) {
+    .mosaic-puzzle-grid .room-directory-stage-frame {
+      aspect-ratio: auto !important;
+      height: clamp(8.5rem, 11vw, 10rem) !important;
+    }
   }
 
   .app-sidebar {

@@ -24,6 +24,8 @@ import { RoomLobbyToolbar } from "./RoomLobbyToolbar";
 import { RoomDirectoryGrid } from "./RoomDirectoryGrid";
 import { RoomThresholdSheet } from "./RoomThresholdSheet";
 import {
+  ROOM_CHANNEL_THEMES,
+  ROOM_FILTER_ORDER,
   countRoomsByFilter,
   sortCuratedRooms,
   type RoomFilterValue
@@ -87,6 +89,7 @@ export function RoomsHomePage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createFormVisibility, setCreateFormVisibility] = useState<"public" | "private">("public");
   const [selectedRoom, setSelectedRoom] = useState<RoomDirectoryItem | null>(null);
+  const [morphingRoomId, setMorphingRoomId] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [storedAwayRoomId, setStoredAwayRoomId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -188,7 +191,10 @@ export function RoomsHomePage({
       });
       storeRoomSnapshotHandoff(snapshot);
       window.localStorage.setItem(lastRoomStorageKey, snapshot.room.id);
-      router.push(buildRoomHref(snapshot.room.id) as Route);
+      runRoomViewTransition("room-enter", () => {
+        setCreateDialogOpen(false);
+        router.push(buildRoomHref(snapshot.room.id) as Route);
+      });
     } catch (error) {
       setDialogError(toUserFacingError(error));
     }
@@ -210,7 +216,11 @@ export function RoomsHomePage({
       const joined = await soqaroApi.joinRoomByCode(code.trim(), password);
       storeRoomSnapshotHandoff(buildRoomJoinBootstrapSnapshot(joined));
       window.localStorage.setItem(lastRoomStorageKey, joined.roomId);
-      router.push(buildRoomHref(joined.roomId) as Route);
+      runRoomViewTransition("room-enter", () => {
+        setSelectedRoom(null);
+        setJoinDialogOpen(false);
+        router.push(buildRoomHref(joined.roomId) as Route);
+      });
     } catch (error) {
       if (selectedRoom) {
         setDialogError(toUserFacingError(error));
@@ -234,21 +244,70 @@ export function RoomsHomePage({
     }
 
     handlePrewarmRoom(room.room.id);
-    setSelectedRoom(room);
-    setDialogError(null);
+    const targetRoomId = room.room.id;
+    let capturedSlotEl: HTMLElement | null = null;
+    let capturedCardEl: HTMLElement | null = null;
+    let prevSlotTransitionName = "";
+
+    runRoomViewTransition(
+      "card-open",
+      () => {
+        if (capturedCardEl) {
+          capturedCardEl.style.viewTransitionName = "";
+        }
+        if (capturedSlotEl) {
+          capturedSlotEl.style.viewTransitionName = prevSlotTransitionName;
+        }
+        setSelectedRoom(room);
+        setDialogError(null);
+      },
+      {
+        beforeCapture: () => {
+          const slotEl = document.querySelector<HTMLElement>(
+            `[data-mosaic-slot-id="${CSS.escape(targetRoomId)}"]`
+          );
+          const cardEl = slotEl?.querySelector<HTMLElement>('[data-testid="room-directory-card"]') ?? null;
+          if (slotEl && cardEl) {
+            capturedSlotEl = slotEl;
+            capturedCardEl = cardEl;
+            prevSlotTransitionName = slotEl.style.viewTransitionName;
+            slotEl.style.viewTransitionName = "none";
+            cardEl.style.viewTransitionName = "active-room-shell";
+          }
+        }
+      }
+    );
   }
 
   function closeRoomDetails() {
     if (!selectedRoom) return;
-    setSelectedRoom(null);
-    setDialogError(null);
+    const closingId = selectedRoom.room.id;
+    runRoomViewTransition(
+      "card-close",
+      () => {
+        setMorphingRoomId(closingId);
+        setSelectedRoom(null);
+        setDialogError(null);
+      },
+      () => {
+        setMorphingRoomId(null);
+      }
+    );
   }
 
   function handleFilterChange(nextFilter: RoomFilterValue) {
     if (nextFilter === roomTypeFilter) return;
-    runRoomViewTransition("gallery", () => {
-      setRoomTypeFilter(nextFilter);
-    });
+    const prevIndex = ROOM_FILTER_ORDER.indexOf(roomTypeFilter);
+    const nextIndex = ROOM_FILTER_ORDER.indexOf(nextFilter);
+    const direction = nextIndex >= prevIndex ? "forward" : "backward";
+
+    runRoomViewTransition(
+      "gallery",
+      () => {
+        setRoomTypeFilter(nextFilter);
+      },
+      { direction }
+    );
   }
 
   const filterCounts = useMemo(
@@ -269,6 +328,8 @@ export function RoomsHomePage({
     [filteredRooms, effectiveAwayRoomId]
   );
 
+  const activeChannelTheme = ROOM_CHANNEL_THEMES[roomTypeFilter];
+
   if (!hydrated) {
     return <div className="min-h-[calc(100*var(--app-dvh))] bg-background" />;
   }
@@ -286,7 +347,7 @@ export function RoomsHomePage({
         <AwayRoomReturnButton onClick={handleResumeAwayRoom} />
       ) : null}
 
-      <section className="workspace-page__inner home-centered-workspace relative flex w-full shrink-0 flex-col gap-4 pt-[calc(0.75rem+env(safe-area-inset-top))] md:gap-5">
+      <section className="workspace-page__inner home-centered-workspace relative flex w-full shrink-0 flex-col gap-3.5 pt-[calc(0.75rem+env(safe-area-inset-top))] md:gap-4">
         {announcementCenter.marqueeNode}
 
         <RoomLobbyToolbar
@@ -310,9 +371,22 @@ export function RoomsHomePage({
           </div>
         ) : null}
 
-        <div className="min-h-[240px]">
+        {/* Framed Bento Mosaic Canvas Tray (Zero-Gap Flush Shared Borders) */}
+        <div
+          className={`room-mosaic-canvas-tray relative min-h-[240px] overflow-hidden rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-0 transition-[transform,opacity,border-color] duration-[300ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            selectedRoom ? "scale-[0.988] opacity-85" : "scale-100 opacity-100"
+          }`}
+          data-channel={roomTypeFilter}
+          data-testid="room-mosaic-canvas-tray"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 z-30 h-[1px] transition-all duration-[250ms] ease-out"
+            style={{ background: activeChannelTheme.topLine }}
+          />
           <RoomDirectoryGrid
             awayRoomId={effectiveAwayRoomId}
+            morphingRoomId={morphingRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}
             rooms={sortedRooms}

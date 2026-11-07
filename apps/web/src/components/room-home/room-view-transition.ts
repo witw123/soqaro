@@ -2,7 +2,14 @@
 
 import { flushSync } from "react-dom";
 
-export type RoomTransitionKind = "gallery" | "room-enter";
+export type RoomTransitionKind = "gallery" | "card-open" | "card-close" | "room-enter";
+export type RoomTransitionDirection = "forward" | "backward";
+
+export type RoomViewTransitionOptions = {
+  direction?: RoomTransitionDirection;
+  beforeCapture?: () => void;
+  onFinished?: () => void;
+};
 
 type ViewTransitionHandle = {
   finished: Promise<void>;
@@ -34,25 +41,37 @@ export function isRoomMotionReduced(): boolean {
 export function runRoomViewTransition(
   kind: RoomTransitionKind,
   commitUpdate: () => void,
-  onFinished?: () => void
+  optionsOrOnFinished?: (() => void) | RoomViewTransitionOptions
 ): void {
+  const options: RoomViewTransitionOptions =
+    typeof optionsOrOnFinished === "function"
+      ? { onFinished: optionsOrOnFinished }
+      : optionsOrOnFinished ?? {};
+
   if (typeof document === "undefined" || isRoomMotionReduced()) {
     commitUpdate();
-    onFinished?.();
+    options.onFinished?.();
     return;
   }
 
   const doc = document as ViewTransitionCapableDocument;
   if (typeof doc.startViewTransition !== "function") {
     commitUpdate();
-    onFinished?.();
+    options.onFinished?.();
     return;
   }
 
   const root = document.documentElement;
   root.dataset.roomTransition = kind;
+  if (options.direction) {
+    root.dataset.roomDirection = options.direction;
+  } else {
+    delete root.dataset.roomDirection;
+  }
 
   try {
+    options.beforeCapture?.();
+
     const transition = doc.startViewTransition(() => {
       flushSync(() => {
         commitUpdate();
@@ -66,13 +85,15 @@ export function runRoomViewTransition(
       .finally(() => {
         if (root.dataset.roomTransition === kind) {
           delete root.dataset.roomTransition;
+          delete root.dataset.roomDirection;
         }
-        onFinished?.();
+        options.onFinished?.();
       });
   } catch {
     delete root.dataset.roomTransition;
+    delete root.dataset.roomDirection;
     commitUpdate();
-    onFinished?.();
+    options.onFinished?.();
   }
 }
 

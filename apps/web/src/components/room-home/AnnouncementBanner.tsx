@@ -97,6 +97,43 @@ export function useAnnouncementCenter() {
     setIsDismissed(allDismissed);
   }, [announcements]);
 
+  // Track scroll cycle count to advance announcements smoothly one by one
+  const [cycle, setCycle] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(700);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setContainerWidth(Math.round(entry.contentRect.width));
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isDismissed, announcements.length]);
+
+  // Current announcement: displays exactly one announcement per cycle, cycling through all active ones
+  const activeIndex = announcements.length > 0 ? cycle % announcements.length : 0;
+  const currentAnnouncement = announcements[activeIndex] ?? announcements[0];
+
+  const currentAnnouncementText = useMemo(() => {
+    if (!currentAnnouncement) return "";
+    const cleanContent = currentAnnouncement.content.replace(/\r?\n+/g, " ").trim();
+    return `${currentAnnouncement.title}：${cleanContent}`;
+  }, [currentAnnouncement]);
+
+  // Uniform velocity: duration scales with travel distance (container width + text width)
+  const marqueeDuration = useMemo(() => {
+    const textLength = currentAnnouncementText.length;
+    const textWidth = Math.max(textLength * 14, 120);
+    const totalDistance = containerWidth + textWidth;
+    return Math.max(12, Math.min(60, Math.round(totalDistance / 60)));
+  }, [containerWidth, currentAnnouncementText]);
+
   function handleDismissMarquee() {
     setDismissedIds((prev) => {
       const next = new Set(prev);
@@ -187,10 +224,21 @@ export function useAnnouncementCenter() {
         </svg>
       </button>
 
-      <AnnouncementMarqueeTrack
-        announcements={announcements}
-        onOpenModal={handleOpenModal}
-      />
+      <div
+        ref={containerRef}
+        onClick={() => handleOpenModal(currentAnnouncement)}
+        className="announcement-marquee-container relative flex-1 min-w-0 h-5 overflow-hidden flex items-center cursor-pointer select-none"
+        title="点击查看公告详情"
+      >
+        <div
+          key={cycle}
+          className="announcement-marquee-track text-xs font-normal text-foreground/90 group-hover:[animation-play-state:paused]"
+          style={{ animationDuration: `${marqueeDuration}s` }}
+          onAnimationEnd={() => setCycle((c) => c + 1)}
+        >
+          {currentAnnouncementText}
+        </div>
+      </div>
 
       <button
         type="button"
@@ -236,66 +284,6 @@ export function useAnnouncementCenter() {
     marqueeNode,
     modalNode
   };
-}
-
-function AnnouncementMarqueeTrack({
-  announcements,
-  onOpenModal
-}: {
-  announcements: SystemAnnouncement[];
-  onOpenModal: (item?: SystemAnnouncement) => void;
-}) {
-  const [cycle, setCycle] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(700);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.contentRect.width > 0) {
-          setContainerWidth(Math.round(entry.contentRect.width));
-        }
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  const activeIndex = announcements.length > 0 ? cycle % announcements.length : 0;
-  const currentAnnouncement = announcements[activeIndex] ?? announcements[0];
-
-  const currentAnnouncementText = useMemo(() => {
-    if (!currentAnnouncement) return "";
-    const cleanContent = currentAnnouncement.content.replace(/\r?\n+/g, " ").trim();
-    return `${currentAnnouncement.title}：${cleanContent}`;
-  }, [currentAnnouncement]);
-
-  const marqueeDuration = useMemo(() => {
-    const textLength = currentAnnouncementText.length;
-    const textWidth = Math.max(textLength * 14, 120);
-    const totalDistance = containerWidth + textWidth;
-    return Math.max(12, Math.min(60, Math.round(totalDistance / 60)));
-  }, [containerWidth, currentAnnouncementText]);
-
-  return (
-    <div
-      ref={containerRef}
-      onClick={() => onOpenModal(currentAnnouncement)}
-      className="announcement-marquee-container relative flex-1 min-w-0 h-5 overflow-hidden flex items-center cursor-pointer select-none"
-      title="点击查看公告详情"
-    >
-      <div
-        key={cycle}
-        className="announcement-marquee-track text-xs font-normal text-foreground/90 group-hover:[animation-play-state:paused]"
-        style={{ animationDuration: `${marqueeDuration}s` }}
-        onAnimationEnd={() => setCycle((c) => c + 1)}
-      >
-        {currentAnnouncementText}
-      </div>
-    </div>
-  );
 }
 
 /**

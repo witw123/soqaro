@@ -43,6 +43,52 @@ import {
 const lastRoomStorageKey = "soqaro-last-room";
 const emptyRooms: RoomDirectoryItem[] = [];
 
+function areNowPlayingEqual(
+  a: RoomDirectoryItem["room"]["directoryNowPlaying"],
+  b: RoomDirectoryItem["room"]["directoryNowPlaying"]
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.title === b.title &&
+    a.artist === b.artist &&
+    a.artworkUrl === b.artworkUrl &&
+    a.album === b.album
+  );
+}
+
+function areRoomDirectoryListsEqual(
+  prev: RoomDirectoryItem[],
+  next: RoomDirectoryItem[]
+): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const p = prev[i].room;
+    const n = next[i].room;
+    if (
+      p.id !== n.id ||
+      p.name !== n.name ||
+      p.description !== n.description ||
+      p.roomType !== n.roomType ||
+      p.visibility !== n.visibility ||
+      p.hasPassword !== n.hasPassword ||
+      p.directoryHostNickname !== n.directoryHostNickname ||
+      p.directoryMemberCount !== n.directoryMemberCount ||
+      p.directoryOnlineMemberCount !== n.directoryOnlineMemberCount ||
+      p.directoryIsMember !== n.directoryIsMember ||
+      p.directoryQueueDepth !== n.directoryQueueDepth ||
+      p.directoryPendingRequestCount !== n.directoryPendingRequestCount ||
+      p.directoryBroadcastState !== n.directoryBroadcastState ||
+      p.playbackStatus !== n.playbackStatus ||
+      !areNowPlayingEqual(p.directoryNowPlaying, n.directoryNowPlaying)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 type RoomsHomePageProps = {
   awayRoomId?: string | null;
   hasBottomPlayer?: boolean;
@@ -80,7 +126,15 @@ export function RoomsHomePage({
     staleTime: 10_000,
     refetchInterval: pageActive ? 10_000 : false
   });
-  const availableRooms = roomsQuery.data ?? emptyRooms;
+  const rawAvailableRooms = roomsQuery.data ?? emptyRooms;
+  const stableRoomsRef = useRef(rawAvailableRooms);
+  const availableRooms = useMemo(() => {
+    if (areRoomDirectoryListsEqual(stableRoomsRef.current, rawAvailableRooms)) {
+      return stableRoomsRef.current;
+    }
+    stableRoomsRef.current = rawAvailableRooms;
+    return rawAvailableRooms;
+  }, [rawAvailableRooms]);
   const roomsLoaded = !roomsQuery.isPending;
   const refreshAvailableRooms = roomsQuery.refetch;
 
@@ -95,6 +149,7 @@ export function RoomsHomePage({
   const [isPending, startTransition] = useTransition();
   const joinInFlightRef = useRef(false);
   const prefetchedRoomIdsRef = useRef(new Set<string>());
+  const prewarmTimerMapRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const effectiveAwayRoomId = awayRoomId ?? storedAwayRoomId;
 
   const announcementCenter = useAnnouncementCenter();
@@ -109,14 +164,43 @@ export function RoomsHomePage({
   }, [awayRoomId]);
 
   const handlePrewarmRoom = useCallback(
-    (roomId: string) => {
+    (roomId: string, immediate = false) => {
       prewarmRoomRuntimeChunk();
       if (prefetchedRoomIdsRef.current.has(roomId)) return;
-      prefetchedRoomIdsRef.current.add(roomId);
-      router.prefetch(buildRoomHref(roomId) as Route);
+
+      const trigger = () => {
+        if (prefetchedRoomIdsRef.current.has(roomId)) return;
+        prefetchedRoomIdsRef.current.add(roomId);
+        router.prefetch(buildRoomHref(roomId) as Route);
+      };
+
+      if (immediate) {
+        const timer = prewarmTimerMapRef.current.get(roomId);
+        if (timer) {
+          clearTimeout(timer);
+          prewarmTimerMapRef.current.delete(roomId);
+        }
+        trigger();
+        return;
+      }
+
+      if (prewarmTimerMapRef.current.has(roomId)) return;
+      const timer = setTimeout(() => {
+        prewarmTimerMapRef.current.delete(roomId);
+        trigger();
+      }, 120);
+      prewarmTimerMapRef.current.set(roomId, timer);
     },
     [buildRoomHref, router]
   );
+
+  useEffect(() => {
+    const timers = prewarmTimerMapRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   const handleResumeAwayRoom = useCallback(() => {
     if (!effectiveAwayRoomId) return;
@@ -258,7 +342,7 @@ export function RoomsHomePage({
         return;
       }
 
-      handlePrewarmRoom(room.room.id);
+      handlePrewarmRoom(room.room.id, true);
       runRoomViewTransition(
         "card-open",
         () => {

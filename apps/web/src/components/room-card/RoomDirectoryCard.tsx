@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { memo, useCallback, type CSSProperties } from "react";
+import { memo, useCallback, useMemo, type CSSProperties } from "react";
 import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 import { ArtisticRoomStageScene } from "./ArtisticRoomStageScene";
 
@@ -53,7 +53,49 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
   }
 };
 
-export const RoomDirectoryCard = memo(function RoomDirectoryCard({
+function areNowPlayingEqual(
+  a: RoomDirectoryItem["room"]["directoryNowPlaying"],
+  b: RoomDirectoryItem["room"]["directoryNowPlaying"]
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.title === b.title &&
+    a.artist === b.artist &&
+    a.artworkUrl === b.artworkUrl &&
+    a.album === b.album
+  );
+}
+
+function areRoomDirectoryCardPropsEqual(
+  prev: RoomDirectoryCardProps,
+  next: RoomDirectoryCardProps
+): boolean {
+  if (prev.shellTransitionName !== next.shellTransitionName) return false;
+  if (prev.onOpen !== next.onOpen || prev.onPrewarm !== next.onPrewarm) return false;
+  const p = prev.room.room;
+  const n = next.room.room;
+  if (p === n) return true;
+  return (
+    p.id === n.id &&
+    p.name === n.name &&
+    p.description === n.description &&
+    p.roomType === n.roomType &&
+    p.visibility === n.visibility &&
+    p.hasPassword === n.hasPassword &&
+    p.directoryHostNickname === n.directoryHostNickname &&
+    p.directoryMemberCount === n.directoryMemberCount &&
+    p.directoryOnlineMemberCount === n.directoryOnlineMemberCount &&
+    p.directoryIsMember === n.directoryIsMember &&
+    p.directoryQueueDepth === n.directoryQueueDepth &&
+    p.directoryPendingRequestCount === n.directoryPendingRequestCount &&
+    p.directoryBroadcastState === n.directoryBroadcastState &&
+    p.playbackStatus === n.playbackStatus &&
+    areNowPlayingEqual(p.directoryNowPlaying, n.directoryNowPlaying)
+  );
+}
+
+function RoomDirectoryCardComponent({
   room: directoryItem,
   shellTransitionName,
   onOpen,
@@ -62,13 +104,13 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
   const room = directoryItem.room;
   const theme = roomCardThemes[room.roomType];
   const nowPlaying = room.directoryNowPlaying;
-  const cardStyle: RoomCardStyle = {
+  const cardStyle = useMemo<RoomCardStyle>(() => ({
     "--room-accent": theme.accent,
     "--room-border": theme.border,
     "--room-shadow": theme.glow,
     "--room-soft": theme.soft,
     ...(shellTransitionName ? { viewTransitionName: shellTransitionName } : {})
-  };
+  }), [theme, shellTransitionName]);
 
   const handleOpen = useCallback(() => {
     onOpen(directoryItem);
@@ -118,7 +160,12 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
       </div>
     </article>
   );
-});
+}
+
+export const RoomDirectoryCard = memo(
+  RoomDirectoryCardComponent,
+  areRoomDirectoryCardPropsEqual
+);
 
 function RoomStageVisualContent({
   room,
@@ -166,9 +213,9 @@ function RoomNowPlayingBar({
   return (
     <div className={`flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-lg border border-surface-border bg-surface/75 px-2.5 py-1 ${className}`}>
       <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.8s" }} />
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.8s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-xs">
         <span className="min-w-0 truncate font-medium text-foreground">{nowPlaying.title}</span>

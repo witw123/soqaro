@@ -1,43 +1,44 @@
 # 项目状态
 
-最后更新：`2026-10-23`
+最后更新：`2026-11-09`
 当前版本：`1.0.0`
 
 ## 当前主链路
 
 - 账号、房间、队列和播放控制可用
 - 用户上传阶段在浏览器本地生成原始资产和分段 Opus 播放资产
-- IndexedDB 保存当前用户自己上传或 provider 导入的歌曲及其本地资产
+- 本地文件沙盒（授权目录）配合 IndexedDB 保存当前用户自己上传或 provider 导入的歌曲及其本地资产
 - `SegmentedOpusEngine` 使用固定的共享 AudioContext 输出总线
 - 源端通过 `SegmentedOpusEngine` + shared AudioContext + broadcastDestination 发布 RTP Opus（owner 是唯一媒体源）
 - 监听端只使用一个 `audio.srcObject`
 - `soqaro-control` DataChannel 只用于控制和连接健康协调
-- 诊断协议使用 `segmentedPlaybackStatus`
+- 诊断协议使用 `segmentedPlaybackStatus` 与 `TrackDistributionBadge`
 
 ## 当前产品面
 
 - `/` 是产品展示页，已完成工程级重构：直观呈现四阶段声学数据流架构、三大房间模式对比与本地一键自建指南
-- `/app` 是房间大厅和工作区，顶部通知栏默认极简纯铃铛图标，有未读公告时通过 `100cqw` 驱动单条由右向左平稳循环跑马灯，点击呼出结构清爽的公告中心弹窗
-- `/app/search` 支持网易云音乐、QQ 音乐与 B 站（哔哩哔哩）跨平台搜索、分 P 浏览、直接播放与曲库导入
-- `/app/playlists`、`/app/favorites`、`/app/profile` 和 `/app/settings` 已接入同一响应式工作区
-- `/app/profile` 个人页为「听歌画像 / 房间足迹 / 平台账号」三个 Tab：画像页以口味标签（点击开启对应偏好漫游电台）为第一区块，辅以最常播放、常听歌手与音源分布；头部身份卡展示口味摘要、累计收听统计与播放中的“正在收听”信号
-- 屏蔽与负反馈并入画像页底部的折叠入口；纯设置项（通用、播放策略、界面、播放、通知与推送、隐私与数据、账号）在独立路由 `/app/settings`，从个人页头部齿轮进入
-- 房间工作区为 `曲库`、`我的歌单`、`成员`；共享队列由房间舞台和全局播放器管理
-- 暂离房间会保留实时成员关系，用户可从大厅恢复原房间
-- 桌面端（Tauri 2）已接入 Windows SMTC、macOS Now Playing、Linux MPRIS 硬件媒体快捷键与桌面独立悬浮歌词
-- 移动端（Capacitor 7）已接入 Android 原生 MediaSession、后台播放常驻服务与锁屏通知栏控制
+- `/app` 是房间大厅，基于 Bento 风格自适应拼图网格排版，支持多渠道过滤（全部、协作房、点歌台、漫游电台）；顶部通知栏集成极简铃铛与自适应容器跑马灯，点击唤起公告中心弹窗
+- `/app/discover` 聚焦房间推荐与偏好探索，提供精选房间与活动电台入口
+- `/app/playlists` 歌单工作区：管理本地与云端歌单，深度集成网易云音乐、QQ 音乐与 B 站（哔哩哔哩）跨平台搜索、分 P 浏览与曲库导入
+- `/app/favorites` 汇集用户收藏曲目、专辑与歌单
+- `/app/profile` 个人页为「听歌画像 / 房间足迹 / 平台账号」三个 Tab：画像页以口味标签（点击开启对应偏好漫游电台）为核心，辅以最常播放、常听歌手与音源分布；头部身份卡展示口味摘要、累计收听统计与播放中的“正在收听”信号
+- `/app/settings` 独立系统设置路由，涵盖常规、播放策略、界面外观、播放体验、通知推送、隐私与数据、账号安全
+- `/app/admin` 管理运维看板：系统健康状态度量、在线房间与连接监视、系统公告管理、缓存清理工具
+- 房间工作区：包含 `曲库`、`我的歌单`、`成员与诊断`；共享队列由房间舞台和全局持久化播放器管理
+- 房间形态支持三大模式：标准协作房（Interactive，全员协作）、点歌台（Request，观众点歌+房主审批）、漫游电台（Radio，自动化连续广播）
+- 离开房间态（Away Room）：用户离开房间返回大厅或其它工作区时，房间实时连接与音频通过全局持久运行时保持后台播放，大厅与侧栏显示快速返回房间的悬浮入口
+- 一镜到底流转（Active Room Shell Morph）：基于 View Transition API 实现卡片、门廊弹窗、房间工作区的双向无缝连续形变
+- 桌面端（Tauri 2）：支持 Windows SMTC、macOS Now Playing、Linux MPRIS 硬件媒体快捷键与桌面独立透明置顶悬浮歌词
+- 移动端（Capacitor 7）：支持 Android 原生 MediaSession、前台常驻播放服务与系统锁屏/通知栏控制
 
-## 稳定性措施
+## 稳定性与性能措施
 
-- sync single-flight 和 timeline generation 防止旧异步结果污染新时间线
-- unit 读取、解码和调度去重
-- 20ms source fade、欠载静音门和 limiter 降低 click/pop 与削波风险
-- 本地音量和监听端恢复均采用平滑操作
-- 房间快照、成员变化、presence 和音量变化不会重建媒体会话
-- 暂停、缺片和解码等待不调用 `replaceTrack(null)`
-- 只有媒体会话变化时才替换/释放 output Track 或重新绑定远端 `srcObject`
-- provider 临时音频导入先写入 IndexedDB，再异步同步到已配置的本地目录
-- 本地播放资产 fallback 校验来源文件 hash、首尾分片索引和 payload 长度，避免选择截断资产
+- **批量导入受限队列防 OOM**：引入 Bounded Segment Encoding Queue，对音频分段转码实施并发上限控制，支持超时保护与手动取消，杜绝多文件同时转码爆内存
+- **本地目录沙盒授权**：深度支持浏览器 File System Access API 与桌面端 Tauri 原生存储目录授权，本地音频文件安全持久化
+- **播放引擎防冲突与响度均衡**：sync single-flight 和 timeline generation 防止旧异步结果污染新时间线；引入 Fisher-Yates 随机洗牌（防连续重播）与自适应响度对齐
+- **媒体链路平滑控制**：20ms source fade、欠载静音门和 limiter 降低 click/pop 与削波风险；本地音量和监听端恢复均采用平滑操作
+- **会话持久与抗抖动**：房间快照、成员变化、presence 和音量变化不重建媒体会话；暂停、缺片和解码等待不调用 `replaceTrack(null)`；仅媒体会话变化时才替换/释放 output Track 或重新绑定远端 `srcObject`
+- **本地播放资产完整性校验**：fallback 校验来源文件 hash、首尾分片索引和 payload 长度，避免选择截断资产
 
 ## 已完成
 
@@ -46,25 +47,31 @@
 - **Tauri 2 跨平台桌面端与自动更新**：支持 Windows SMTC、Linux MPRIS 与 macOS Now Playing 原生媒体控制与快捷键；支持独立桌面悬浮歌词与 rAF 节流渲染；打通 Tauri Action 自动签名与 `latest.json` 自动更新发布。
 - **Capacitor 7 移动端与生产发布签名**：支持 Android 原生 MediaSession、后台音频前台服务常驻与系统锁屏/通知栏交互；建立完整的 CI 密钥库与 Base64 解密签名流（`soqaro-release.jks`），基于语义化版本推导 `versionCode`。
 - **官方规范中英文 README 与下载矩阵**：重构根目录 `README.md` 与 `README.en.md`，提供符合主流开源标准的无 emoji、高信息密度表格化多平台下载 UI，直连 GitHub 官方 Releases 产物。
-- 旧 PCM、MSE、FLAC progressive 播放链路、旧 playback orchestrator、旧 source controller 和旧 fallback 已移除
-- FLAC parser、metadata、frame index 和上传阶段 PCM 工具仍保留在非播放模块
-- 房间缓存下载、手动缓存、P2P 资产分片传输和 availability 广播已移除
-- shared 诊断 schema 已切换为中性分段播放模型
-- 房间 UI 已稳定为 `Library / My Playlists / Members`，Queue 由房间舞台和播放器承载
-- 成员权限、provider 账号/搜索/导入、收藏专辑、主题设置和暂离房间恢复已接入当前 Web 工作区
-- 个人页完成身份卡重构：听歌画像 / 房间足迹 / 平台账号三 Tab、口味标签漫游入口、正在收听信号、独立设置路由 `/app/settings`
-- UI 渲染性能加固：播放进度拆分独立 Context 订阅、移除播放器 30fps 空转重渲染、工作区路由缓存 LRU 淘汰、削减大面积 backdrop-filter、桌面歌词改为 rAF 命令式渲染并节流跨窗口桥接（详见 optimization.md）
-- **B 站（哔哩哔哩）音乐全链路接入**：搜索、分 P 取流、WBI 签名、CDN 探测故障转移、导入本地曲库与 Alist 存储对接
-- **全面落实 Anti-AI-Slop 收敛克制设计规范**：全局根除 `--accent-glow` 与发光阴影类；移除卡片/按钮/分段控制器外发光；重构房间舞台几何声波与同心电波曲线；房间编辑菜单与交互弹窗采用 100% 实体高对比表面杜绝透底干扰；修复歌词译文高亮分离
-- **产品说明落地页（`/`）工程级重构**：去除营销套话与假拟物组件，展现真实声学链路、房间矩阵与自建指南
-- **顶部系统通知与公告中心重构**：默认极简铃铛图标、CSS 容器查询驱动单条从最右侧循环跑马灯与收敛克制公告中心弹窗
-- **多人听歌完整解决方案（第一至第四阶段全部落地）**：
-  - 第一阶段：统一准入原则构建。房间曲目播放只认源成员分发的本地歌曲资产；彻底移除监听端本地偷跑播放第三方源的单机分支；源成员离线或资产缺失时房间统一暂停；全端上线 8px 微型指示点状态徽标（`TrackDistributionBadge`）。
-  - 第二阶段：自动准备资产（Automatic Asset Preparation）。源成员在线时，客户端引擎按优先级（本地文件 -> 本地缓存 -> IndexedDB -> 第三方下载）提取音频源，严格重算真实文件哈希，转码生成分段 Opus 资产写入 IndexedDB，并通过 `POST /rooms/:roomId/tracks/:trackId/asset` 登记至房间曲目；若房间正在等待该曲目，服务端自动启动统一时钟唤醒全房间同步收听；队列前 2 首在后台自动静默预准备。
-  - 第三阶段：资产失效检测与异常状态降级（Disruption & Recovery）。建立客户端分段完整性校验（`verifyPlaybackAssetIntegrity`）与源文件丢失/权限失效检测；源成员主动上报不可用（`POST /rooms/:roomId/tracks/:trackId/asset/unavailable`），服务端针对当前播放曲目立即原子化暂停并自增 `mediaEpoch` 与广播通知；队列曲目失效保留元数据不破坏队列；在 `TrackDistributionBadge` 中为源成员提供精准文案（“权限受限”、“资产损坏”、“音频源缺失”）与一键操作（“重试准备”、“选择本地文件”恢复）。
-  - 第四阶段：清理旧逻辑与体验打磨（Cleanup & Polish）。清理所有旧残留的第三方临时单机播放分支、冗余参数与过时兼容层；透传 `roomId` 至所有播放器布局与队列抽屉；完成全套单元测试与端到端类型校验。
+- **房间展厅重构与一镜到底流转体验**：
+  - 房间大厅采用自适应 Bento 拼图网格排版，结合响应式分列布局（12/8/6 列）。
+  - 落地房间门廊弹窗（Room Threshold Sheet），提供紧凑的单列信息流与一键直达入口。
+  - 基于 View Transition API 实现卡片、门廊弹窗、房间工作区的双向无缝连续形变动画（Active Room Shell Morph）。
+- **离开房间态（Away Room）与持久运行时**：
+  - 抽象 `PersistentRoomRuntime`，在路由流转时持久保活底层房间音频引擎与 AudioContext。
+  - 用户暂离房间浏览大厅、画像或歌单时音频不中断，大厅与侧栏展示悬浮“返回房间”卡片。
+- **发现页重构与全链路搜索整合**：
+  - `/app/discover` 聚焦房间推荐与偏好探索。
+  - 跨平台歌曲搜索深度融合进歌单与曲库导入流程，支持网易云、QQ 音乐与 B 站分 P 取流。
+- **音频导入管线加固与内存防 OOM**：
+  - 引入 Bounded Segment Encoding Queue 受限分段转码队列，严格限制转码并发。
+  - 支持批量导入任务手动取消与超时熔断，彻底消除大文件与批量导入造成的浏览器 OOM 崩溃。
+- **本地文件沙盒授权落地**：
+  - 支持现代浏览器 File System Access API 目录授权与 Tauri 原生文件系统持久化存储。
+- **播放队列与声学增强**：
+  - 随机播放重构为 Fisher-Yates 洗牌算法，彻底避免短期内重复播放相同曲目。
+  - 引入响度分析与自适应增益对齐（Loudness Normalization）。
+  - 支持逐字精准高亮 YRC 歌词、双语对照、罗马音音译注音。
+- **全面落实 Anti-AI-Slop 收敛克制设计规范**：
+  - 全局根除 `--accent-glow` 与发光阴影类；移除卡片/按钮/分段控制器外发光。
+  - 重构房间舞台几何声波与同心电波曲线；房间编辑菜单与交互弹窗采用 100% 实体高对比表面杜绝透底干扰；修复歌词译文高亮分离。
+  - 全面统一 Radix UI Colors 配色与 0.5px 精细描边规范。
 
-## 后续风险
+## 后续风险与观测
 
 - 仍需在 CI 中持续运行双 Chromium context 的长时间 WebRTC 播放回归
 - 需要采集真实设备上的 limiter peak、RMS、瞬时跃变和欠载恢复数据

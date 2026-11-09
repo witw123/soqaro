@@ -1,6 +1,6 @@
 # 文档总览
 
-最后更新：`2026-10-23`
+最后更新：`2026-11-09`
 当前版本：`1.0.0`
 
 ## 当前项目现状
@@ -14,14 +14,26 @@ Soqaro 是一套围绕“本地与外部音乐多人同步播放”构建的多�
 - 共享类型契约与 Schema 层（基于 `@soqaro/shared`）
 - 自动化多平台发布矩阵：GitHub Actions `Release Apps` 工作流由 `create-release` 任务协调，矩阵打包并发布 Windows（`.exe`, `.msi`）、macOS（`.dmg`, `.app.tar.gz`）、Linux（`.AppImage`, `.deb`, `.rpm`）与 Android（`.apk`）安装包，并生成 Tauri 自动更新签名及 `latest.json`
 - PostgreSQL、Redis、coturn 生产依赖
-- 本地 IndexedDB 个人上传资源、provider 导入资源和分段 Opus 播放资产
+- 本地优先存储：支持系统目录授权（File System Access API 与 Tauri 本地文件系统）与 IndexedDB 个人音频资产缓存
+- 受限转码队列（Bounded Segment Encoding Queue）：并发限流与任务取消支持，彻底杜绝批量导入时浏览器 OOM 崩溃
 - 单一 Segmented Opus/WebRTC RTP 媒体广播链路
 - 官网展示入口 `/` 与客户端入口 `/app`
-- `/app/search`、`/app/playlists`、`/app/favorites`、`/app/profile` 和 `/app/settings` 工作区
-- 个人页为「听歌画像 / 房间足迹 / 平台账号」三个 Tab，画像页以可点击开启漫游电台的口味标签为核心；纯设置项在独立路由 `/app/settings`
-- 房间模式支持标准协作房与点歌房（电台模式，观众搜索点歌 + 房主审批入队）
+- 工作区路由体系：
+  - `/app`：房间大厅，分体式自适应 Bento 拼图网格与单列门廊弹窗
+  - `/app/discover`：房间推荐与精选策展
+  - `/app/playlists`：本地与外部歌单管理，整合全源曲目搜索与批量导入
+  - `/app/favorites`：收藏曲目、专辑与歌单
+  - `/app/profile`：个人页为「听歌画像 / 房间足迹 / 平台账号」三个 Tab
+  - `/app/settings`：独立系统设置路由（常规、播放策略、界面外观、播放体验、通知推送、隐私与数据、账号安全）
+  - `/app/admin`：系统监控看板、公告管理与运维巡检
+- 房间形态体系：
+  - 标准协作房（Interactive）：全员共享队列、协作控制与拖拽调序
+  - 点歌台（Request）：观众搜索点歌提交、房主审批入队
+  - 漫游电台（Radio）：基于偏好标签的自动化连续广播漫游
+- 离开房间态（Away Room）：离开房间浏览大厅、画像或歌单时，房间音频通过全局持久运行时保持低延迟播放，并提供随时一键返回的悬浮入口
+- 一镜到底流转（Active Room Shell Morph）：基于 View Transition API 实现卡片、门廊弹窗、房间工作区的双向无缝连续形变
 
-服务端只保存账号、房间、队列、播放状态和音频元数据，不保存音频文件。房间不提供缓存下载、音频资产互传或房间级缓存同步。IndexedDB 用于恢复当前用户自己上传或 provider 导入的歌曲及其本地生成的资产。
+服务端只保存账号、房间、队列、播放状态和音频元数据，不保存音频文件。房间不提供缓存下载、音频资产互传或房间级缓存同步。本地存储与 IndexedDB 用于恢复当前用户自己上传或 provider 导入的歌曲及其本地生成的资产。
 
 当前房间 UI 为：
 
@@ -54,7 +66,7 @@ Soqaro 是一套围绕“本地与外部音乐多人同步播放”构建的多�
 ## 当前唯一播放链路
 
 ```text
-IndexedDB 分段 Opus
+本地文件 / IndexedDB 分段 Opus
   -> SegmentedOpusEngine
   -> 共享 AudioContext 输出总线
   -> MediaStreamAudioDestinationNode

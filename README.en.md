@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="./README.md"><b>简体中文</b></a> · <a href="./README.en.md"><b>English</b></a>
+  <a href="./README.md"><b>简体中文</b></a> / <a href="./README.en.md"><b>English</b></a>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 ## Downloads
 
-Current stable release: [Soqaro v1.0.0](https://github.com/witw123/soqaro/releases/tag/v1.0.0) (Released 2026-10-23, with in-app auto-update support)
+Current stable release: [Soqaro v1.0.0](https://github.com/witw123/soqaro/releases/tag/v1.0.0) (With in-app auto-update support)
 
 | OS | Architecture | Package Type | Direct Download Link | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -47,34 +47,43 @@ Current stable release: [Soqaro v1.0.0](https://github.com/witw123/soqaro/releas
 
 ### Realtime Collaboration & Acoustic Engine
 - **Millisecond-Level Synchronization**: WebRTC RTP Opus audio broadcast paired with a Segmented Opus engine; track owner acts as the single source of truth.
-- **Local-First Audio Storage**: User audio assets remain exclusively on client devices (IndexedDB and local directories); zero audio stored on the server.
-- **Resilient Fallback**: Integrated support for NetEase, QQ Music, and Bilibili (multi-part media); automatic listener-side offline fallback when the track owner disconnects.
+- **Local-First Audio Storage**: User audio assets remain exclusively on client devices (authorized local directories and IndexedDB cache); zero audio stored on the server.
+- **Resilient Fallback**: Integrated support for NetEase, QQ Music, and Bilibili (multi-part media extraction); automatic listener-side offline fallback when the track owner disconnects.
+- **Bounded Encoding Queue (OOM Protection)**: Bounded segment encoding queue with concurrency throttling and cancellation support, eliminating memory spikes during bulk audio imports.
+- **Intelligent Playback Modes**: Sequential, single track loop, list loop, Fisher-Yates random shuffle (guaranteeing no immediate repetition), and automatic loudness normalization.
+
+### Room Modes & Seamless Fluid Transitions
+- **Distinct Room Topologies**:
+  - **Interactive Mode**: Shared collaborative queue with free track enqueueing, reordering, and skip voting.
+  - **Request Mode**: Moderated station where audience members request songs and the host reviews before adding to queue.
+  - **Radio Mode**: Automated continuous streaming based on taste preferences.
+- **Active Room Shell Morph**: Fluid, continuous bidirectional transitions between room directory cards, threshold modals, and full room workspaces powered by the View Transition API.
+- **Away Room Background Persistence**: Room audio continues playing seamlessly across workspace navigation (lobby, profile, playlists) via a persistent background runtime, complete with a floating one-click return entry.
 
 ### Native Multi-Platform Integration
 - **Full Client Coverage**: Next.js 15 Web/PWA, Tauri 2 cross-platform desktop (Windows / macOS / Linux), and Capacitor 7 native Android client.
-- **System Media Bridge**: Unified bridge connecting playback state to Windows SMTC, Android MediaSession, notification controls, and lockscreen widgets.
+- **System Media Bridge**: Unified bridge connecting playback state to Windows SMTC, Linux MPRIS, macOS Now Playing, Android MediaSession, notification controls, and lockscreen widgets.
 - **Background Persistence**: Android foreground service with partial wake lock and WLAN lock ensuring uninterrupted playback during screen lock.
 
-### Lyrics & Interaction
+### Lyrics, Interaction & Restrained Aesthetics
 - **High-Precision Bilingual Lyrics**: Synchronized LRC scrolling and YRC verbatim highlighting with translations, romanized pronunciations, and desktop floating lyrics.
-- **Immersive & Overlay Displays**: Mobile immersive fullscreen lyrics and desktop always-on-top transparent floating lyrics window.
-- **Flexible Room Modes**: Collaborative shared queues, host-moderated request/radio mode, and synchronized live emoji reaction channels.
-- **Restrained Visual Aesthetics**: Strict anti-AI-slop design principles, crisp geometric soundwave visualizers, and solid, high-contrast surfaces.
+- **Independent Floating Lyrics**: Desktop transparent, borderless floating lyrics window with boundary protection and persistent position memory.
+- **Restrained Visual Aesthetics**: Strict Radix UI color tokens, crisp 0.5px hairlines, and solid, high-contrast surfaces without excessive gradients or visual clutter.
 
 ---
 
 ## Architecture
 
 ```text
-[ Local Tracks / Provider Imports ]
-                │
-                ▼
-[ Client-Side IndexedDB ] (Segmented Opus Cache)
-                │
-                ▼
-[ SegmentedOpusEngine ] (Local Audio Scheduler)
-                │
-                ▼
+[ Local Audio Files / Streamed Tracks ]
+                   │
+                   ▼
+[ Local Directory / IndexedDB Cache ] (Bounded Opus Encoding Queue)
+                   │
+                   ▼
+[ SegmentedOpusEngine ] (Local Audio Scheduler + Loudness Normalization)
+                   │
+                   ▼
 [ WebRTC RTP Broadcast ] ─── (Server Signaling) ───► [ Listener Single Audio Bus ]
 ```
 
@@ -111,7 +120,7 @@ pnpm dev
 
 ```bash
 pnpm build          # Monorepo full build
-pnpm lint           # ESLint static code checks
+pnpm lint           # ESLint static code checks (--max-warnings=0)
 pnpm typecheck      # TypeScript type checking
 pnpm test           # Run unit tests
 pnpm desktop:dev    # Launch Tauri desktop development window
@@ -126,7 +135,7 @@ pnpm mobile:sync    # Sync Web build artifacts to Android project
 soqaro/
 ├── apps/
 │   ├── web/          # Next.js 15 Web client, PWA, audio scheduler, and WebRTC core
-│   ├── desktop/      # Tauri 2 desktop client (Rust + SMTC + floating lyrics)
+│   ├── desktop/      # Tauri 2 desktop client (Rust + SMTC/MPRIS + floating lyrics)
 │   ├── mobile/       # Capacitor 7 native Android client (MediaSession + background persistence)
 │   └── server/       # NestJS 11 API server and Socket.IO signaling gateway
 ├── packages/
@@ -142,6 +151,7 @@ soqaro/
 ## Documentation
 
 - [Architecture Overview](./docs/architecture/overview.md)
+- [Local Storage Architecture](./docs/architecture/local-storage.md)
 - [Playback Synchronization Architecture](./docs/architecture/playback-sync.md)
 - [API and WebSocket Protocols](./docs/api/README.md)
 - [Production Deployment Guide](./docs/deployment/deployment.md)

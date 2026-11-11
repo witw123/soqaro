@@ -763,6 +763,7 @@ export function PlayerQueueList({
                         track={track}
                         members={members}
                         currentSessionId={currentSessionId}
+                        onPlay={canControlPlayback && !isCurrent ? () => void onPlayQueueItem(item.id) : undefined}
                       />
                     </div>
                     <div className="min-w-0 flex-1 pr-2">

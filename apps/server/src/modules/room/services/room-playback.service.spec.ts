@@ -322,4 +322,22 @@ describe("RoomPlaybackService gapless playback", () => {
     room.queue = [room.queue[1]!];
     await expect(service.advanceAfterUnavailableTrack(room, "track_2")).resolves.toBe(false);
   });
+
+  it("allows manual play of track when source owner is offline but track has complete asset", async () => {
+    const room = record(0);
+    room.tracks[1] = { ...room.tracks[1]!, ownerSessionId: "offline-owner" };
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map<string, string>()
+    } as never);
+
+    const snapshot = await service.updatePlayback(room, {
+      action: "play",
+      trackId: "track_2"
+    });
+
+    expect(snapshot.status).toBe("playing");
+    expect(snapshot.currentTrackId).toBe("track_2");
+    expect(snapshot.sourceSessionId).toBe("offline-owner");
+    expect(snapshot.sourcePeerId).toBeNull();
+  });
 });

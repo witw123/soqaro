@@ -665,6 +665,11 @@ function TrackListSectionBase({
                     if (isSelectMode) {
                       if ((event.target as HTMLElement).closest("button")) return;
                       toggleSelectTrack(track.id);
+                      return;
+                    }
+                    if ((event.target as HTMLElement).closest("button, [data-no-row-click]")) return;
+                    if (canControlPlayback && pendingAction === null) {
+                      void runAction(`play:${track.id}`, () => onPlayTrack(track.id));
                     }
                   }}
                   onContextMenu={(event) => {
@@ -784,6 +789,7 @@ function TrackListSectionBase({
                         track={track}
                         members={members}
                         currentSessionId={activeSession?.userId ?? null}
+                        onPlay={canControlPlayback && pendingAction === null ? () => void runAction(`play:${track.id}`, () => onPlayTrack(track.id)) : undefined}
                       />
                     </div>
                   </div>

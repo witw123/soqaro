@@ -1,5 +1,5 @@
 import type { GaplessTransition, PlaybackMode, PlaybackSnapshot } from "@soqaro/shared";
-import { synchronizeShuffleBagTrackIds } from "@soqaro/shared";
+import { hasCompleteRoomAsset, synchronizeShuffleBagTrackIds } from "@soqaro/shared";
 import type { RoomRecord } from "../room.types";
 import { RoomPresenceService } from "./room-presence.service";
 import {
@@ -154,13 +154,6 @@ export class RoomPlaybackService {
             preferredSessionId: playback.sourceSessionId
           })
         : null;
-      if (
-        playback.status === "playing" &&
-        playback.currentTrackId &&
-        !sourceCandidate
-      ) {
-        throw new Error("Track owner is not online, so this song cannot be played right now.");
-      }
 
       if (
         sourceCandidate &&
@@ -170,6 +163,8 @@ export class RoomPlaybackService {
         playback.sourceSessionId = sourceCandidate.sessionId;
         playback.sourcePeerId = sourceCandidate.peerId;
         playback.mediaEpoch += 1;
+      } else if (!sourceCandidate) {
+        playback.sourcePeerId = null;
       }
 
       // Seek position is always client-authoritative when provided.
@@ -225,10 +220,10 @@ export class RoomPlaybackService {
     }
 
     assertRequestedPlaybackAsset(track, requestedPlaybackAssetId);
-    const sourceCandidate = await this.resolveTrackSourceCandidate(record, trackId);
-    if (!sourceCandidate) {
+    if (!hasCompleteRoomAsset(track)) {
       throw new Error("Track owner is not online, so this song cannot be played right now.");
     }
+    const sourceCandidate = await this.resolveTrackSourceCandidate(record, trackId);
 
     const isTrackSwitch = playback.currentTrackId !== trackId;
     const isQueueItemSwitch =
@@ -242,8 +237,8 @@ export class RoomPlaybackService {
     playback.currentTrackId = trackId;
     playback.currentQueueItemId = queueItemId;
     playback.playbackAssetId = track.playbackAsset?.assetId ?? null;
-    playback.sourceSessionId = sourceCandidate.sessionId;
-    playback.sourcePeerId = sourceCandidate.peerId;
+    playback.sourceSessionId = sourceCandidate?.sessionId ?? track.ownerSessionId ?? null;
+    playback.sourcePeerId = sourceCandidate?.peerId ?? null;
     playback.sourceTrackId = trackId;
     playback.positionMs = clampPositionMs(record, trackId, positionMs);
     const startAt = options?.startAt ?? new Date().toISOString();

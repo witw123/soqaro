@@ -1257,13 +1257,15 @@ describe("RoomService", () => {
 
     await roomService.updatePeerPresence(snapshot.room.id, member.id, null);
 
-    await expect(
-      roomService.updatePlayback(snapshot.room.id, {
-        action: "play",
-        trackId: memberTrack.id,
-        actorSessionId: host.id
-      })
-    ).rejects.toThrow("Track owner is not online, so this song cannot be played right now.");
+    const playback = await roomService.updatePlayback(snapshot.room.id, {
+      action: "play",
+      trackId: memberTrack.id,
+      actorSessionId: host.id
+    });
+    expect(playback.status).toBe("playing");
+    expect(playback.currentTrackId).toBe(memberTrack.id);
+    expect(playback.sourceSessionId).toBe(member.id);
+    expect(playback.sourcePeerId).toBeNull();
   });
 
   it("keeps playback snapshot consistent when a member pauses and seeks", async () => {

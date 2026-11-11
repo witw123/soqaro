@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { Play } from "lucide-react";
 import type { RoomMember, RoomTrackDistributionState, TrackMeta } from "@soqaro/shared";
 import { resolveTrackDistributionStatus } from "@soqaro/shared";
 import { AnchoredDialog, getAnchoredDialogAnchor, type AnchoredDialogAnchor } from "@/components/ui/anchored-dialog";
@@ -17,6 +18,7 @@ export type TrackDistributionBadgeProps = {
   members?: Array<Pick<RoomMember, "id" | "presenceState">> | null;
   currentSessionId?: string | null;
   className?: string;
+  onPlay?: () => void;
 };
 
 type StateConfig = {
@@ -49,7 +51,7 @@ const STATE_CONFIGS: Record<RoomTrackDistributionState, StateConfig> = {
     title: "源成员离线",
     dotClass: "bg-zinc-500",
     tagClass: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20",
-    description: "持有歌曲的源成员当前离线。需等待源成员重新进入房间后方可播放。"
+    description: "歌曲源成员当前离线（多人流式广播暂不可用）。若您本地拥有缓存、本地保存或开启了缓存播放，仍可直接播放。"
   },
   failed: {
     title: "准备失败",
@@ -70,7 +72,8 @@ export function TrackDistributionBadge({
   track,
   members,
   currentSessionId,
-  className = ""
+  className = "",
+  onPlay
 }: TrackDistributionBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [anchor, setAnchor] = useState<AnchoredDialogAnchor | null>(null);
@@ -221,6 +224,23 @@ export function TrackDistributionBadge({
                 </div>
               ) : null}
             </div>
+
+            {onPlay ? (
+              <div className="pt-2 border-t border-surface-border/40">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(false);
+                    onPlay();
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-md border border-accent/30 bg-accent/10 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 cursor-pointer"
+                >
+                  <Play size={13} fill="currentColor" />
+                  <span>播放曲目</span>
+                </button>
+              </div>
+            ) : null}
 
             {canManageAsset && roomId ? (
               <div className="flex items-center gap-2 pt-1 border-t border-surface-border/40">

@@ -97,7 +97,13 @@
     --accent-subtle: var(--blue-3);
     --accent-muted: var(--blue-11);
     --accent-glow: rgba(0, 144, 255, 0.22);
-    --room-mobile-bottom-inset: calc(7.5rem + env(safe-area-inset-bottom));
+    --native-safe-top: 0px;
+    --native-safe-bottom: 0px;
+    --native-ime-bottom: 0px;
+    --safe-area-top: max(env(safe-area-inset-top, 0px), var(--native-safe-top, 0px));
+    --safe-area-bottom: max(env(safe-area-inset-bottom, 0px), var(--native-safe-bottom, 0px));
+    --safe-keyboard-bottom: var(--native-ime-bottom, 0px);
+    --room-mobile-bottom-inset: calc(7.5rem + var(--safe-area-bottom) + var(--safe-keyboard-bottom));
     --room-desktop-bottom-inset: 4rem;
 
     --sidebar-background: var(--slate-2);
@@ -2231,13 +2237,32 @@
   overflow-y: auto;
   background: rgb(0 0 0 / 0.75);
   backdrop-filter: blur(4px);
-  padding-top: calc(1rem + env(safe-area-inset-top));
-  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  padding-top: calc(1rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
+  padding-bottom: calc(1rem + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--safe-keyboard-bottom, 0px));
   padding-inline: 1rem;
 }
 
 @media (min-width: 640px) {
   .light-modal-scrim {
     padding: 1.5rem;
+  }
+}
+
+/* Mobile Safe Area & Keyboard Adaptive Reinforcements */
+@media (max-width: 767px) {
+  .bottom-\[calc\(3\.75rem\+env\(safe-area-inset-bottom\)\)\] {
+    bottom: calc(3.75rem + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+  .pb-\[env\(safe-area-inset-bottom\)\] {
+    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  }
+  .h-\[calc\(3\.25rem\+env\(safe-area-inset-bottom\)\)\] {
+    height: calc(3.25rem + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+  .pt-\[calc\(0\.75rem\+env\(safe-area-inset-top\)\)\] {
+    padding-top: calc(0.75rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
+  }
+  .pt-\[calc\(0\.45rem\+env\(safe-area-inset-top\,0px\)\)\] {
+    padding-top: calc(0.45rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
   }
 }

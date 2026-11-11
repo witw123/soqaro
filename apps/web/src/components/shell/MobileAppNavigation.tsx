@@ -28,11 +28,38 @@ export function MobileAppNavigation({ onNavigateAway }: { onNavigateAway?: () =>
   const pathname = usePathname();
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<Route | null>(null);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const resolvedRoomId = pathname?.startsWith("/room/") ? pathname.split("/")[2] ?? null : null;
 
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleInsets = (e: Event) => {
+      const customEvent = e as CustomEvent<{ ime?: number }>;
+      if (typeof customEvent.detail?.ime === "number") {
+        setIsKeyboardOpen(customEvent.detail.ime > 50);
+      }
+    };
+
+    const handleResize = () => {
+      if (window.visualViewport) {
+        const isKeyboard = window.innerHeight - window.visualViewport.height > 150;
+        setIsKeyboardOpen((prev) => (isKeyboard !== prev ? isKeyboard : prev));
+      }
+    };
+
+    window.addEventListener("nativeinsetschange", handleInsets);
+    window.visualViewport?.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("nativeinsetschange", handleInsets);
+      window.visualViewport?.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
   const handleItemClick = (event: MouseEvent<HTMLAnchorElement>, href: Route) => {
     if (!resolvedRoomId) {
@@ -72,7 +99,11 @@ export function MobileAppNavigation({ onNavigateAway }: { onNavigateAway?: () =>
   };
 
   return (
-    <nav className="mobile-app-navigation fixed inset-x-0 bottom-0 z-[70] isolate h-[calc(3.25rem+env(safe-area-inset-bottom))] md:hidden" data-custom-layout-item="mobile-navigation" aria-label="主导航">
+    <nav
+      className={`mobile-app-navigation fixed inset-x-0 bottom-0 z-[70] isolate h-[calc(3.25rem+env(safe-area-inset-bottom))] md:hidden ${isKeyboardOpen ? "hidden" : ""}`}
+      data-custom-layout-item="mobile-navigation"
+      aria-label="主导航"
+    >
       <div className="grid h-full grid-cols-4 items-stretch px-1 pb-[env(safe-area-inset-bottom)] pt-0.5">
         {items.map((item) => {
           const active = pendingHref === item.href || isActivePath(pathname, item.href);

@@ -11,6 +11,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
@@ -63,6 +66,21 @@ public class SystemMediaService extends Service {
     private boolean isPlaying;
     private long positionMs;
     private BroadcastReceiver commandReceiver;
+
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
+    private boolean hasAudioFocus;
+    private final AudioManager.OnAudioFocusChangeListener audioFocusChangeListener = focusChange -> {
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_LOSS:
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                abandonAudioFocus();
+                emit("pause", null, null);
+                break;
+            default:
+                break;
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -154,6 +172,11 @@ public class SystemMediaService extends Service {
                 positionMs = intent.getLongExtra("positionMs", 0L);
             }
         }
+        if (isPlaying) {
+            requestAudioFocus();
+        } else {
+            abandonAudioFocus();
+        }
         try {
             Notification notification = buildNotification();
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -217,6 +240,54 @@ public class SystemMediaService extends Service {
         wifiLock = null;
     }
 
+    private void requestAudioFocus() {
+        if (hasAudioFocus) return;
+        try {
+            if (audioManager == null) {
+                audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            }
+            if (audioManager == null) return;
+            int result;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (audioFocusRequest == null) {
+                    AudioAttributes attributes = new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build();
+                    audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                            .setAudioAttributes(attributes)
+                            .setAcceptsDelayedFocusGain(true)
+                            .setOnAudioFocusChangeListener(audioFocusChangeListener, mainHandler)
+                            .build();
+                }
+                result = audioManager.requestAudioFocus(audioFocusRequest);
+            } else {
+                result = audioManager.requestAudioFocus(
+                        audioFocusChangeListener,
+                        AudioManager.STREAM_MUSIC,
+                        AudioManager.AUDIOFOCUS_GAIN
+                );
+            }
+            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void abandonAudioFocus() {
+        if (!hasAudioFocus) return;
+        try {
+            if (audioManager != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+                    audioManager.abandonAudioFocusRequest(audioFocusRequest);
+                } else {
+                    audioManager.abandonAudioFocus(audioFocusChangeListener);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        hasAudioFocus = false;
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -232,6 +303,7 @@ public class SystemMediaService extends Service {
 
     @Override
     public void onDestroy() {
+        abandonAudioFocus();
         releaseLocks();
         if (commandReceiver != null) {
             unregisterReceiver(commandReceiver);
@@ -330,7 +402,7 @@ public class SystemMediaService extends Service {
     private Notification buildNotification() {
         boolean hasTrack = !currentTitle.isEmpty();
         String title = hasTrack ? currentTitle : (roomName.isEmpty() ? getString(R.string.app_name) : roomName);
-        String text = hasTrack ? subtitle() : "正在后台保持房间连接 · 点击返回";
+        String text = hasTrack ? subtitle() : "正在后台保持房间连接 点击返回";
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)

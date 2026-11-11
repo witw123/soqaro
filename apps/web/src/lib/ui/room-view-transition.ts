@@ -21,7 +21,7 @@ type ViewTransitionCapableDocument = Document & {
   startViewTransition?: (updateCallback: () => void | Promise<void>) => ViewTransitionHandle;
 };
 
-const MAX_ASYNC_ROUTE_WAIT_MS = 1500;
+const MAX_ASYNC_ROUTE_WAIT_MS = 600;
 
 let activeTaggedElement: HTMLElement | null = null;
 

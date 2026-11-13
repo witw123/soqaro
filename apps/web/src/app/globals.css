@@ -1107,17 +1107,18 @@
     background-color: var(--background);
   }
 
-  html[data-room-transition] [data-testid="bottom-player"],
-  html[data-room-transition] [data-custom-layout-item="player"] {
+  /* Hoist persistent chrome above active-room-shell only during full-screen room
+     enter/exit; keep card morphs and gallery slides completely static inside root. */
+  html:is([data-room-transition="room-enter"], [data-room-transition="room-exit"]) [data-testid="bottom-player"],
+  html:is([data-room-transition="room-enter"], [data-room-transition="room-exit"]) [data-custom-layout-item="player"] {
     view-transition-name: app-bottom-player;
-    background-color: var(--background-secondary) !important;
   }
 
-  html[data-room-transition] .mobile-app-navigation {
+  html:is([data-room-transition="room-enter"], [data-room-transition="room-exit"]) .mobile-app-navigation {
     view-transition-name: app-mobile-navigation;
   }
 
-  html[data-room-transition] .app-sidebar {
+  html:is([data-room-transition="room-enter"], [data-room-transition="room-exit"]) .app-sidebar {
     view-transition-name: app-sidebar;
   }
 
@@ -1153,6 +1154,9 @@
     animation: none !important;
     mix-blend-mode: normal !important;
   }
+  html[data-room-transition]::view-transition-old(app-bottom-player):not(:only-child) {
+    opacity: 0 !important;
+  }
 
   html[data-room-transition]::view-transition-group(app-mobile-navigation) {
     z-index: 915 !important;
@@ -1163,6 +1167,9 @@
     animation: none !important;
     mix-blend-mode: normal !important;
   }
+  html[data-room-transition]::view-transition-old(app-mobile-navigation):not(:only-child) {
+    opacity: 0 !important;
+  }
 
   html[data-room-transition]::view-transition-group(app-sidebar) {
     z-index: 900 !important;
@@ -1172,6 +1179,9 @@
   html[data-room-transition]::view-transition-new(app-sidebar) {
     animation: none !important;
     mix-blend-mode: normal !important;
+  }
+  html[data-room-transition]::view-transition-old(app-sidebar):not(:only-child) {
+    opacity: 0 !important;
   }
 
   /* Single Active Room Shell Morph: Card / Modal <-> Room Workspace */
@@ -1264,10 +1274,14 @@
 
   /* Keep root completely static during card morphs & gallery slide */
   html[data-room-transition="card-open"]::view-transition-old(root),
-  html[data-room-transition="card-open"]::view-transition-new(root),
   html[data-room-transition="card-close"]::view-transition-old(root),
+  html[data-room-transition="gallery"]::view-transition-old(root) {
+    animation: none !important;
+    mix-blend-mode: normal !important;
+    opacity: 0 !important;
+  }
+  html[data-room-transition="card-open"]::view-transition-new(root),
   html[data-room-transition="card-close"]::view-transition-new(root),
-  html[data-room-transition="gallery"]::view-transition-old(root),
   html[data-room-transition="gallery"]::view-transition-new(root) {
     animation: none !important;
     mix-blend-mode: normal !important;

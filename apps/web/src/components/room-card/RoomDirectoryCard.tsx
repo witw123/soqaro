@@ -11,6 +11,7 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
   isExpandedToModal?: boolean;
+  prioritizeArtwork?: boolean;
   shellTransitionName?: string;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm?: (roomId: string) => void;
@@ -79,6 +80,7 @@ const roomCardStaticStyles: Record<RoomType, RoomCardStyle> = {
 export const RoomDirectoryCard = memo(function RoomDirectoryCard({
   room: directoryItem,
   isExpandedToModal = false,
+  prioritizeArtwork = false,
   shellTransitionName,
   onOpen,
   onPrewarm
@@ -132,7 +134,11 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
         data-card-scene={room.roomType}
         data-testid="room-directory-stage"
       >
-        <RoomStageVisualContent room={room} themeLabel={theme.label} />
+        <RoomStageVisualContent
+          prioritizeArtwork={prioritizeArtwork}
+          room={room}
+          themeLabel={theme.label}
+        />
       </section>
 
       {/* Track Playing Information Placed BELOW the cover */}
@@ -168,9 +174,11 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
 });
 
 function RoomStageVisualContent({
+  prioritizeArtwork = false,
   room,
   themeLabel
 }: {
+  prioritizeArtwork?: boolean;
   room: RoomDirectoryItem["room"];
   themeLabel: string;
 }) {
@@ -194,6 +202,7 @@ function RoomStageVisualContent({
       {nowPlaying?.title ? (
         <RoomNowPlayingStageScene
           nowPlaying={nowPlaying}
+          prioritizeArtwork={prioritizeArtwork}
           roomType={room.roomType}
         />
       ) : (
@@ -218,9 +227,9 @@ function RoomNowPlayingBar({
       className={`room-card-now-playing-bar flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-lg px-2.5 py-1 ${className}`}
     >
       <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.8s" }} />
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
-        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.8s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />
+        <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom" style={{ animationDuration: "0.9s", animationDelay: "0.4s" }} />
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-xs">
         <span className="min-w-0 truncate font-medium text-foreground">{nowPlaying.title}</span>
@@ -234,9 +243,11 @@ function RoomNowPlayingBar({
 
 function RoomNowPlayingStageScene({
   nowPlaying,
+  prioritizeArtwork = false,
   roomType
 }: {
   nowPlaying: NonNullable<RoomDirectoryItem["room"]["directoryNowPlaying"]>;
+  prioritizeArtwork?: boolean;
   roomType: RoomType;
 }) {
   const artworkSrc = nowPlaying.artworkUrl ? getArtworkSourceUrl(nowPlaying.artworkUrl) : null;
@@ -266,7 +277,8 @@ function RoomNowPlayingStageScene({
               alt={nowPlaying.title}
               className="h-full w-full object-cover"
               decoding="async"
-              loading="lazy"
+              fetchPriority={prioritizeArtwork ? "high" : undefined}
+              loading={prioritizeArtwork ? undefined : "lazy"}
               src={artworkSrc}
             />
           ) : (

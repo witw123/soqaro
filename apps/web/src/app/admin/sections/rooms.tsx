@@ -184,14 +184,6 @@ export function Rooms({ rooms, onRefresh }: { rooms: AdminRoomSummary[]; onRefre
                 <tr
                   key={room.id}
                   onClick={() => openRoom(room.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openRoom(room.id);
-                    }
-                  }}
-                  role="link"
-                  tabIndex={0}
                   className="cursor-pointer hover:bg-surface-border/15 transition-colors"
                 >
                   <td
@@ -210,7 +202,13 @@ export function Rooms({ rooms, onRefresh }: { rooms: AdminRoomSummary[]; onRefre
                     <div className="flex items-center gap-2">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${signalColor}`} />
                       <div>
-                        <div className="font-mono font-medium text-foreground">{room.joinCode}</div>
+                        <a
+                          href={`/admin/rooms/${encodeURIComponent(room.id)}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="font-mono font-medium text-foreground hover:underline"
+                        >
+                          {room.joinCode}
+                        </a>
                         <div className="text-xs text-foreground-muted">
                           {room.name || "未命名房间"} / 房主 {room.hostNickname || room.hostId}
                         </div>
@@ -236,15 +234,13 @@ export function Rooms({ rooms, onRefresh }: { rooms: AdminRoomSummary[]; onRefre
                     {formatTime(room.updatedAt)}
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <button
-                      className="rounded border-[0.5px] border-[var(--slate-6)] bg-surface px-2 py-0.5 text-xs text-foreground hover:bg-[var(--slate-4)] transition-colors"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openRoom(room.id);
-                      }}
+                    <a
+                      href={`/admin/rooms/${encodeURIComponent(room.id)}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-block rounded border-[0.5px] border-[var(--slate-6)] bg-surface px-2 py-0.5 text-xs text-foreground hover:bg-[var(--slate-4)] transition-colors"
                     >
                       详情
-                    </button>
+                    </a>
                   </td>
                 </tr>
               );

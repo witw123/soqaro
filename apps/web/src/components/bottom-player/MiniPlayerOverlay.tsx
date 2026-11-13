@@ -172,7 +172,7 @@ export function MiniPlayerOverlay({
       aria-label="迷你播放器"
       className={`fixed z-[70] text-foreground ${pipWindow
         ? "inset-0 h-[calc(100*var(--app-dvh))] w-full overflow-hidden rounded-none border-0 shadow-none"
-        : `max-h-[calc(100*var(--app-dvh)-1.5rem)] w-[min(640px,calc(100vw-1rem))] overflow-hidden rounded-xl border shadow-xl ${position ? "" : "left-1/2 top-[calc(env(safe-area-inset-top)+0.75rem)] -translate-x-1/2"}`}`}
+        : `max-h-[calc(100*var(--app-dvh)-1.5rem)] w-[min(640px,calc(100dvw-1rem))] overflow-hidden rounded-xl border shadow-xl ${position ? "" : "left-1/2 top-[calc(env(safe-area-inset-top)+0.75rem)] -translate-x-1/2"}`}`}
       data-testid="mini-player-overlay"
       role="dialog"
       style={{

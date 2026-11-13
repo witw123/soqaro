@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useBackHandler } from "@/lib/desktop/use-back-handler";
 
@@ -41,14 +40,12 @@ export function AnchoredDialog({
   onClose: () => void;
   compact?: boolean;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(() => getFallbackPosition(anchor, compact));
-
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    setPortalRoot(document.body);
     const checkMobile = () => {
       setIsMobile(typeof window !== "undefined" && window.innerWidth < 640);
     };
@@ -60,11 +57,22 @@ export function AnchoredDialog({
   useBackHandler(onClose);
 
   useLayoutEffect(() => {
-    const updatePosition = () => {
-      const dialog = dialogRef.current;
-      if (!dialog) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
 
-      const dialogRect = dialog.getBoundingClientRect();
+    if (!dialog.open) {
+      try {
+        dialog.showModal();
+      } catch {
+        // Ignore duplicate modal calls in non-DOM test environments.
+      }
+    }
+
+    const updatePosition = () => {
+      const surface = surfaceRef.current;
+      if (!surface) return;
+
+      const dialogRect = surface.getBoundingClientRect();
       const viewport = window.visualViewport;
       const viewportLeft = viewport?.offsetLeft ?? 0;
       const viewportTop = viewport?.offsetTop ?? 0;
@@ -97,48 +105,48 @@ export function AnchoredDialog({
     const resizeObserver = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(updatePosition);
-    const dialog = dialogRef.current;
-    if (dialog) resizeObserver?.observe(dialog);
+    const surface = surfaceRef.current;
+    if (surface) resizeObserver?.observe(surface);
+
     return () => {
       window.removeEventListener("resize", updatePosition);
       window.visualViewport?.removeEventListener("resize", updatePosition);
       window.visualViewport?.removeEventListener("scroll", updatePosition);
       resizeObserver?.disconnect();
+      if (dialog.open) {
+        dialog.close();
+      }
     };
   }, [anchor]);
 
-  if (!portalRoot) return null;
-
-  return createPortal(
-    <div
-      className="light-overlay-scrim fixed inset-0 z-[500] overflow-y-auto bg-black/75 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] md:backdrop-blur-sm"
+  return (
+    <dialog
+      aria-labelledby={ariaLabelledBy}
+      aria-modal="true"
+      className="anchored-native-dialog fixed max-h-none max-w-none overflow-visible border-0 bg-transparent p-0 text-inherit shadow-none outline-none"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
         }
       }}
-      role="presentation"
+      ref={dialogRef}
+      style={
+        isMobile
+          ? undefined
+          : { left: position.left, top: position.top, margin: 0 }
+      }
     >
       <div
-        aria-labelledby={ariaLabelledBy}
-        className={`light-dialog-surface custom-scrollbar fixed z-[501] max-h-[calc(100*var(--app-dvh)-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-surface-border bg-background-secondary text-foreground shadow-xl ${compact ? "w-[min(18rem,calc(100vw-1.5rem))] p-2" : "w-[min(28rem,calc(100vw-1.5rem))] p-5 sm:p-6"} ${className ?? ""}`}
-        role="dialog"
-        aria-modal="true"
-        ref={dialogRef}
-        style={
-          isMobile
-            ? {
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)"
-              }
-            : { left: position.left, top: position.top }
-        }
+        className={`light-dialog-surface custom-scrollbar max-h-[calc(100*var(--app-dvh)-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-surface-border bg-background-secondary text-foreground shadow-xl ${compact ? "w-[min(18rem,calc(100dvw-1.5rem))] p-2" : "w-[min(28rem,calc(100dvw-1.5rem))] p-5 sm:p-6"} ${className ?? ""}`}
+        ref={surfaceRef}
       >
         {children}
       </div>
-    </div>,
-    portalRoot
+    </dialog>
   );
 }
 

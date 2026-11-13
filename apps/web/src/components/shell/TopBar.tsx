@@ -30,7 +30,7 @@ function TopBarBase({ activeSession, onLogout, variant = "app" }: TopBarProps) {
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {isMarketing ? (
             <>
-              <nav className="hidden items-center gap-5 text-sm text-foreground-muted md:flex">
+              <nav aria-label="产品导航" className="hidden items-center gap-5 text-sm text-foreground-muted md:flex">
                 <a className="transition-colors hover:text-foreground" href="#project">产品概览</a>
                 <a className="transition-colors hover:text-foreground" href="#features">核心特性</a>
                 <a className="transition-colors hover:text-foreground" href="#architecture">技术架构</a>

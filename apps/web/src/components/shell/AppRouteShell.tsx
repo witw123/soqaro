@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { Route } from "next";
 import { AppSidebar } from "./AppSidebar";
@@ -57,6 +57,19 @@ export function AppRouteShell({
     );
   }
 
+  function handleSkipToMain(event: ReactMouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>("main"));
+    const activeMain = candidates.find(
+      (el) => !el.closest('.hidden, [aria-hidden="true"]:not([data-aria-hidden="true"])')
+    );
+    if (!activeMain) return;
+    if (!activeMain.hasAttribute("tabindex")) {
+      activeMain.setAttribute("tabindex", "-1");
+    }
+    activeMain.focus();
+  }
+
   return (
       <div
         aria-hidden={!active}
@@ -66,6 +79,15 @@ export function AppRouteShell({
             : "hidden"
         }
       >
+        {active ? (
+          <a
+            className="skip-link"
+            href="#workspace-main-content"
+            onClick={handleSkipToMain}
+          >
+            跳到主要内容
+          </a>
+        ) : null}
         {active ? (
           <div className="hidden md:contents">
             <AppSidebar

@@ -204,10 +204,10 @@ export function PlayerQueueDrawer({
             data-testid="player-queue-drawer"
             className={
               isImmersiveDesktop
-                ? "light-player-queue fixed bottom-10 right-6 lg:right-10 xl:right-14 z-[90] flex max-h-[min(72vh,560px)] w-[min(460px,calc(100vw-3rem))] flex-col overflow-hidden rounded-2xl border border-surface-border bg-background-secondary text-foreground shadow-2xl animate-slide-up origin-bottom-right"
+                ? "light-player-queue fixed bottom-10 right-6 lg:right-10 xl:right-14 z-[90] flex max-h-[min(calc(72*var(--app-dvh)),560px)] w-[min(460px,calc(100dvw-3rem))] flex-col overflow-hidden rounded-2xl border border-surface-border bg-background-secondary text-foreground shadow-2xl animate-slide-up origin-bottom-right"
                 : isBottomSheet
                 ? "light-player-queue fixed inset-x-0 bottom-0 top-auto z-[100] mb-0 flex w-full max-h-[calc(75*var(--app-dvh))] flex-col overflow-hidden rounded-t-2xl border-t border-surface-border bg-background-secondary text-foreground shadow-2xl animate-slide-up pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
-                : "light-player-queue absolute bottom-full right-0 z-50 mb-3 flex max-h-[60vh] w-[min(500px,calc(100vw-1rem))] flex-col overflow-hidden rounded-xl border border-surface-border bg-background-secondary text-foreground shadow-2xl animate-slide-up origin-bottom-right max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:z-[100] max-sm:mb-0 max-sm:w-full max-sm:max-h-[calc(75*var(--app-dvh))] max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 max-sm:border-t max-sm:border-surface-border max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
+                : "light-player-queue absolute bottom-full right-0 z-50 mb-3 flex max-h-[calc(60*var(--app-dvh))] w-[min(500px,calc(100dvw-1rem))] flex-col overflow-hidden rounded-xl border border-surface-border bg-background-secondary text-foreground shadow-2xl animate-slide-up origin-bottom-right max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:z-[100] max-sm:mb-0 max-sm:w-full max-sm:max-h-[calc(75*var(--app-dvh))] max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 max-sm:border-t max-sm:border-surface-border max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
             }
           >
             {isBottomSheet || !isImmersiveDesktop ? (

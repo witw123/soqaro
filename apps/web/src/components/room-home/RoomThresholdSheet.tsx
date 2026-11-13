@@ -79,7 +79,7 @@ export function RoomThresholdSheet({
     <DialogPrimitive.Root open onOpenChange={(open) => !open && !isPending && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          className="fixed inset-0 bg-black/65"
+          className="fixed inset-0 overflow-hidden overscroll-contain bg-black/65"
           data-dialog-backdrop="room-threshold"
           style={{
             zIndex: "var(--z-modal)",
@@ -87,7 +87,7 @@ export function RoomThresholdSheet({
           }}
         />
         <DialogPrimitive.Content
-          className="light-dialog-surface custom-scrollbar fixed left-1/2 top-1/2 max-h-[85dvh] w-[calc(100vw-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] text-[var(--slate-12)] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+          className="light-dialog-surface custom-scrollbar fixed left-1/2 top-1/2 max-h-[85dvh] w-[calc(100dvw-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] text-[var(--slate-12)] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
           data-dialog-surface="room-threshold"
           style={{
             zIndex: "var(--z-modal-high)",
@@ -158,6 +158,7 @@ export function RoomThresholdSheet({
                       alt={nowPlaying.title}
                       className="h-full w-full object-cover"
                       decoding="async"
+                      fetchPriority="low"
                       loading="lazy"
                       src={artworkSrc}
                     />

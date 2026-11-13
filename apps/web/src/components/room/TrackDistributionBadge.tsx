@@ -186,7 +186,7 @@ export function TrackDistributionBadge({
           ariaLabelledBy={`dist-badge-${track.id}`}
           onClose={() => setIsOpen(false)}
           compact
-          className="w-72 max-w-[calc(100vw-32px)] rounded-xl border border-surface-border bg-surface p-3.5 shadow-lg backdrop-blur-md"
+          className="w-72 max-w-[calc(100dvw-32px)] rounded-xl border border-surface-border bg-surface p-3.5 shadow-lg backdrop-blur-md"
         >
           <div id={`dist-badge-${track.id}`} className="space-y-2.5 text-xs text-foreground">
             <div className="flex items-center justify-between border-b border-surface-border/60 pb-2">

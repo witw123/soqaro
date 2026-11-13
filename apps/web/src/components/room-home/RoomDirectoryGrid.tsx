@@ -163,7 +163,7 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
           isMdRowEnd,
           isMdRowBottom,
           isMobileBottom
-        }) => {
+        }, index) => {
           const roomId = item.room.id;
           const isAway = Boolean(awayRoomId && awayRoomId === roomId);
           const isExpandedToModal = activeModalRoomId === roomId;
@@ -188,6 +188,7 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
                 isExpandedToModal={isExpandedToModal}
                 onOpen={onOpenRoom}
                 onPrewarm={onPrewarmRoom}
+                prioritizeArtwork={index < 2}
                 room={item}
                 shellTransitionName={isMorphTarget ? "active-room-shell" : undefined}
               />

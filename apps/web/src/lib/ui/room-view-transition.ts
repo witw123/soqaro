@@ -18,8 +18,14 @@ type ViewTransitionHandle = {
   ready?: Promise<void>;
 };
 
+type ViewTransitionUpdateCallback = () => void | Promise<void>;
+
 type ViewTransitionCapableDocument = Document & {
-  startViewTransition?: (updateCallback: () => void | Promise<void>) => ViewTransitionHandle;
+  startViewTransition?: (
+    callbackOrOptions:
+      | ViewTransitionUpdateCallback
+      | { update: ViewTransitionUpdateCallback; types?: string[] }
+  ) => ViewTransitionHandle;
 };
 
 const MAX_ASYNC_ROUTE_WAIT_MS = 1500;
@@ -187,7 +193,7 @@ function waitForDomCondition(
 
   return new Promise<void>((resolve) => {
     let settled = false;
-    let rafId: number | null = null;
+    let pollTimerId: number | null = null;
     let mutationCheckQueued = false;
 
     const finish = () => {
@@ -195,8 +201,8 @@ function waitForDomCondition(
       settled = true;
       observer.disconnect();
       window.clearTimeout(timerId);
-      if (rafId !== null && typeof window.cancelAnimationFrame === "function") {
-        window.cancelAnimationFrame(rafId);
+      if (pollTimerId !== null) {
+        window.clearTimeout(pollTimerId);
       }
       resolve();
     };
@@ -236,20 +242,69 @@ function waitForDomCondition(
       });
     }
 
-    if (typeof window.requestAnimationFrame === "function") {
-      const tick = () => {
+    // Throttled safety poll for non-DOM state updates without running on every rAF frame.
+    const schedulePoll = () => {
+      pollTimerId = window.setTimeout(() => {
         if (settled) return;
         if (predicate()) {
           finish();
           return;
         }
-        rafId = window.requestAnimationFrame(tick);
-      };
-      rafId = window.requestAnimationFrame(tick);
-    }
+        schedulePoll();
+      }, 25);
+    };
+    schedulePoll();
 
     const timerId = window.setTimeout(finish, maxWaitMs);
   });
+}
+
+function restoreRoomTransitionFocus(kind: RoomTransitionKind): void {
+  if (typeof document === "undefined" || typeof document.querySelectorAll !== "function") {
+    return;
+  }
+  if (kind !== "room-enter" && kind !== "room-exit" && kind !== "card-close") {
+    return;
+  }
+
+  const active = document.activeElement as HTMLElement | null;
+  const activeLost =
+    !active ||
+    active === document.body ||
+    active === document.documentElement ||
+    active.isConnected === false ||
+    Boolean(
+      typeof active.closest === "function" &&
+      active.closest('.hidden, [aria-hidden="true"], [data-morphed-to-modal="true"]')
+    );
+
+  if (!activeLost) {
+    return;
+  }
+
+  const mains = Array.from(document.querySelectorAll<HTMLElement>("main"));
+  const visibleMain = mains.find(
+    (main) =>
+      typeof main.closest !== "function" ||
+      !main.closest('.hidden, [aria-hidden="true"]:not([data-aria-hidden="true"])')
+  );
+  if (!visibleMain) {
+    return;
+  }
+
+  const target =
+    (typeof visibleMain.querySelector === "function"
+      ? visibleMain.querySelector<HTMLElement>("h1")
+      : null) ?? visibleMain;
+
+  if (typeof target.focus !== "function") {
+    return;
+  }
+
+  if (typeof target.hasAttribute === "function" && !target.hasAttribute("tabindex") && target.tabIndex < 0) {
+    target.setAttribute("tabindex", "-1");
+  }
+  target.focus({ preventScroll: true });
 }
 
 export function isRoomMotionReduced(): boolean {
@@ -284,6 +339,7 @@ export function runRoomViewTransition(
 
   if (typeof document === "undefined" || isRoomMotionReduced()) {
     commitUpdate();
+    restoreRoomTransitionFocus(kind);
     options.onFinished?.();
     return;
   }
@@ -291,6 +347,7 @@ export function runRoomViewTransition(
   const doc = document as ViewTransitionCapableDocument;
   if (typeof doc.startViewTransition !== "function") {
     commitUpdate();
+    restoreRoomTransitionFocus(kind);
     options.onFinished?.();
     return;
   }
@@ -350,7 +407,7 @@ export function runRoomViewTransition(
 
     options.beforeCapture?.();
 
-    const transition = doc.startViewTransition(() => {
+    const runTransitionUpdate: ViewTransitionUpdateCallback = () => {
       if (kind === "card-open" || kind === "room-enter") {
         clearActiveTaggedElement();
       }
@@ -397,7 +454,17 @@ export function runRoomViewTransition(
           }
         });
       }
-    });
+    };
+
+    const transitionTypes = options.direction ? [kind, options.direction] : [kind];
+    const supportsTypedTransitions =
+      typeof CSS !== "undefined" &&
+      typeof CSS.supports === "function" &&
+      CSS.supports("selector(:active-view-transition-type(forward))");
+
+    const transition = supportsTypedTransitions
+      ? doc.startViewTransition({ update: runTransitionUpdate, types: transitionTypes })
+      : doc.startViewTransition(runTransitionUpdate);
 
     void transition.finished
       .catch(() => {
@@ -408,12 +475,14 @@ export function runRoomViewTransition(
         if (root.dataset.roomTransition === kind) {
           clearRootTransitionAttrs();
         }
+        restoreRoomTransitionFocus(kind);
         options.onFinished?.();
       });
   } catch {
     clearActiveTaggedElement();
     clearRootTransitionAttrs();
     commitUpdate();
+    restoreRoomTransitionFocus(kind);
     options.onFinished?.();
   }
 }

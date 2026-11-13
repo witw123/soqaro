@@ -117,6 +117,8 @@ export function ProductLandingPage() {
 
   return (
     <main className="relative min-h-[calc(100*var(--app-dvh))] bg-[#090a0f] text-foreground font-sans selection:bg-accent/30 selection:text-white">
+      <a className="skip-link" href="#landing-main">跳到主要内容</a>
+
       {/* Navigation TopBar */}
       <TopBar activeSession={null} variant="marketing" />
 
@@ -126,7 +128,7 @@ export function ProductLandingPage() {
       </div>
 
       {/* Hero Section */}
-      <section className="mx-auto flex w-full max-w-5xl flex-col items-center px-4 pt-16 pb-20 text-center sm:px-6 sm:pt-24 sm:pb-24">
+      <section id="landing-main" tabIndex={-1} className="mx-auto flex w-full max-w-5xl flex-col items-center px-4 pt-16 pb-20 text-center outline-none sm:px-6 sm:pt-24 sm:pb-24">
         {/* Eyebrow badge */}
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 text-xs font-medium text-white/80">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />

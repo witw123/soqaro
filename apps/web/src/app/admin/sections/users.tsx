@@ -220,14 +220,6 @@ export function Users({ users, onRefresh }: { users: AdminUserSummary[]; onRefre
                 <tr
                   key={user.id}
                   onClick={() => openUser(user.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openUser(user.id);
-                    }
-                  }}
-                  role="link"
-                  tabIndex={0}
                   className="cursor-pointer hover:bg-surface-border/15 transition-colors"
                 >
                   <td
@@ -245,7 +237,13 @@ export function Users({ users, onRefresh }: { users: AdminUserSummary[]; onRefre
                     ) : null}
                   </td>
                   <td className="py-2 px-3">
-                    <UserCell user={user} />
+                    <a
+                      href={`/admin/users/${encodeURIComponent(user.id)}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-block text-inherit hover:underline"
+                    >
+                      <UserCell user={user} />
+                    </a>
                   </td>
                   <td className="py-2 px-3">
                     <span
@@ -274,15 +272,13 @@ export function Users({ users, onRefresh }: { users: AdminUserSummary[]; onRefre
                     {user.lastLoginAt ? formatTime(user.lastLoginAt) : "从未"}
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <button
-                      className="rounded border-[0.5px] border-[var(--slate-6)] bg-surface px-2 py-0.5 text-xs text-foreground hover:bg-[var(--slate-4)] transition-colors"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openUser(user.id);
-                      }}
+                    <a
+                      href={`/admin/users/${encodeURIComponent(user.id)}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-block rounded border-[0.5px] border-[var(--slate-6)] bg-surface px-2 py-0.5 text-xs text-foreground hover:bg-[var(--slate-4)] transition-colors"
                     >
                       详情
-                    </button>
+                    </a>
                   </td>
                 </tr>
               );

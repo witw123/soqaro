@@ -347,7 +347,7 @@ export function RoomLyricsPanel({
 
                       return (
                         <span
-                          className="inline-block whitespace-pre text-transparent will-change-[background-image]"
+                          className="inline-block whitespace-pre text-transparent"
                           key={`${line.id}:word:${wordIndex}`}
                           style={{
                             backgroundImage: `linear-gradient(to right, var(--foreground) 0%, var(--foreground) ${(progress * 100).toFixed(1)}%, color-mix(in srgb, var(--foreground) 30%, transparent) ${(progress * 100).toFixed(1)}%, color-mix(in srgb, var(--foreground) 30%, transparent) 100%)`,

@@ -561,13 +561,14 @@ export function DiscoverPage() {
 
             {filteredRooms.length > 0 ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {filteredRooms.map((entry) => (
+                {filteredRooms.map((entry, index) => (
                   <RecommendedRoomCard
                     entry={entry}
                     isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                     key={entry.item.room.id}
                     onOpen={openRoomDetails}
                     onPrewarm={handlePrewarmRoom}
+                    prioritizeArtwork={index < 2}
                   />
                 ))}
               </div>
@@ -611,13 +612,14 @@ export function DiscoverPage() {
                   </span>
                 </div>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  {liveSpotlightRooms.map((entry) => (
+                  {liveSpotlightRooms.map((entry, index) => (
                     <LiveSpotlightRoomCard
                       entry={entry}
                       isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
+                      prioritizeArtwork={index < 2}
                     />
                   ))}
                 </div>
@@ -738,12 +740,14 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
   entry,
   isExpandedToModal = false,
   onOpen,
-  onPrewarm
+  onPrewarm,
+  prioritizeArtwork = false
 }: {
   entry: CuratedRoomRecommendation;
   isExpandedToModal?: boolean;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm: (roomId: string) => void;
+  prioritizeArtwork?: boolean;
 }) {
   const { room } = entry.item;
   const nowPlaying = room.directoryNowPlaying;
@@ -782,7 +786,8 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
             alt={nowPlaying?.title ?? room.name}
             className="h-full w-full object-cover"
             decoding="async"
-            loading="lazy"
+            fetchPriority={prioritizeArtwork ? "high" : undefined}
+            loading={prioritizeArtwork ? undefined : "lazy"}
             src={artworkSrc}
           />
         ) : (
@@ -848,12 +853,14 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
   entry,
   isExpandedToModal = false,
   onOpen,
-  onPrewarm
+  onPrewarm,
+  prioritizeArtwork = false
 }: {
   entry: CuratedRoomRecommendation;
   isExpandedToModal?: boolean;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm: (roomId: string) => void;
+  prioritizeArtwork?: boolean;
 }) {
   const { room } = entry.item;
   const nowPlaying = room.directoryNowPlaying;
@@ -864,7 +871,7 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
 
   return (
     <article
-      className="group relative flex min-w-0 flex-col justify-between rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)]"
+      className={`group relative flex min-w-0 flex-col justify-between rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)] ${isExpandedToModal ? "" : "discover-card-contain"}`}
       data-discover-room-id={room.id}
       data-morphed-to-modal={isExpandedToModal ? "true" : undefined}
       onPointerEnter={() => onPrewarm(room.id)}
@@ -924,7 +931,8 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
                 alt={nowPlaying?.title ?? room.name}
                 className="h-full w-full object-cover"
                 decoding="async"
-                loading="lazy"
+                fetchPriority={prioritizeArtwork ? "high" : undefined}
+                loading={prioritizeArtwork ? undefined : "lazy"}
                 src={artworkSrc}
               />
             ) : (
@@ -979,15 +987,15 @@ function LiveEqualizerBars({ active }: { active: boolean }) {
       className="inline-flex h-3 shrink-0 items-end gap-[1.5px] text-[var(--blue-9)]"
     >
       <span
-        className="h-full w-[2px] origin-bottom rounded-full bg-current animate-music-bar will-change-transform"
+        className="h-full w-[2px] origin-bottom rounded-full bg-current animate-music-bar"
         style={{ animationDuration: "0.8s" }}
       />
       <span
-        className="h-full w-[2px] origin-bottom rounded-full bg-current animate-music-bar will-change-transform"
+        className="h-full w-[2px] origin-bottom rounded-full bg-current animate-music-bar"
         style={{ animationDuration: "1.1s", animationDelay: "0.2s" }}
       />
       <span
-        className="h-full w-[2px] origin-bottom rounded-full bg-current animate-music-bar will-change-transform"
+        className="h-full w-[2px] origin-bottom rounded-full bg-current animate-music-bar"
         style={{ animationDuration: "0.9s", animationDelay: "0.4s" }}
       />
     </span>

@@ -413,7 +413,7 @@ export function DesktopLyricsBar({
               const fillPercent = `${(progress * 100).toFixed(1)}%`;
               return (
                 <span
-                  className="inline-block whitespace-pre text-transparent font-bold will-change-[background-image]"
+                  className="inline-block whitespace-pre text-transparent font-bold"
                   key={`${displayLineKey}:${wordIndex}`}
                   style={{
                     backgroundImage: `linear-gradient(to right, rgb(255 255 255) 0%, rgb(255 255 255) ${fillPercent}, rgb(255 255 255 / 0.3) ${fillPercent}, rgb(255 255 255 / 0.3) 100%)`,

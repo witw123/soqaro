@@ -206,7 +206,7 @@ function RoomWorkspaceBase({
 
       {roomSnapshot && statusMessage ? (
         <div
-          className="pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top)+5rem)] z-50 w-fit max-w-[calc(100vw-1rem)] -translate-x-1/2 px-0 sm:top-20"
+          className="pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top)+5rem)] z-50 w-fit max-w-[calc(100dvw-1rem)] -translate-x-1/2 px-0 sm:top-20"
           aria-live="polite"
         >
           <div
@@ -228,7 +228,6 @@ function RoomWorkspaceBase({
       <div
         className="relative min-h-0 flex-1 overflow-hidden bg-background animate-in fade-in duration-[250ms] ease-out motion-reduce:animate-none"
         data-room-shell-viewport="true"
-        role="tabpanel"
       >
         <div className="h-full min-h-0 w-full">
           {roomSnapshot ? (

@@ -53,6 +53,27 @@ const roomCardThemes: Record<RoomType, RoomCardTheme> = {
   }
 };
 
+const roomCardStaticStyles: Record<RoomType, RoomCardStyle> = {
+  interactive: {
+    "--room-accent": roomCardThemes.interactive.accent,
+    "--room-border": roomCardThemes.interactive.border,
+    "--room-shadow": roomCardThemes.interactive.glow,
+    "--room-soft": roomCardThemes.interactive.soft
+  },
+  request: {
+    "--room-accent": roomCardThemes.request.accent,
+    "--room-border": roomCardThemes.request.border,
+    "--room-shadow": roomCardThemes.request.glow,
+    "--room-soft": roomCardThemes.request.soft
+  },
+  radio: {
+    "--room-accent": roomCardThemes.radio.accent,
+    "--room-border": roomCardThemes.radio.border,
+    "--room-shadow": roomCardThemes.radio.glow,
+    "--room-soft": roomCardThemes.radio.soft
+  }
+};
+
 export const RoomDirectoryCard = memo(function RoomDirectoryCard({
   room: directoryItem,
   shellTransitionName,
@@ -62,13 +83,10 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
   const room = directoryItem.room;
   const theme = roomCardThemes[room.roomType];
   const nowPlaying = room.directoryNowPlaying;
-  const cardStyle: RoomCardStyle = {
-    "--room-accent": theme.accent,
-    "--room-border": theme.border,
-    "--room-shadow": theme.glow,
-    "--room-soft": theme.soft,
-    ...(shellTransitionName ? { viewTransitionName: shellTransitionName } : {})
-  };
+  const baseStyle = roomCardStaticStyles[room.roomType];
+  const cardStyle: RoomCardStyle = shellTransitionName
+    ? { ...baseStyle, viewTransitionName: shellTransitionName }
+    : baseStyle;
 
   const handleOpen = useCallback(() => {
     onOpen(directoryItem);
@@ -132,13 +150,13 @@ function RoomStageVisualContent({
     <>
       {/* Seamless Badges Over Cover: Room Type (Left) & Online Count (Right) with high contrast in both themes */}
       <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 dark:bg-black/60 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-medium text-slate-800 dark:text-white/90 shadow-xs backdrop-blur-md">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-white/95 dark:bg-[#0b0e14]/82 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-medium text-slate-800 dark:text-white/90 shadow-xs">
           <span className="opacity-80">
             <RoomTypeGlyph roomType={room.roomType} />
           </span>
           {themeLabel}
         </span>
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white/90 dark:bg-black/60 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-mono tabular-nums text-slate-700 dark:text-white/90 shadow-xs backdrop-blur-md">
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white/95 dark:bg-[#0b0e14]/82 border border-black/5 dark:border-white/10 px-2 py-0.5 text-xs font-mono tabular-nums text-slate-700 dark:text-white/90 shadow-xs">
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           {room.directoryOnlineMemberCount} 人在线
         </span>

@@ -5,6 +5,7 @@ import {
   countRoomsByFilter,
   formatRoomLiveMetric,
   packRoomsIntoContentMosaic,
+  reconcileRoomDirectoryItems,
   resolveMosaicSpanPattern,
   sortCuratedRooms
 } from "./room-gallery-layout";
@@ -187,5 +188,54 @@ describe("room-gallery-layout", () => {
 
     // Mobile (1-col): only last item is bottom
     expect(packed.map((p) => p.isMobileBottom)).toEqual([false, false, false, false, true]);
+  });
+
+  it("reconciles polled room items to preserve unchanged array and card references", () => {
+    const first = [
+      makeRoom("alpha", { online: 4, playing: true }),
+      makeRoom("beta", { online: 2, playing: false })
+    ];
+    const identicalClone = [
+      makeRoom("alpha", { online: 4, playing: true }),
+      makeRoom("beta", { online: 2, playing: false })
+    ];
+
+    expect(reconcileRoomDirectoryItems(first, identicalClone)).toBe(first);
+
+    const updatedBeta = makeRoom("beta", { online: 3, playing: false });
+    const partialUpdate = reconcileRoomDirectoryItems(first, [
+      makeRoom("alpha", { online: 4, playing: true }),
+      updatedBeta
+    ]);
+
+    expect(partialUpdate).not.toBe(first);
+    expect(partialUpdate[0]).toBe(first[0]);
+    expect(partialUpdate[1]).toBe(updatedBeta);
+
+    const changedTrackAlpha = makeRoom("alpha", { online: 4, playing: true });
+    changedTrackAlpha.room.directoryNowPlaying = {
+      title: "Another Track",
+      artist: "Artist",
+      artworkUrl: null
+    };
+    const nowPlayingUpdate = reconcileRoomDirectoryItems(partialUpdate, [
+      changedTrackAlpha,
+      makeRoom("beta", { online: 3, playing: false })
+    ]);
+
+    expect(nowPlayingUpdate[0]).toBe(changedTrackAlpha);
+    expect(nowPlayingUpdate[1]).toBe(partialUpdate[1]);
+
+    const reordered = reconcileRoomDirectoryItems(nowPlayingUpdate, [
+      makeRoom("beta", { online: 3, playing: false }),
+      changedTrackAlpha
+    ]);
+    expect(reordered.map((entry) => entry.room.id)).toEqual(["beta", "alpha"]);
+    expect(reordered[0]).toBe(nowPlayingUpdate[1]);
+    expect(reordered[1]).toBe(nowPlayingUpdate[0]);
+
+    const emptyPrev: ReturnType<typeof makeRoom>[] = [];
+    expect(reconcileRoomDirectoryItems(emptyPrev, [])).toBe(emptyPrev);
+    expect(reconcileRoomDirectoryItems(reordered, [])).toEqual([]);
   });
 });

@@ -82,7 +82,14 @@ function RoomStageBase({
   const [romanizedLyricsText, setRomanizedLyricsText] = useState<string | null>(null);
   const [lyricsStatus, setLyricsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [cachedArtworkUrl, setCachedArtworkUrl] = useState<string | null>(null);
-  const [viewportSize, setViewportSize] = useState<{ height: number; width: number } | null>(null);
+  const [viewportSize, setViewportSize] = useState<{ height: number; width: number } | null>(() => {
+    if (typeof window === "undefined") return null;
+    const viewport = window.visualViewport;
+    return {
+      height: viewport?.height ?? window.innerHeight,
+      width: viewport?.width ?? window.innerWidth
+    };
+  });
   const compactStage = viewportSize !== null && (viewportSize.height < 900 || viewportSize.width < 1024);
   const ultraCompactStage = viewportSize !== null && (viewportSize.height < 760 || viewportSize.width < 640);
   const playback = roomSnapshot.room.playback;

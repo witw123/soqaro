@@ -112,7 +112,6 @@ type RoomLayoutProps = RoomDashboardViewProps & {
   canManageLibrary: boolean;
   canAddToQueue: boolean;
   currentSourcePeerId: string | null;
-  membershipNow: number;
 };
 
 const tabConfigs: Array<{ id: ManagementTabId; label: string; icon: React.ComponentType<{ className?: string }> }> = [
@@ -136,25 +135,18 @@ const MembersTabPanel = dynamic(() => import("./MembersTabPanel").then((mod) => 
 });
 
 function RoomDashboardViewBase(props: RoomDashboardViewProps) {
-  const [membershipNow, setMembershipNow] = useState(() => Date.now());
   const currentSourcePeerId = resolveCurrentSourcePeerId(props.roomSnapshot, props.roomSnapshot.room.playback);
   const currentRoomPermissions = getCurrentRoomMemberPermissions(props.roomSnapshot, props.activeSession?.userId);
   const isHost = isRoomHost(props.roomSnapshot, props.activeSession?.userId);
   const canManageLibrary = currentRoomPermissions?.library === true;
   const canAddToQueue = currentRoomPermissions?.queue === true;
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setMembershipNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
   const layoutProps: RoomLayoutProps = {
     ...props,
     isHost,
     canManageLibrary,
     canAddToQueue,
-    currentSourcePeerId,
-    membershipNow
+    currentSourcePeerId
   };
 
   return <InteractiveRoomLayout {...layoutProps} />;
@@ -163,6 +155,7 @@ function RoomDashboardViewBase(props: RoomDashboardViewProps) {
 function InteractiveRoomLayout(props: RoomLayoutProps) {
   const { stageReady, panelsReady } = useProgressiveRoomLoading();
   const [activeTab, setActiveTab] = useState<ManagementTabId>("library");
+  const { onDiagnosticsVisibilityChange, onTabChange } = props;
 
   // 四个 tab 面板迟早都会被点到:空闲时预取 chunk,让首次切换无需加载占位。
   useEffect(
@@ -177,9 +170,9 @@ function InteractiveRoomLayout(props: RoomLayoutProps) {
   );
   const handleTabChange = useCallback((tab: ManagementTabId) => {
     setActiveTab(tab);
-    if (tab !== "members") props.onDiagnosticsVisibilityChange?.(false);
-    props.onTabChange?.(tab);
-  }, [props]);
+    if (tab !== "members") onDiagnosticsVisibilityChange?.(false);
+    onTabChange?.(tab);
+  }, [onDiagnosticsVisibilityChange, onTabChange]);
   const handleTabKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>, tab: ManagementTabId) => {
     const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (!direction) return;
@@ -346,7 +339,7 @@ function RoomManagementContent(props: RoomLayoutProps & { activeTab: ManagementT
       />
     );
   }
-  return <MembersTabPanel members={props.roomSnapshot.room.members} now={props.membershipNow} peerDiagnostics={props.peerDiagnostics} peerRecentEvents={props.peerRecentEvents} localMemberState={props.localMemberState} playbackStatus={props.roomSnapshot.room.playback.status} sourceSessionId={props.roomSnapshot.room.playback.sourceSessionId} sourcePeerId={props.currentSourcePeerId} iceConfigSource={props.iceConfigSource} iceConfigStatus={props.iceConfigStatus} activeSessionId={props.activeSession?.userId ?? null} isHost={props.isHost} onUpdateMemberPermissions={props.onUpdateMemberPermissions} onRemoveMember={props.onRemoveMember} onDiagnosticsVisibilityChange={props.onDiagnosticsVisibilityChange} />;
+  return <MembersTabPanel members={props.roomSnapshot.room.members} peerDiagnostics={props.peerDiagnostics} peerRecentEvents={props.peerRecentEvents} localMemberState={props.localMemberState} playbackStatus={props.roomSnapshot.room.playback.status} sourceSessionId={props.roomSnapshot.room.playback.sourceSessionId} sourcePeerId={props.currentSourcePeerId} iceConfigSource={props.iceConfigSource} iceConfigStatus={props.iceConfigStatus} activeSessionId={props.activeSession?.userId ?? null} isHost={props.isHost} onUpdateMemberPermissions={props.onUpdateMemberPermissions} onRemoveMember={props.onRemoveMember} onDiagnosticsVisibilityChange={props.onDiagnosticsVisibilityChange} />;
 }
 
 export function buildRoomStageProps(

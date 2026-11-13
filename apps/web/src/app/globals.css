@@ -777,14 +777,21 @@
   }
 
   html[data-room-transition] [data-custom-layout-room-host="true"] .animate-in,
-  html[data-room-transition] [data-custom-layout-room-host="true"] .animate-fade-in {
+  html[data-room-transition] [data-custom-layout-room-host="true"] .animate-fade-in,
+  html[data-room-transition] .mobile-app-route-view {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
   }
 
-  html[data-room-transition="room-enter"] [data-custom-layout-room-host="true"],
-  html[data-room-transition="room-exit"] [data-custom-layout-room-host="true"] {
+  html[data-room-transition] [data-dialog-surface="room-threshold"] {
+    box-shadow: none !important;
+  }
+
+  html[data-room-transition="room-enter"]:not([data-custom-layout-enabled="true"]) [data-custom-layout-room-host="true"] > [data-room-shell-viewport="true"],
+  html[data-room-transition="room-exit"]:not([data-custom-layout-enabled="true"]) [data-custom-layout-room-host="true"] > [data-room-shell-viewport="true"],
+  html[data-room-transition="room-enter"][data-custom-layout-enabled="true"] [data-custom-layout-room-host="true"],
+  html[data-room-transition="room-exit"][data-custom-layout-enabled="true"] [data-custom-layout-room-host="true"] {
     view-transition-name: active-room-shell;
   }
 
@@ -824,23 +831,46 @@
 
   /* Single Active Room Shell Morph: Card / Modal <-> Room Workspace */
   html[data-room-transition]::view-transition-group(active-room-shell) {
-    z-index: 990 !important;
+    z-index: 880 !important;
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-room-transition="card-open"]::view-transition-group(active-room-shell),
+  html[data-room-transition="card-close"]::view-transition-group(active-room-shell) {
+    z-index: 990 !important;
+  }
+  html[data-room-transition]::view-transition-image-pair(active-room-shell) {
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: 0;
+  }
+  html[data-room-transition="card-open"]::view-transition-image-pair(active-room-shell) {
+    animation: room-vt-radius-to-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  html[data-room-transition="card-close"]::view-transition-image-pair(active-room-shell) {
+    animation: room-vt-radius-from-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  html[data-room-transition="room-enter"][data-room-transition-origin="sheet"]::view-transition-image-pair(active-room-shell),
+  html[data-room-transition="room-enter"][data-room-transition-origin="pill"]::view-transition-image-pair(active-room-shell) {
+    animation: room-vt-radius-from-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  html[data-room-transition="room-exit"][data-room-transition-target="pill"]::view-transition-image-pair(active-room-shell) {
+    animation: room-vt-radius-to-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   html[data-room-transition]::view-transition-old(active-room-shell),
   html[data-room-transition]::view-transition-new(active-room-shell) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     mix-blend-mode: normal !important;
   }
   html[data-room-transition]::view-transition-old(active-room-shell) {
-    animation-name: room-vt-shell-hold;
+    animation-name: room-vt-shell-fade-out;
   }
   html[data-room-transition]::view-transition-new(active-room-shell) {
-    animation-name: room-vt-fade-in;
+    animation-name: room-vt-shell-fade-in;
   }
   html[data-room-transition="room-enter"]::view-transition-new(active-room-shell):only-child {
     animation-name: room-vt-shell-enter-only;
@@ -916,12 +946,41 @@
     animation: room-vt-slide-in-left 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  @keyframes room-vt-shell-hold {
-    from {
+  @keyframes room-vt-shell-fade-out {
+    0%,
+    35% {
       opacity: 1;
     }
-    to {
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes room-vt-shell-fade-in {
+    0% {
+      opacity: 0;
+    }
+    75%,
+    100% {
       opacity: 1;
+    }
+  }
+
+  @keyframes room-vt-radius-to-sheet {
+    from {
+      border-radius: 0;
+    }
+    to {
+      border-radius: 12px;
+    }
+  }
+
+  @keyframes room-vt-radius-from-sheet {
+    from {
+      border-radius: 12px;
+    }
+    to {
+      border-radius: 0;
     }
   }
 
@@ -1070,6 +1129,10 @@
   .mosaic-puzzle-grid [data-testid="room-directory-card"]:focus-within {
     z-index: 20;
     box-shadow: inset 0 0 0 1px var(--room-border) !important;
+  }
+
+  .mosaic-puzzle-grid .room-directory-stage-frame {
+    contain: layout paint style;
   }
 
   @media (min-width: 768px) {

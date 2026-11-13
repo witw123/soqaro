@@ -223,7 +223,11 @@ function RoomWorkspaceBase({
         </div>
       ) : null}
 
-      <div className="relative min-h-0 flex-1 overflow-hidden animate-in fade-in duration-[250ms] ease-out motion-reduce:animate-none" role="tabpanel">
+      <div
+        className="relative min-h-0 flex-1 overflow-hidden bg-background animate-in fade-in duration-[250ms] ease-out motion-reduce:animate-none"
+        data-room-shell-viewport="true"
+        role="tabpanel"
+      >
         <div className="h-full min-h-0 w-full">
           {roomSnapshot ? (
             <RoomView

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
@@ -27,6 +27,7 @@ import {
   ROOM_CHANNEL_THEMES,
   ROOM_FILTER_ORDER,
   countRoomsByFilter,
+  reconcileRoomDirectoryItems,
   sortCuratedRooms,
   type RoomFilterValue
 } from "./room-gallery-layout";
@@ -42,6 +43,8 @@ import {
 
 const lastRoomStorageKey = "soqaro-last-room";
 const emptyRooms: RoomDirectoryItem[] = [];
+let persistedHomeFilter: RoomFilterValue = "all";
+let persistedHomeScroll = { containerTop: 0, windowY: 0 };
 
 type RoomsHomePageProps = {
   awayRoomId?: string | null;
@@ -80,11 +83,19 @@ export function RoomsHomePage({
     staleTime: 10_000,
     refetchInterval: pageActive ? 10_000 : false
   });
-  const availableRooms = roomsQuery.data ?? emptyRooms;
+  const rawAvailableRooms = roomsQuery.data ?? emptyRooms;
+  const availableRoomsRef = useRef<RoomDirectoryItem[]>(emptyRooms);
+  const availableRooms = useMemo(() => {
+    const next = reconcileRoomDirectoryItems(availableRoomsRef.current, rawAvailableRooms);
+    availableRoomsRef.current = next;
+    return next;
+  }, [rawAvailableRooms]);
   const roomsLoaded = !roomsQuery.isPending;
   const refreshAvailableRooms = roomsQuery.refetch;
 
-  const [roomTypeFilter, setRoomTypeFilter] = useState<RoomFilterValue>("all");
+  const [roomTypeFilter, setRoomTypeFilter] = useState<RoomFilterValue>(() => persistedHomeFilter);
+  const mainContainerRef = useRef<HTMLElement>(null);
+  const hasRestoredScrollRef = useRef(false);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -158,19 +169,26 @@ export function RoomsHomePage({
     }
   }, [availableRooms, selectedRoom]);
 
-  function openCreateRoom(visibility: "public" | "private") {
-    if (!activeSession) {
-      setStatusMessage("创建房间需要先登录账号。");
-      router.push(authEntryHref as Route);
-      return;
-    }
-    prewarmRoomRuntimeChunk();
-    setCreateFormVisibility(visibility);
-    setDialogError(null);
-    setCreateDialogOpen(true);
-  }
+  const openCreateRoom = useCallback(
+    (visibility: "public" | "private") => {
+      if (!activeSession) {
+        setStatusMessage("创建房间需要先登录账号。");
+        router.push(authEntryHref as Route);
+        return;
+      }
+      prewarmRoomRuntimeChunk();
+      setCreateFormVisibility(visibility);
+      setDialogError(null);
+      setCreateDialogOpen(true);
+    },
+    [activeSession, authEntryHref, router, setStatusMessage]
+  );
 
-  function openJoinDialog() {
+  const handleCreatePublicRoom = useCallback(() => {
+    openCreateRoom("public");
+  }, [openCreateRoom]);
+
+  const openJoinDialog = useCallback(() => {
     if (!activeSession) {
       setStatusMessage("加入房间需要先登录账号。");
       router.push(authEntryHref as Route);
@@ -179,7 +197,7 @@ export function RoomsHomePage({
     prewarmRoomRuntimeChunk();
     setDialogError(null);
     setJoinDialogOpen(true);
-  }
+  }, [activeSession, authEntryHref, router, setStatusMessage]);
 
   async function handleCreateRoom(form: CreateRoomForm) {
     primeRoomAudioFromUserGesture();
@@ -293,6 +311,8 @@ export function RoomsHomePage({
       runRoomViewTransition(
         "gallery",
         () => {
+          persistedHomeFilter = nextFilter;
+          persistedHomeScroll = { containerTop: 0, windowY: 0 };
           setRoomTypeFilter(nextFilter);
         },
         { direction }
@@ -346,12 +366,48 @@ export function RoomsHomePage({
 
   const activeChannelTheme = ROOM_CHANNEL_THEMES[roomTypeFilter];
 
+  const handleHomeScroll = useCallback(() => {
+    persistedHomeScroll = {
+      containerTop: mainContainerRef.current?.scrollTop ?? 0,
+      windowY: typeof window !== "undefined" ? window.scrollY : 0
+    };
+  }, []);
+
+  // Restore scroll synchronously before View Transition captures the returning
+  // `/app` snapshot so the target card lands at its original screen coordinates.
+  useLayoutEffect(() => {
+    if (!hydrated || !roomsLoaded || hasRestoredScrollRef.current) return;
+    hasRestoredScrollRef.current = true;
+    const { containerTop, windowY } = persistedHomeScroll;
+    if (containerTop > 0 && mainContainerRef.current) {
+      mainContainerRef.current.scrollTop = containerTop;
+    }
+    if (windowY > 0 && typeof window !== "undefined") {
+      window.scrollTo({ top: windowY, behavior: "instant" as ScrollBehavior });
+    }
+  }, [hydrated, roomsLoaded]);
+
+  useEffect(() => {
+    return () => {
+      if (mainContainerRef.current) {
+        persistedHomeScroll = {
+          containerTop: mainContainerRef.current.scrollTop,
+          windowY: typeof window !== "undefined" ? window.scrollY : 0
+        };
+      }
+    };
+  }, []);
+
   if (!hydrated) {
     return <div className="min-h-[calc(100*var(--app-dvh))] bg-background" />;
   }
 
   return (
-    <main className="workspace-page home-workspace-page hide-scrollbar relative flex flex-col overflow-y-auto selection:bg-accent/30 selection:text-white pb-[calc(var(--room-mobile-bottom-inset)+2rem)] md:pb-[calc(12rem+env(safe-area-inset-bottom))] md:pl-[var(--app-sidebar-width)]">
+    <main
+      className="workspace-page home-workspace-page hide-scrollbar relative flex flex-col overflow-y-auto selection:bg-accent/30 selection:text-white pb-[calc(var(--room-mobile-bottom-inset)+2rem)] md:pb-[calc(12rem+env(safe-area-inset-bottom))] md:pl-[var(--app-sidebar-width)]"
+      onScroll={handleHomeScroll}
+      ref={mainContainerRef}
+    >
       {showSidebar ? (
         <AppSidebar
           activeItem="home"
@@ -371,7 +427,7 @@ export function RoomsHomePage({
           announcementBell={announcementCenter.bellTriggerNode}
           counts={filterCounts}
           isRefreshing={isPending || isManualRefreshing}
-          onCreatePublicRoom={() => openCreateRoom("public")}
+          onCreatePublicRoom={handleCreatePublicRoom}
           onFilterChange={handleFilterChange}
           onOpenJoinDialog={openJoinDialog}
           onRefresh={handleManualRefresh}

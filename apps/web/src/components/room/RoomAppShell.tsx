@@ -152,14 +152,12 @@ export function RoomAppShell({
           initialRoomId={initialRoomId}
           isNavigatingRoomExit={pageState.isNavigatingRoomExit}
           isRecoveringRoom={pageState.isRecoveringRoom}
-          isRoomAway={isRoomAway}
           mediaConnectionState={pageState.mediaConnectionState}
           onAwayRoom={onAwayRoom}
           onDiagnosticsVisibilityChange={pageState.setIsDiagnosticsPanelOpen}
           onFilesSelected={playbackActions.handleFilesSelected}
           onPlayQueueItem={playbackActions.handlePlayQueueItem}
           onPlayTrack={playbackActions.handlePlayTrack}
-          onResumeRoom={onResumeRoom}
           onSeek={handleWorkspaceSeek}
           onTabChange={pageState.setActiveDashboardTab}
           playbackBarrier={playbackBarrier}

@@ -14,13 +14,10 @@ import type { useRoomPageRoomActions } from "@/features/room/hooks/use-room-page
 import type { useRoomClipboardActions } from "@/components/room/hooks/use-room-clipboard-actions";
 import type { useRoomPageState } from "@/features/room/hooks/use-room-page-state";
 import type { RoomPlaybackBarrierClock } from "@/features/playback/room-playback-clock";
-import { RoomsHomePage } from "@/components/room-home";
 import { RoomWorkspace } from "@/components/room/RoomWorkspace";
 
 export type RoomWorkspaceSectionProps = {
-  isRoomAway: boolean;
   awayRoomId: string | null;
-  onResumeRoom: () => void;
   onAwayRoom: () => void;
   activeSession: AuthSession | null;
   statusMessage: string;
@@ -52,9 +49,6 @@ export type RoomWorkspaceSectionProps = {
 };
 
 function RoomWorkspaceSectionComponent({
-  isRoomAway,
-  awayRoomId,
-  onResumeRoom,
   onAwayRoom,
   activeSession,
   statusMessage,
@@ -87,16 +81,6 @@ function RoomWorkspaceSectionComponent({
   const roomType = roomSnapshot?.room.roomType;
   const isHostControlledRoom = roomType === "request" || roomType === "radio";
   const isRoomHost = !!activeSession && roomSnapshot?.room.hostId === activeSession.userId;
-
-  if (isRoomAway) {
-    return (
-      <RoomsHomePage
-        awayRoomId={awayRoomId}
-        hasBottomPlayer
-        onResumeAwayRoom={onResumeRoom}
-      />
-    );
-  }
 
   return (
     <RoomWorkspace

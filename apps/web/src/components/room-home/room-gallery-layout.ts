@@ -366,6 +366,84 @@ export function countRoomsByFilter(
   return counts;
 }
 
+function areNowPlayingEqual(
+  left: RoomDirectoryItem["room"]["directoryNowPlaying"],
+  right: RoomDirectoryItem["room"]["directoryNowPlaying"]
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.title === right.title &&
+    left.artist === right.artist &&
+    left.artworkUrl === right.artworkUrl
+  );
+}
+
+export function areRoomDirectoryItemsEqual(
+  left: RoomDirectoryItem,
+  right: RoomDirectoryItem
+): boolean {
+  if (left === right) return true;
+  const a = left.room;
+  const b = right.room;
+  return (
+    a.id === b.id &&
+    a.joinCode === b.joinCode &&
+    a.name === b.name &&
+    a.description === b.description &&
+    a.hasPassword === b.hasPassword &&
+    a.visibility === b.visibility &&
+    a.roomType === b.roomType &&
+    a.directoryHostNickname === b.directoryHostNickname &&
+    a.directoryMemberCount === b.directoryMemberCount &&
+    a.directoryOnlineMemberCount === b.directoryOnlineMemberCount &&
+    a.directoryIsMember === b.directoryIsMember &&
+    a.directoryQueueDepth === b.directoryQueueDepth &&
+    a.directoryPendingRequestCount === b.directoryPendingRequestCount &&
+    a.directoryBroadcastState === b.directoryBroadcastState &&
+    a.playbackStatus === b.playbackStatus &&
+    areNowPlayingEqual(a.directoryNowPlaying, b.directoryNowPlaying)
+  );
+}
+
+/**
+ * Reuses existing `RoomDirectoryItem` object references for unchanged rooms and
+ * returns the previous array reference when order and fields are identical so
+ * periodic directory polling does not defeat `memo(RoomDirectoryCard)`.
+ */
+export function reconcileRoomDirectoryItems(
+  prev: readonly RoomDirectoryItem[],
+  next: readonly RoomDirectoryItem[]
+): RoomDirectoryItem[] {
+  if (next.length === 0) {
+    return prev.length === 0 ? (prev as RoomDirectoryItem[]) : [];
+  }
+
+  const prevById = new Map<string, RoomDirectoryItem>();
+  for (const item of prev) {
+    prevById.set(item.room.id, item);
+  }
+
+  let allSame = prev.length === next.length;
+  const reconciled = new Array<RoomDirectoryItem>(next.length);
+
+  for (let i = 0; i < next.length; i += 1) {
+    const candidate = next[i]!;
+    const previous = prevById.get(candidate.room.id);
+    if (previous && areRoomDirectoryItemsEqual(previous, candidate)) {
+      reconciled[i] = previous;
+      if (allSame && prev[i] !== previous) {
+        allSame = false;
+      }
+    } else {
+      reconciled[i] = candidate;
+      allSame = false;
+    }
+  }
+
+  return allSame ? (prev as RoomDirectoryItem[]) : reconciled;
+}
+
 export function toSafeViewTransitionToken(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "_");
 }

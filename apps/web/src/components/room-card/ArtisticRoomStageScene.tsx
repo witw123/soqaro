@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { RoomType } from "@soqaro/shared";
 
 type ArtisticRoomStageSceneProps = {
@@ -62,31 +63,35 @@ export function InteractiveStarfieldScene({ className = "" }: { className?: stri
  * 2. Request Room Scene: Clean Vinyl Record
  */
 export function RequestNebulaVinylScene({ className = "" }: { className?: string }) {
+  const gradientPrefix = useId().replace(/:/g, "");
+  const vinylBodyId = `${gradientPrefix}-vinylBody`;
+  const specularWedgeId = `${gradientPrefix}-specularWedge`;
+
   return (
     <div
       aria-hidden="true"
       className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0e0c13] select-none ${className}`}
     >
       {/* Vinyl Record */}
-      <div className="absolute -right-4 -bottom-8 w-40 h-40 sm:w-44 sm:h-44 transition-transform duration-500 ease-out group-hover:scale-105">
+      <div className="absolute -right-4 -bottom-8 w-40 h-40 sm:w-44 sm:h-44 rounded-full shadow-sm transition-transform duration-500 ease-out group-hover:scale-105">
         <svg
           viewBox="0 0 160 160"
-          className="w-full h-full drop-shadow-sm group-hover:animate-spin-slow full-motion-spin group-hover:will-change-transform"
+          className="w-full h-full group-hover:animate-spin-slow full-motion-spin group-hover:will-change-transform"
         >
           <defs>
-            <linearGradient id="vinylBody" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={vinylBodyId} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#222026" />
               <stop offset="50%" stopColor="#141317" />
               <stop offset="100%" stopColor="#1a181e" />
             </linearGradient>
-            <linearGradient id="specularWedge" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={specularWedgeId} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="rgba(255,255,255,0.12)" />
               <stop offset="100%" stopColor="rgba(255,255,255,0)" />
             </linearGradient>
           </defs>
 
           {/* Vinyl Disc Body */}
-          <circle cx="80" cy="80" r="76" fill="url(#vinylBody)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+          <circle cx="80" cy="80" r="76" fill={`url(#${vinylBodyId})`} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
 
           {/* Concentric Sound Grooves */}
           <circle cx="80" cy="80" r="68" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.75" />
@@ -94,8 +99,8 @@ export function RequestNebulaVinylScene({ className = "" }: { className?: string
           <circle cx="80" cy="80" r="44" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="0.75" />
 
           {/* Specular Reflective Highlight Wedges */}
-          <path d="M 80,80 L 140,40 A 76,76 0 0,0 110,12 Z" fill="url(#specularWedge)" />
-          <path d="M 80,80 L 20,120 A 76,76 0 0,0 50,148 Z" fill="url(#specularWedge)" />
+          <path d="M 80,80 L 140,40 A 76,76 0 0,0 110,12 Z" fill={`url(#${specularWedgeId})`} />
+          <path d="M 80,80 L 20,120 A 76,76 0 0,0 50,148 Z" fill={`url(#${specularWedgeId})`} />
 
           {/* Center Record Label */}
           <circle cx="80" cy="80" r="24" fill="#312e38" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />

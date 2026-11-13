@@ -1,6 +1,7 @@
 "use client";
 
 import { flushSync } from "react-dom";
+import { readAwayRoomId } from "@/lib/domain/away-room";
 
 export type RoomTransitionKind = "gallery" | "card-open" | "card-close" | "room-enter" | "room-exit";
 export type RoomTransitionDirection = "forward" | "backward";
@@ -57,35 +58,75 @@ function isThresholdSheetOpen(): boolean {
   return Boolean(document.querySelector('[data-dialog-backdrop="room-threshold"]'));
 }
 
+function isHomeDirectorySettled(): boolean {
+  if (typeof document === "undefined") return true;
+  const mosaicTray = document.querySelector('[data-testid="room-mosaic-canvas-tray"]');
+  if (!mosaicTray) return true;
+  return Boolean(
+    document.querySelector('[data-testid="room-directory-grid"], [data-testid="room-directory-empty"]')
+  );
+}
+
+function isElementVisibleInViewport(el: HTMLElement): boolean {
+  if (el.getClientRects().length === 0) return false;
+  if (
+    typeof el.getBoundingClientRect !== "function" ||
+    typeof window === "undefined" ||
+    !Number.isFinite(window.innerWidth) ||
+    !Number.isFinite(window.innerHeight) ||
+    window.innerWidth <= 0 ||
+    window.innerHeight <= 0
+  ) {
+    return true;
+  }
+
+  const rect = el.getBoundingClientRect();
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < window.innerHeight &&
+    rect.left < window.innerWidth
+  );
+}
+
+function classifyMorphRole(el: HTMLElement | null): "pill" | "card" | null {
+  if (!el) return null;
+  return el.dataset?.testid === "resume-away-room" ? "pill" : "card";
+}
+
+function findFirstVisibleCandidate(selector: string): HTMLElement | null {
+  const candidates = document.querySelectorAll<HTMLElement>(selector);
+  for (const candidate of candidates) {
+    if (candidate.closest('[aria-hidden="true"], .hidden')) continue;
+    if (isElementVisibleInViewport(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 /**
- * Finds the visible room card element corresponding to `roomId` across the
- * home mosaic grid, discover page sections, or floating away-room pill,
- * ignoring hidden cached routes inside `PersistentAppRouteViews`.
+ * Finds the visible, in-viewport room card element corresponding to `roomId`
+ * across the home mosaic grid, discover page sections, or floating away-room
+ * pill, ignoring hidden cached routes inside `PersistentAppRouteViews`.
  */
 export function findRoomCardElement(roomId: string | null | undefined): HTMLElement | null {
   if (typeof document === "undefined" || !roomId) return null;
   const escaped = escapeRoomSelectorValue(roomId);
 
-  const selectors = [
+  const cardSelectors = [
     `[data-mosaic-slot-id="${escaped}"] [data-testid="room-directory-card"]`,
-    `[data-discover-room-id="${escaped}"]`,
-    `[data-testid="resume-away-room"]`
+    `[data-discover-room-id="${escaped}"]`
   ];
 
-  let domFallback: HTMLElement | null = null;
-  for (const selector of selectors) {
-    const candidates = document.querySelectorAll<HTMLElement>(selector);
-    for (const candidate of candidates) {
-      if (candidate.closest('[aria-hidden="true"], .hidden')) continue;
-      if (candidate.getClientRects().length > 0) {
-        return candidate;
-      }
-      if (!domFallback) {
-        domFallback = candidate;
-      }
-    }
+  for (const selector of cardSelectors) {
+    const match = findFirstVisibleCandidate(selector);
+    if (match) return match;
   }
-  return domFallback;
+
+  return findFirstVisibleCandidate('[data-testid="resume-away-room"]');
 }
 
 function waitForDomCondition(
@@ -99,6 +140,7 @@ function waitForDomCondition(
   return new Promise<void>((resolve) => {
     let settled = false;
     let rafId: number | null = null;
+    let mutationCheckQueued = false;
 
     const finish = () => {
       if (settled) return;
@@ -111,13 +153,26 @@ function waitForDomCondition(
       resolve();
     };
 
-    const check = () => {
-      if (predicate()) {
+    const runCheck = () => {
+      mutationCheckQueued = false;
+      if (!settled && predicate()) {
         finish();
       }
     };
 
-    const observer = new MutationObserver(check);
+    // Coalesce bursts of React commit / unmount mutations into a single check
+    // instead of querying the DOM and calling `getClientRects()` per mutation record.
+    const scheduleMutationCheck = () => {
+      if (settled || mutationCheckQueued) return;
+      mutationCheckQueued = true;
+      if (typeof queueMicrotask === "function") {
+        queueMicrotask(runCheck);
+      } else {
+        runCheck();
+      }
+    };
+
+    const observer = new MutationObserver(scheduleMutationCheck);
     if (document.body) {
       observer.observe(document.body, {
         childList: true,
@@ -187,18 +242,46 @@ export function runRoomViewTransition(
   }
 
   const root = document.documentElement;
+  const clearRootTransitionAttrs = () => {
+    delete root.dataset.roomTransition;
+    delete root.dataset.roomDirection;
+    delete root.dataset.roomTransitionOrigin;
+    delete root.dataset.roomTransitionTarget;
+  };
+
   root.dataset.roomTransition = kind;
+  delete root.dataset.roomTransitionOrigin;
+  delete root.dataset.roomTransitionTarget;
   if (options.direction) {
     root.dataset.roomDirection = options.direction;
   } else {
     delete root.dataset.roomDirection;
   }
 
+  const tagRoomExitTarget = (targetRoomId: string | null | undefined) => {
+    if (!targetRoomId) return;
+    const target = findRoomCardElement(targetRoomId);
+    tagElementForShellMorph(target);
+    const role = classifyMorphRole(target);
+    if (role) {
+      root.dataset.roomTransitionTarget = role;
+    }
+  };
+
   try {
     if (kind === "card-open" && options.roomId) {
       tagElementForShellMorph(findRoomCardElement(options.roomId));
-    } else if (kind === "room-enter" && options.roomId && !isThresholdSheetOpen()) {
-      tagElementForShellMorph(findRoomCardElement(options.roomId));
+    } else if (kind === "room-enter") {
+      if (isThresholdSheetOpen()) {
+        root.dataset.roomTransitionOrigin = "sheet";
+      } else if (options.roomId) {
+        const origin = findRoomCardElement(options.roomId);
+        tagElementForShellMorph(origin);
+        const role = classifyMorphRole(origin);
+        if (role) {
+          root.dataset.roomTransitionOrigin = role;
+        }
+      }
     }
 
     options.beforeCapture?.();
@@ -228,18 +311,23 @@ export function runRoomViewTransition(
 
       if (kind === "room-exit") {
         const targetRoomId = options.roomId;
-        if (!isRoomHostMounted()) {
-          if (targetRoomId) {
-            tagElementForShellMorph(findRoomCardElement(targetRoomId));
-          }
+        const canResolveExitTarget = () => {
+          if (isRoomHostMounted()) return false;
+          if (!isHomeDirectorySettled()) return false;
+          if (!targetRoomId) return true;
+          if (findRoomCardElement(targetRoomId)) return true;
+          // If the room is no longer marked away (leave/delete of a private room),
+          // finish immediately so exit falls back cleanly instead of stalling.
+          return readAwayRoomId() !== targetRoomId;
+        };
+
+        if (canResolveExitTarget()) {
+          tagRoomExitTarget(targetRoomId);
           return;
         }
-        return waitForDomCondition(
-          () => !isRoomHostMounted() && (!targetRoomId || Boolean(findRoomCardElement(targetRoomId))),
-          MAX_ASYNC_ROUTE_WAIT_MS
-        ).then(() => {
-          if (!isRoomHostMounted() && targetRoomId) {
-            tagElementForShellMorph(findRoomCardElement(targetRoomId));
+        return waitForDomCondition(canResolveExitTarget, MAX_ASYNC_ROUTE_WAIT_MS).then(() => {
+          if (!isRoomHostMounted()) {
+            tagRoomExitTarget(targetRoomId);
           }
         });
       }
@@ -252,15 +340,13 @@ export function runRoomViewTransition(
       .finally(() => {
         clearActiveTaggedElement();
         if (root.dataset.roomTransition === kind) {
-          delete root.dataset.roomTransition;
-          delete root.dataset.roomDirection;
+          clearRootTransitionAttrs();
         }
         options.onFinished?.();
       });
   } catch {
     clearActiveTaggedElement();
-    delete root.dataset.roomTransition;
-    delete root.dataset.roomDirection;
+    clearRootTransitionAttrs();
     commitUpdate();
     options.onFinished?.();
   }

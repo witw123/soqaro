@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import type {
   PeerDiagnosticsSnapshot,
   PeerRecentEvent,
@@ -14,7 +14,7 @@ import { MeshStatusPanel } from "./MeshStatusPanel";
 
 type MembersTabPanelProps = {
   members: RoomMember[];
-  now: number;
+  now?: number;
   activeSessionId: string | null;
   isHost: boolean;
   onUpdateMemberPermissions: (memberId: string, permissions: RoomMemberPermissions) => Promise<boolean>;
@@ -47,11 +47,20 @@ function MembersTabPanelBase({
   iceConfigStatus,
   onDiagnosticsVisibilityChange
 }: MembersTabPanelProps) {
+  const [localNow, setLocalNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (typeof now === "number") return;
+    setLocalNow(Date.now());
+    const timer = window.setInterval(() => setLocalNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [now]);
+
   return (
     <div className="animate-fade-in flex w-full flex-col gap-5">
       <MembersPanel
         members={members}
-        now={now}
+        now={now ?? localNow}
         activeSessionId={activeSessionId}
         isHost={isHost}
         onUpdateMemberPermissions={onUpdateMemberPermissions}

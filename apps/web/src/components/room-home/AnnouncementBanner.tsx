@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SystemAnnouncement } from "@soqaro/shared";
 import { soqaroApi } from "@/lib/network/soqaro-api";
+import { useWorkspacePageActive } from "@/features/workspace/page-activity";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -71,11 +72,13 @@ function formatExactTime(isoString: string): string {
 }
 
 export function useAnnouncementCenter() {
+  const pageActive = useWorkspacePageActive();
   const announcementsQuery = useQuery({
     queryKey: ["system-announcements", "active"],
     queryFn: ({ signal }) => soqaroApi.getActiveAnnouncements(signal),
+    enabled: pageActive,
     staleTime: 30_000,
-    refetchInterval: 30_000
+    refetchInterval: pageActive ? 30_000 : false
   });
 
   const rawAnnouncements = announcementsQuery.data?.data;
@@ -101,10 +104,12 @@ export function useAnnouncementCenter() {
   const [cycle, setCycle] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(700);
+  const showMarquee = !isDismissed && announcements.length > 0;
 
   useEffect(() => {
+    if (!showMarquee) return;
     const el = containerRef.current;
-    if (!el) return;
+    if (!el || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (entry.contentRect.width > 0) {
@@ -114,7 +119,7 @@ export function useAnnouncementCenter() {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [isDismissed, announcements.length]);
+  }, [showMarquee]);
 
   // Current announcement: displays exactly one announcement per cycle, cycling through all active ones
   const activeIndex = announcements.length > 0 ? cycle % announcements.length : 0;
@@ -134,7 +139,7 @@ export function useAnnouncementCenter() {
     return Math.max(12, Math.min(60, Math.round(totalDistance / 60)));
   }, [containerWidth, currentAnnouncementText]);
 
-  function handleDismissMarquee() {
+  const handleDismissMarquee = useCallback(() => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
       announcements.forEach((item) => next.add(item.id));
@@ -142,9 +147,9 @@ export function useAnnouncementCenter() {
       setIsDismissed(true);
       return next;
     });
-  }
+  }, [announcements]);
 
-  function handleMarkAsRead(id: string) {
+  const handleMarkAsRead = useCallback((id: string) => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
       next.add(id);
@@ -154,47 +159,49 @@ export function useAnnouncementCenter() {
       }
       return next;
     });
-  }
+  }, [announcements]);
 
-  function handleOpenModal(item?: SystemAnnouncement) {
+  const handleOpenModal = useCallback((item?: SystemAnnouncement) => {
     setSelectedAnnouncement(item ?? null);
     setIsModalOpen(true);
-  }
+  }, []);
 
   const hasUnread = useMemo(() => {
     if (!announcements.length) return false;
     return announcements.some((item) => !dismissedIds.has(item.id));
   }, [announcements, dismissedIds]);
 
-  const showMarquee = !isDismissed && announcements.length > 0;
-
-  const bellTriggerNode = !showMarquee ? (
-    <button
-      type="button"
-      onClick={() => handleOpenModal()}
-      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-hairline border-surface-border bg-surface text-foreground-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[250ms] ease-out cursor-pointer active:scale-95"
-      title="系统公告"
-      aria-label="查看系统公告"
-    >
-      <svg
-        aria-hidden="true"
-        width="15"
-        height="15"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-      </svg>
-      {hasUnread ? (
-        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
-      ) : null}
-    </button>
-  ) : null;
+  const bellTriggerNode = useMemo(
+    () =>
+      !showMarquee ? (
+        <button
+          type="button"
+          onClick={() => handleOpenModal()}
+          className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-hairline border-surface-border bg-surface text-foreground-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[250ms] ease-out cursor-pointer active:scale-95"
+          title="系统公告"
+          aria-label="查看系统公告"
+        >
+          <svg
+            aria-hidden="true"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+          {hasUnread ? (
+            <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
+          ) : null}
+        </button>
+      ) : null,
+    [handleOpenModal, hasUnread, showMarquee]
+  );
 
   const marqueeNode = showMarquee ? (
     <aside

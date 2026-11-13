@@ -129,7 +129,10 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
     }
 
     return (
-      <div className="mx-auto flex min-h-[260px] max-w-[680px] flex-col items-center justify-center px-6 py-14 text-center">
+      <div
+        className="mx-auto flex min-h-[260px] max-w-[680px] flex-col items-center justify-center px-6 py-14 text-center"
+        data-testid="room-directory-empty"
+      >
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-hairline border-surface-border bg-surface text-foreground-muted">
           <LayoutGrid className="h-5 w-5" />
         </div>

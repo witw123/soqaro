@@ -204,9 +204,8 @@ export function useRoomRuntimeLifecycle(input: {
       return;
     }
 
-    void refreshAvailableRooms();
     void refreshPlaylists();
-  }, [activeSession, refreshAvailableRooms, refreshPlaylists]);
+  }, [activeSession, refreshPlaylists]);
 
   useEffect(() => {
     const recoverRealtimeSession = () => {

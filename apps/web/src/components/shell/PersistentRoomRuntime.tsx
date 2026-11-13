@@ -17,6 +17,7 @@ import { AppPersistentPlayer } from "@/components/bottom-player/AppPersistentPla
 import { resolvePlaybackOwnership } from "@/features/playback/playback-ownership";
 import { useSessionIdentity } from "@/features/session/use-session-identity";
 import { WorkspaceQueryProvider } from "@/features/workspace/workspace-query-provider";
+import { AppRouteShell } from "./AppRouteShell";
 import { StorageRootGate } from "./StorageRootGate";
 
 // 房间运行时(实时引擎/P2P/音频编码)体量很大且只在进房后渲染,
@@ -97,6 +98,10 @@ function RoomRuntime({ children }: { children: ReactNode }) {
   const { owner, routeRoomId, runtimeRoomId } = resolvePlaybackOwnership(
     pathname, awayRoomId, isLyricsWindow
   );
+  const isWorkspaceRoute = Boolean(
+    pathname && (pathname === "/rooms" || pathname === "/app" || pathname.startsWith("/app/"))
+  );
+  const shouldMountAppShell = !isLyricsWindow && (isWorkspaceRoute || Boolean(routeRoomId));
   const { result: updateResult, isPromptOpen: isUpdatePromptOpen, dismissPrompt: dismissUpdatePrompt } = useAppUpdate({
     autoCheck: !isLyricsWindow
   });
@@ -105,7 +110,13 @@ function RoomRuntime({ children }: { children: ReactNode }) {
     <DesktopLyricsProvider activeSource={owner}>
       <WorkspaceQueryProvider key={activeSession?.userId ?? "anonymous"}>
         <LocalPlayerProvider active={owner === "local"}>
-          {children}
+          {shouldMountAppShell ? (
+            <AppRouteShell active={isWorkspaceRoute} pathname={pathname}>
+              {isWorkspaceRoute ? children : null}
+            </AppRouteShell>
+          ) : (
+            children
+          )}
           {owner === "local" ? <AppPersistentPlayer /> : null}
           {hasMounted && runtimeRoomId ? (
             <SoqaroApp

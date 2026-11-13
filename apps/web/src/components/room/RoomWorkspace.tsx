@@ -95,6 +95,7 @@ type RoomWorkspaceProps = {
   onRemoveQueueItems?: (queueItemIds: string[]) => Promise<void>;
   onPlayTrack: (trackId: string) => Promise<void>;
   onRefreshRoom: () => Promise<RoomSnapshot | null>;
+  onRetryRecovery?: () => void;
   onTabChange: (tab: "library" | "search" | "local" | "members") => void;
   onDiagnosticsVisibilityChange: (open: boolean) => void;
   onSeek: (positionMs: number) => void;
@@ -169,6 +170,7 @@ function RoomWorkspaceBase({
   onRemoveQueueItems,
   onPlayTrack,
   onRefreshRoom,
+  onRetryRecovery,
   onTabChange,
   onDiagnosticsVisibilityChange,
   onSeek,
@@ -308,6 +310,7 @@ function RoomWorkspaceBase({
               workspaceEntryHref={workspaceEntryHref}
               authEntryHref={authEntryHref}
               onClearIdentity={onClearIdentity}
+              onRetryRecovery={onRetryRecovery}
             />
           )}
         </div>

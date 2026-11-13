@@ -36,13 +36,13 @@ import {
 } from "@/lib/domain/away-room";
 import { buildWorkspaceAuthHref } from "@/lib/domain/client-shell";
 import {
-  buildRoomJoinBootstrapSnapshot,
-  storeRoomSnapshotHandoff
+  prepareRoomJoinHandoff
 } from "@/lib/domain/room-snapshot-handoff";
 import { toUserFacingError } from "@/lib/domain/soqaro-ui";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 import { useBackHandler } from "@/lib/desktop/use-back-handler";
 import {
+  awaitRoomRuntimePrewarm,
   prewarmRoomRuntimeChunk,
   runRoomViewTransition
 } from "@/lib/ui/room-view-transition";
@@ -179,9 +179,10 @@ export function DiscoverPage() {
     [router]
   );
 
-  const handleResumeAwayRoom = useCallback(() => {
+  const handleResumeAwayRoom = useCallback(async () => {
     if (!awayRoomId) return;
-    prewarmRoomRuntimeChunk();
+    handlePrewarmRoom(awayRoomId);
+    await awaitRoomRuntimePrewarm();
     requestAwayRoomResume(awayRoomId);
     runRoomViewTransition(
       "room-enter",
@@ -190,7 +191,7 @@ export function DiscoverPage() {
       },
       { roomId: awayRoomId }
     );
-  }, [awayRoomId, router]);
+  }, [awayRoomId, handlePrewarmRoom, router]);
 
   const openRoomDetails = useCallback(
     (room: RoomDirectoryItem) => {
@@ -238,8 +239,10 @@ export function DiscoverPage() {
     prewarmRoomRuntimeChunk();
     try {
       const joined = await soqaroApi.joinRoomByCode(code.trim(), password);
-      storeRoomSnapshotHandoff(buildRoomJoinBootstrapSnapshot(joined));
-      window.localStorage.setItem(lastRoomStorageKey, joined.roomId);
+      await prepareRoomJoinHandoff(joined, {
+        lastRoomStorageKey,
+        prefetchRoom: () => handlePrewarmRoom(joined.roomId)
+      });
       runRoomViewTransition(
         "room-enter",
         () => {
@@ -511,7 +514,10 @@ export function DiscoverPage() {
             ))}
           </div>
         ) : availableRooms.length === 0 ? (
-          <div className="mt-4 flex min-h-56 flex-col items-center justify-center rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] px-6 py-10 text-center">
+          <div
+            className="mt-4 flex min-h-56 flex-col items-center justify-center rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] px-6 py-10 text-center"
+            data-discover-empty="true"
+          >
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)] text-[var(--slate-10)]">
               <Compass className="h-5 w-5" />
             </div>
@@ -532,7 +538,7 @@ export function DiscoverPage() {
           </div>
         ) : isFilteredView ? (
           /* Filtered or Searched Room Results */
-          <section className="flex flex-col gap-3">
+          <section className="flex flex-col gap-3" data-discover-ready="true">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold tracking-tight text-[var(--slate-12)]">
                 筛选结果
@@ -566,7 +572,10 @@ export function DiscoverPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] px-6 py-8 text-center">
+              <div
+                className="flex min-h-48 flex-col items-center justify-center rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] px-6 py-8 text-center"
+                data-discover-empty="true"
+              >
                 <p className="text-sm font-medium text-[var(--slate-12)]">
                   没有找到匹配的房间
                 </p>
@@ -589,7 +598,7 @@ export function DiscoverPage() {
           </section>
         ) : (
           /* Default Curated Multi-Section Room Discovery */
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-6" data-discover-ready="true">
             {/* Section 1: Live Spotlight Rooms */}
             {liveSpotlightRooms.length > 0 ? (
               <section className="flex flex-col gap-2.5">

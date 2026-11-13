@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { storeAwayRoomId } from "@/lib/domain/away-room";
 import { capacitorPlugin } from "@/lib/desktop/tauri";
 import { resolveBackNavigation, runBackHandler } from "@/lib/desktop/back-handler";
+import { runRoomViewTransition } from "@/lib/ui/room-view-transition";
 
 type BackButtonPayload = { canGoBack?: boolean };
 
@@ -60,6 +62,21 @@ export function ShellBackButton() {
       if (decision.action === "navigate") {
         // 逻辑父级导航:房间/子页返回大厅,而不是历史里的上一界面。
         // typedRoutes 把 target 收窄为字符串字面量,这里显式放宽。
+        const currentPath = pathnameRef.current;
+        if (currentPath?.startsWith("/room/") && decision.target === "/app") {
+          const roomId = currentPath.slice("/room/".length).split("/")[0] ?? null;
+          if (roomId) {
+            runRoomViewTransition(
+              "room-exit",
+              () => {
+                storeAwayRoomId(roomId);
+                router.push(decision.target as Parameters<typeof router.push>[0]);
+              },
+              { roomId }
+            );
+            return;
+          }
+        }
         router.push(decision.target as Parameters<typeof router.push>[0]);
         return;
       }

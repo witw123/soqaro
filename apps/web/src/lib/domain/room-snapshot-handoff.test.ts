@@ -1,9 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoomJoinResponse, RoomSnapshot } from "@soqaro/shared";
+import { soqaroApi } from "@/lib/network/soqaro-api";
+import { storeAwayRoomId, readAwayRoomId } from "@/lib/domain/away-room";
+
+vi.mock("@/lib/ui/room-view-transition", () => ({
+  awaitRoomRuntimePrewarm: vi.fn().mockResolvedValue(undefined)
+}));
+
 import {
   buildRoomJoinBootstrapSnapshot,
   consumeRoomSnapshotHandoff,
   peekRoomSnapshotHandoff,
+  prepareRoomJoinHandoff,
   storeRoomSnapshotHandoff
 } from "./room-snapshot-handoff";
 
@@ -40,20 +48,34 @@ function buildSnapshot(roomId = "room_1"): RoomSnapshot {
 
 describe("room snapshot handoff", () => {
   beforeEach(() => {
-    const storage = new Map<string, string>();
+    const session = new Map<string, string>();
+    const local = new Map<string, string>();
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: {
+        dispatchEvent: () => true,
         sessionStorage: {
-          getItem: (key: string) => storage.get(key) ?? null,
+          getItem: (key: string) => session.get(key) ?? null,
           setItem: (key: string, value: string) => {
-            storage.set(key, value);
+            session.set(key, value);
           },
           removeItem: (key: string) => {
-            storage.delete(key);
+            session.delete(key);
           },
           clear: () => {
-            storage.clear();
+            session.clear();
+          }
+        },
+        localStorage: {
+          getItem: (key: string) => local.get(key) ?? null,
+          setItem: (key: string, value: string) => {
+            local.set(key, value);
+          },
+          removeItem: (key: string) => {
+            local.delete(key);
+          },
+          clear: () => {
+            local.clear();
           }
         }
       }
@@ -62,11 +84,14 @@ describe("room snapshot handoff", () => {
 
   beforeEach(() => {
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     window.sessionStorage.clear();
+    window.localStorage.clear();
     Reflect.deleteProperty(globalThis, "window");
   });
 
@@ -111,5 +136,46 @@ describe("room snapshot handoff", () => {
     vi.advanceTimersByTime(60_001);
 
     expect(consumeRoomSnapshotHandoff(snapshot.room.id)).toBeNull();
+  });
+
+  it("prepares full snapshot handoff via syncRoom and falls back to bootstrap when sync fails", async () => {
+    const baseSnapshot = buildSnapshot("room_full");
+    const fullSnapshot: RoomSnapshot = {
+      ...baseSnapshot,
+      room: {
+        ...baseSnapshot.room,
+        roomRevision: 7
+      }
+    };
+    const joined: RoomJoinResponse = {
+      roomId: "room_full",
+      roomRevision: 7,
+      room: baseSnapshot.room
+    };
+
+    storeAwayRoomId("room_other");
+    const prefetchRoom = vi.fn();
+    vi.spyOn(soqaroApi, "syncRoom").mockResolvedValueOnce({
+      roomId: "room_full",
+      roomDeleted: false,
+      roomRevision: 7,
+      snapshot: fullSnapshot,
+      deletedTracks: []
+    });
+
+    const resolved = await prepareRoomJoinHandoff(joined, {
+      lastRoomStorageKey: "soqaro-last-room",
+      prefetchRoom
+    });
+
+    expect(prefetchRoom).toHaveBeenCalledTimes(1);
+    expect(resolved).toEqual(fullSnapshot);
+    expect(consumeRoomSnapshotHandoff("room_full")).toEqual(fullSnapshot);
+    expect(readAwayRoomId()).toBeNull();
+    expect(window.localStorage.getItem("soqaro-last-room")).toBe("room_full");
+
+    vi.spyOn(soqaroApi, "syncRoom").mockRejectedValueOnce(new Error("network timeout"));
+    const fallback = await prepareRoomJoinHandoff(joined);
+    expect(fallback).toEqual(buildRoomJoinBootstrapSnapshot(joined));
   });
 });

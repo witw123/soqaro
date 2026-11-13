@@ -10,7 +10,7 @@ import { buildAppEntryHref, buildWorkspaceAuthHref } from "@/lib/domain/client-s
 import { soqaroApi } from "@/lib/network/soqaro-api";
 import { toUserFacingError } from "@/lib/domain/soqaro-ui";
 import {
-  buildRoomJoinBootstrapSnapshot,
+  prepareRoomJoinHandoff,
   storeRoomSnapshotHandoff
 } from "@/lib/domain/room-snapshot-handoff";
 import { AppSidebar } from "@/components/shell";
@@ -32,11 +32,14 @@ import {
   type RoomFilterValue
 } from "./room-gallery-layout";
 import {
+  awaitRoomRuntimePrewarm,
   prewarmRoomRuntimeChunk,
   runRoomViewTransition
 } from "./room-view-transition";
 import type { CreateRoomForm } from "./room-home-types";
 import {
+  awayRoomChangeEvent,
+  clearAwayRoomId,
   readAwayRoomId,
   requestAwayRoomResume
 } from "@/lib/domain/away-room";
@@ -116,7 +119,14 @@ export function RoomsHomePage({
       return;
     }
 
-    setStoredAwayRoomId(readAwayRoomId());
+    const syncAwayRoom = () => setStoredAwayRoomId(readAwayRoomId());
+    syncAwayRoom();
+    window.addEventListener(awayRoomChangeEvent, syncAwayRoom);
+    window.addEventListener("storage", syncAwayRoom);
+    return () => {
+      window.removeEventListener(awayRoomChangeEvent, syncAwayRoom);
+      window.removeEventListener("storage", syncAwayRoom);
+    };
   }, [awayRoomId]);
 
   const handlePrewarmRoom = useCallback(
@@ -129,14 +139,16 @@ export function RoomsHomePage({
     [buildRoomHref, router]
   );
 
-  const handleResumeAwayRoom = useCallback(() => {
+  const handleResumeAwayRoom = useCallback(async () => {
     if (!effectiveAwayRoomId) return;
-    prewarmRoomRuntimeChunk();
+    handlePrewarmRoom(effectiveAwayRoomId);
     if (onResumeAwayRoom) {
+      await awaitRoomRuntimePrewarm();
       onResumeAwayRoom();
       return;
     }
 
+    await awaitRoomRuntimePrewarm();
     requestAwayRoomResume(effectiveAwayRoomId);
     runRoomViewTransition(
       "room-enter",
@@ -145,7 +157,7 @@ export function RoomsHomePage({
       },
       { roomId: effectiveAwayRoomId }
     );
-  }, [buildRoomHref, effectiveAwayRoomId, onResumeAwayRoom, router]);
+  }, [buildRoomHref, effectiveAwayRoomId, handlePrewarmRoom, onResumeAwayRoom, router]);
 
   useEffect(() => {
     if (roomsQuery.error) setStatusMessage(toUserFacingError(roomsQuery.error));
@@ -213,8 +225,14 @@ export function RoomsHomePage({
           ? { newMemberPermissions: form.newMemberPermissions }
           : {})
       });
+      handlePrewarmRoom(snapshot.room.id);
       storeRoomSnapshotHandoff(snapshot);
+      const staleAwayRoomId = readAwayRoomId();
+      if (staleAwayRoomId && staleAwayRoomId !== snapshot.room.id) {
+        clearAwayRoomId();
+      }
       window.localStorage.setItem(lastRoomStorageKey, snapshot.room.id);
+      await awaitRoomRuntimePrewarm();
       runRoomViewTransition(
         "room-enter",
         () => {
@@ -242,8 +260,10 @@ export function RoomsHomePage({
     prewarmRoomRuntimeChunk();
     try {
       const joined = await soqaroApi.joinRoomByCode(code.trim(), password);
-      storeRoomSnapshotHandoff(buildRoomJoinBootstrapSnapshot(joined));
-      window.localStorage.setItem(lastRoomStorageKey, joined.roomId);
+      await prepareRoomJoinHandoff(joined, {
+        lastRoomStorageKey,
+        prefetchRoom: () => handlePrewarmRoom(joined.roomId)
+      });
       runRoomViewTransition(
         "room-enter",
         () => {
@@ -367,15 +387,20 @@ export function RoomsHomePage({
   const activeChannelTheme = ROOM_CHANNEL_THEMES[roomTypeFilter];
 
   const handleHomeScroll = useCallback(() => {
+    if (!pageActive) return;
     persistedHomeScroll = {
       containerTop: mainContainerRef.current?.scrollTop ?? 0,
       windowY: typeof window !== "undefined" ? window.scrollY : 0
     };
-  }, []);
+  }, [pageActive]);
 
   // Restore scroll synchronously before View Transition captures the returning
   // `/app` snapshot so the target card lands at its original screen coordinates.
   useLayoutEffect(() => {
+    if (!pageActive) {
+      hasRestoredScrollRef.current = false;
+      return;
+    }
     if (!hydrated || !roomsLoaded || hasRestoredScrollRef.current) return;
     hasRestoredScrollRef.current = true;
     const { containerTop, windowY } = persistedHomeScroll;
@@ -385,7 +410,7 @@ export function RoomsHomePage({
     if (windowY > 0 && typeof window !== "undefined") {
       window.scrollTo({ top: windowY, behavior: "instant" as ScrollBehavior });
     }
-  }, [hydrated, roomsLoaded]);
+  }, [pageActive, hydrated, roomsLoaded]);
 
   useEffect(() => {
     const container = mainContainerRef.current;

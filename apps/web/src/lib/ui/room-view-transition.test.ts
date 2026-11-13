@@ -427,4 +427,102 @@ describe("room-view-transition", () => {
 
     expect(findRoomCardElement("room_radix_close")?.id).toBe("radix-masked-card");
   });
+
+  it("waits for visible home directory on /app exit and scrolls an off-viewport card into view for shrink morph", async () => {
+    const dataset: Record<string, string | undefined> = {};
+    let roomHostMounted = true;
+    let homeGridVisible = false;
+    let cardInViewport = false;
+
+    const hiddenGrid = createMockElement("hidden-grid", { hidden: true, visibleRect: false });
+    const visibleGrid = createMockElement("visible-grid", { hidden: false, visibleRect: true });
+
+    const scrollIntoView = vi.fn(() => {
+      cardInViewport = true;
+    });
+
+    const offscreenCard = {
+      ...createMockElement("card-exit-1", { hidden: false, visibleRect: true }),
+      scrollIntoView,
+      getBoundingClientRect: () =>
+        cardInViewport
+          ? { width: 300, height: 160, top: 200, bottom: 360, left: 40, right: 340 }
+          : { width: 300, height: 160, top: 1400, bottom: 1560, left: 40, right: 340 }
+    } as unknown as HTMLElement;
+
+    let resolveFinished!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      resolveFinished = resolve;
+    });
+
+    vi.stubGlobal("window", {
+      innerWidth: 1280,
+      innerHeight: 800,
+      location: { pathname: "/app" },
+      matchMedia: () => ({ matches: false }),
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+      requestAnimationFrame: (cb: FrameRequestCallback) => globalThis.setTimeout(() => cb(0), 5),
+      cancelAnimationFrame: (id: number) => globalThis.clearTimeout(id)
+    });
+
+    vi.stubGlobal(
+      "MutationObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    );
+
+    vi.stubGlobal("document", {
+      documentElement: { dataset },
+      body: {},
+      querySelector: (selector: string) => {
+        if (selector === '[data-custom-layout-room-host="true"]') {
+          return roomHostMounted ? ({} as Element) : null;
+        }
+        return null;
+      },
+      querySelectorAll: (selector: string) => {
+        if (selector.includes("room-directory-grid")) {
+          return homeGridVisible ? [hiddenGrid, visibleGrid] : [hiddenGrid];
+        }
+        if (homeGridVisible && selector.includes("data-mosaic-slot-id")) {
+          return [offscreenCard];
+        }
+        return [];
+      },
+      startViewTransition: vi.fn((cb: () => void | Promise<void>) => {
+        return { finished, result: cb() };
+      })
+    });
+
+    let callbackPromise: Promise<void> | undefined;
+    const startMock = document.startViewTransition as unknown as ReturnType<typeof vi.fn>;
+    startMock.mockImplementation((cb: () => void | Promise<void>) => {
+      callbackPromise = cb() as Promise<void>;
+      return { finished };
+    });
+
+    runRoomViewTransition(
+      "room-exit",
+      () => {
+        roomHostMounted = false;
+        globalThis.setTimeout(() => {
+          homeGridVisible = true;
+        }, 12);
+      },
+      { roomId: "room_exit_scroll" }
+    );
+
+    expect(callbackPromise).toBeInstanceOf(Promise);
+    await callbackPromise;
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(offscreenCard.style.viewTransitionName).toBe("active-room-shell");
+    expect(dataset.roomTransitionTarget).toBe("card");
+
+    resolveFinished();
+    await finished;
+  });
 });

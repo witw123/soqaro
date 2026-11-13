@@ -34,12 +34,14 @@ export function EmptyRoomState({
   activeSession,
   workspaceEntryHref,
   authEntryHref,
-  onClearIdentity
+  onClearIdentity,
+  onRetryRecovery
 }: {
   activeSession: unknown;
   workspaceEntryHref: string;
   authEntryHref: string;
   onClearIdentity: () => void;
+  onRetryRecovery?: () => void;
 }) {
   return (
     <section className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-fade-in pt-12">
@@ -52,13 +54,18 @@ export function EmptyRoomState({
       <h2 className="text-2xl font-bold text-foreground mb-4">当前没有可用的房间</h2>
       <p className="text-sm text-foreground-muted max-w-sm mb-8 leading-relaxed">
         {activeSession
-          ? "这个地址没有恢复到有效房间。请回到房间列表，重新创建或通过房间码加入。"
+          ? "这个地址没有恢复到有效房间。可重试连接，或回到房间列表重新创建与加入。"
           : "你还没有登录。先进入登录页，再回到房间列表继续。"}
       </p>
       <div className="flex flex-wrap items-center justify-center gap-4">
         <Link href={workspaceEntryHref as Route}>
           <Button size="lg">返回房间列表</Button>
         </Link>
+        {activeSession && onRetryRecovery ? (
+          <Button variant="outline" onClick={onRetryRecovery} type="button">
+            重新连接房间
+          </Button>
+        ) : null}
         {activeSession ? (
           <Button variant="ghost" onClick={onClearIdentity} type="button">
             清除当前会话状态

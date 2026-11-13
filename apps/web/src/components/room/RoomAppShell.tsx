@@ -44,6 +44,7 @@ type RoomAppShellProps = {
   isRoomAway: boolean;
   awayRoomId: string | null;
   onAwayRoom: () => void;
+  onRetryRecovery?: () => void;
   socket: RoomSocket | null;
   statusMessage: string;
   uploads: ReturnType<typeof useTrackUploads>;
@@ -72,6 +73,7 @@ export function RoomAppShell({
   isRoomAway,
   awayRoomId,
   onAwayRoom,
+  onRetryRecovery,
   socket,
   statusMessage,
   uploads,
@@ -152,6 +154,7 @@ export function RoomAppShell({
           isRecoveringRoom={pageState.isRecoveringRoom}
           mediaConnectionState={pageState.mediaConnectionState}
           onAwayRoom={onAwayRoom}
+          onRetryRecovery={onRetryRecovery}
           onDiagnosticsVisibilityChange={pageState.setIsDiagnosticsPanelOpen}
           onFilesSelected={playbackActions.handleFilesSelected}
           onPlayQueueItem={playbackActions.handlePlayQueueItem}

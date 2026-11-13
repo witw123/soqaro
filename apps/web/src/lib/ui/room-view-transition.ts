@@ -22,7 +22,7 @@ type ViewTransitionCapableDocument = Document & {
   startViewTransition?: (updateCallback: () => void | Promise<void>) => ViewTransitionHandle;
 };
 
-const MAX_ASYNC_ROUTE_WAIT_MS = 600;
+const MAX_ASYNC_ROUTE_WAIT_MS = 1500;
 
 let activeTaggedElement: HTMLElement | null = null;
 
@@ -58,12 +58,37 @@ function isThresholdSheetOpen(): boolean {
   return Boolean(document.querySelector('[data-dialog-backdrop="room-threshold"]'));
 }
 
+function hasVisibleDomMatch(selector: string): boolean {
+  const candidates = document.querySelectorAll<HTMLElement>(selector);
+  if (candidates.length > 0) {
+    for (const candidate of candidates) {
+      if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
+      return true;
+    }
+    return false;
+  }
+  const single = document.querySelector<HTMLElement>(selector);
+  if (!single) return false;
+  return !single.closest?.('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden');
+}
+
 function isHomeDirectorySettled(): boolean {
   if (typeof document === "undefined") return true;
+  const pathname = typeof window !== "undefined" ? window.location?.pathname : undefined;
+  if (pathname === "/app" || pathname === "/rooms") {
+    return hasVisibleDomMatch(
+      '[data-testid="room-directory-grid"], [data-testid="room-directory-empty"]'
+    );
+  }
+  if (pathname === "/app/discover") {
+    return hasVisibleDomMatch(
+      '[data-discover-ready], [data-discover-room-id], [data-discover-empty]'
+    );
+  }
   const mosaicTray = document.querySelector('[data-testid="room-mosaic-canvas-tray"]');
   if (!mosaicTray) return true;
-  return Boolean(
-    document.querySelector('[data-testid="room-directory-grid"], [data-testid="room-directory-empty"]')
+  return hasVisibleDomMatch(
+    '[data-testid="room-directory-grid"], [data-testid="room-directory-empty"]'
   );
 }
 
@@ -104,6 +129,27 @@ function findFirstVisibleCandidate(selector: string): HTMLElement | null {
     if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
     if (isElementVisibleInViewport(candidate)) {
       return candidate;
+    }
+  }
+  return null;
+}
+
+function findNonHiddenCardElement(roomId: string | null | undefined): HTMLElement | null {
+  if (typeof document === "undefined" || !roomId) return null;
+  const escaped = escapeRoomSelectorValue(roomId);
+
+  const cardSelectors = [
+    `[data-mosaic-slot-id="${escaped}"] [data-testid="room-directory-card"]`,
+    `[data-discover-room-id="${escaped}"]`
+  ];
+
+  for (const selector of cardSelectors) {
+    const candidates = document.querySelectorAll<HTMLElement>(selector);
+    for (const candidate of candidates) {
+      if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
+      if (candidate.getClientRects().length > 0) {
+        return candidate;
+      }
     }
   }
   return null;
@@ -180,7 +226,13 @@ function waitForDomCondition(
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["class", "aria-hidden", "data-custom-layout-room-host"]
+        attributeFilter: [
+          "class",
+          "aria-hidden",
+          "data-custom-layout-room-host",
+          "data-discover-ready",
+          "data-discover-empty"
+        ]
       });
     }
 
@@ -262,7 +314,17 @@ export function runRoomViewTransition(
 
   const tagRoomExitTarget = (targetRoomId: string | null | undefined) => {
     if (!targetRoomId) return;
-    const target = findRoomCardElement(targetRoomId);
+    let target = findRoomCardElement(targetRoomId);
+    if (!target || classifyMorphRole(target) === "pill") {
+      const renderedCard = findNonHiddenCardElement(targetRoomId);
+      if (renderedCard) {
+        renderedCard.scrollIntoView?.({
+          behavior: "instant" as ScrollBehavior,
+          block: "nearest"
+        });
+        target = findRoomCardElement(targetRoomId) ?? renderedCard;
+      }
+    }
     tagElementForShellMorph(target);
     const role = classifyMorphRole(target);
     if (role) {
@@ -317,7 +379,9 @@ export function runRoomViewTransition(
           if (isRoomHostMounted()) return false;
           if (!isHomeDirectorySettled()) return false;
           if (!targetRoomId) return true;
-          if (findRoomCardElement(targetRoomId)) return true;
+          if (findRoomCardElement(targetRoomId) || findNonHiddenCardElement(targetRoomId)) {
+            return true;
+          }
           // If the room is no longer marked away (leave/delete of a private room),
           // finish immediately so exit falls back cleanly instead of stalling.
           return readAwayRoomId() !== targetRoomId;
@@ -368,4 +432,22 @@ export function prewarmRoomRuntimeChunk(): void {
   ]).catch(() => {
     roomRuntimePreloadPromise = null;
   });
+}
+
+export async function awaitRoomRuntimePrewarm(): Promise<void> {
+  prewarmRoomRuntimeChunk();
+  if (!roomRuntimePreloadPromise || typeof window === "undefined") return;
+  let timerId: number | undefined;
+  try {
+    await Promise.race([
+      roomRuntimePreloadPromise,
+      new Promise<void>((resolve) => {
+        timerId = window.setTimeout(resolve, 1500);
+      })
+    ]);
+  } finally {
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId);
+    }
+  }
 }

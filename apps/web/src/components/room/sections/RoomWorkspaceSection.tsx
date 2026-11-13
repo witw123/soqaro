@@ -19,6 +19,7 @@ import { RoomWorkspace } from "@/components/room/RoomWorkspace";
 export type RoomWorkspaceSectionProps = {
   awayRoomId: string | null;
   onAwayRoom: () => void;
+  onRetryRecovery?: () => void;
   activeSession: AuthSession | null;
   statusMessage: string;
   workspaceViewModel: ReturnType<typeof useRoomWorkspaceViewModel>;
@@ -50,6 +51,7 @@ export type RoomWorkspaceSectionProps = {
 
 function RoomWorkspaceSectionComponent({
   onAwayRoom,
+  onRetryRecovery,
   activeSession,
   statusMessage,
   workspaceViewModel,
@@ -131,6 +133,7 @@ function RoomWorkspaceSectionComponent({
       isRecoveringRoom={isRecoveringRoom}
       isRoomTransitionPending={workspaceViewModel.isRoomTransitionPending}
       onClearIdentity={roomActions.handleClearIdentity}
+      onRetryRecovery={onRetryRecovery}
       onCopyJoinCode={clipboardActions.handleCopyJoinCode}
       onShareRoom={clipboardActions.handleShareRoom}
       onAwayRoom={onAwayRoom}

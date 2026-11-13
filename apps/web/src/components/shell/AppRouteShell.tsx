@@ -9,10 +9,23 @@ import { MobileAppNavigation } from "./MobileAppNavigation";
 import { awayRoomChangeEvent, readAwayRoomId, requestAwayRoomResume } from "@/lib/domain/away-room";
 import { useCustomLayoutRuntime } from "@/features/settings/use-custom-layout-runtime";
 import { WorkspacePageActivity } from "@/features/workspace/page-activity";
-import { prewarmRoomRuntimeChunk, runRoomViewTransition } from "@/lib/ui/room-view-transition";
+import {
+  awaitRoomRuntimePrewarm,
+  prewarmRoomRuntimeChunk,
+  runRoomViewTransition
+} from "@/lib/ui/room-view-transition";
 
-export function AppRouteShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+export function AppRouteShell({
+  children,
+  active = true,
+  pathname: providedPathname
+}: {
+  children: ReactNode;
+  active?: boolean;
+  pathname?: string | null;
+}) {
+  const hookPathname = usePathname();
+  const pathname = providedPathname !== undefined ? providedPathname : hookPathname;
   const router = useRouter();
   useCustomLayoutRuntime(pathname);
   const [awayRoomId, setAwayRoomId] = useState<string | null>(null);
@@ -28,29 +41,43 @@ export function AppRouteShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  function handleResumeAwayRoom() {
+  async function handleResumeAwayRoom() {
     if (!awayRoomId) return;
+    const targetHref = `/room/${awayRoomId}` as Route;
     prewarmRoomRuntimeChunk();
+    router.prefetch(targetHref);
+    await awaitRoomRuntimePrewarm();
     requestAwayRoomResume(awayRoomId);
     runRoomViewTransition(
       "room-enter",
       () => {
-        router.push(`/room/${awayRoomId}` as Route);
+        router.push(targetHref);
       },
       { roomId: awayRoomId }
     );
   }
 
   return (
-      <div className="min-h-[calc(100*var(--app-dvh))] overflow-x-hidden bg-background text-foreground">
-        <div className="hidden md:contents">
-          <AppSidebar
-            hasBottomPlayer
-          />
-        </div>
-        {awayRoomId ? <AwayRoomReturnButton onClick={handleResumeAwayRoom} /> : null}
-        <PersistentAppRouteViews pathname={pathname}>{children}</PersistentAppRouteViews>
-        <MobileAppNavigation />
+      <div
+        aria-hidden={!active}
+        className={
+          active
+            ? "min-h-[calc(100*var(--app-dvh))] overflow-x-hidden bg-background text-foreground"
+            : "hidden"
+        }
+      >
+        {active ? (
+          <div className="hidden md:contents">
+            <AppSidebar
+              hasBottomPlayer
+            />
+          </div>
+        ) : null}
+        {active && awayRoomId ? <AwayRoomReturnButton onClick={handleResumeAwayRoom} /> : null}
+        <PersistentAppRouteViews active={active} pathname={pathname}>
+          {children}
+        </PersistentAppRouteViews>
+        {active ? <MobileAppNavigation /> : null}
       </div>
   );
 }
@@ -59,9 +86,11 @@ export function AppRouteShell({ children }: { children: ReactNode }) {
 const MAX_PERSISTENT_ROUTE_CACHE_ENTRIES = 6;
 
 function PersistentAppRouteViews({
+  active,
   pathname,
   children
 }: {
+  active: boolean;
   pathname: string | null;
   children: ReactNode;
 }) {
@@ -69,10 +98,11 @@ function PersistentAppRouteViews({
   const routeCache = useRef(new Map<string, ReactNode>());
   const visibleRoute = useRef<string | null>(null);
   const lastChildren = useRef<ReactNode | undefined>(undefined);
-  const prevRouteKeyRef = useRef<string>(routeKey);
+  const prevRouteKeyRef = useRef<string | null>(active ? routeKey : null);
   const [animatingRouteKey, setAnimatingRouteKey] = useState<string | null>(null);
 
   useLayoutEffect(() => {
+    if (!active) return;
     if (prevRouteKeyRef.current === routeKey) return;
     prevRouteKeyRef.current = routeKey;
     if (
@@ -83,35 +113,37 @@ function PersistentAppRouteViews({
       return;
     }
     setAnimatingRouteKey(routeKey);
-  }, [routeKey]);
+  }, [active, routeKey]);
 
-  const cachedPage = routeCache.current.get(routeKey);
-  if (routeCache.current.has(routeKey)) {
-    // A cached route can be shown immediately while Next resolves its new RSC payload.
-    // Re-insert to refresh recency so eviction drops least-recently-used routes.
-    visibleRoute.current = routeKey;
-    lastChildren.current = cachedPage;
-    routeCache.current.delete(routeKey);
-    routeCache.current.set(routeKey, cachedPage);
-  } else if (children !== null && children !== undefined && children !== lastChildren.current) {
-    // Pathname can update before children during a client transition. Do not cache the
-    // previous route under the new key; wait for the new page node to arrive.
-    routeCache.current.set(routeKey, children);
-    visibleRoute.current = routeKey;
-    lastChildren.current = children;
-    while (routeCache.current.size > MAX_PERSISTENT_ROUTE_CACHE_ENTRIES) {
-      const oldestEvictable = [...routeCache.current.keys()].find(
-        (candidate) => candidate !== routeKey && candidate !== visibleRoute.current
-      );
-      if (oldestEvictable === undefined) break;
-      routeCache.current.delete(oldestEvictable);
+  if (active) {
+    const cachedPage = routeCache.current.get(routeKey);
+    if (routeCache.current.has(routeKey)) {
+      // A cached route can be shown immediately while Next resolves its new RSC payload.
+      // Re-insert to refresh recency so eviction drops least-recently-used routes.
+      visibleRoute.current = routeKey;
+      lastChildren.current = cachedPage;
+      routeCache.current.delete(routeKey);
+      routeCache.current.set(routeKey, cachedPage);
+    } else if (children !== null && children !== undefined && children !== lastChildren.current) {
+      // Pathname can update before children during a client transition. Do not cache the
+      // previous route under the new key; wait for the new page node to arrive.
+      routeCache.current.set(routeKey, children);
+      visibleRoute.current = routeKey;
+      lastChildren.current = children;
+      while (routeCache.current.size > MAX_PERSISTENT_ROUTE_CACHE_ENTRIES) {
+        const oldestEvictable = [...routeCache.current.keys()].find(
+          (candidate) => candidate !== routeKey && candidate !== visibleRoute.current
+        );
+        if (oldestEvictable === undefined) break;
+        routeCache.current.delete(oldestEvictable);
+      }
     }
   }
 
   return (
     <div className="contents">
       {[...routeCache.current.entries()].map(([cachedRoute, page]) => {
-        const isVisible = cachedRoute === visibleRoute.current;
+        const isVisible = active && cachedRoute === visibleRoute.current;
         const isEntering = isVisible && animatingRouteKey === cachedRoute;
         return (
           <div

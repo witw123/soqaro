@@ -1,16 +1,23 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction
 } from "react";
-import type { AuthSession, IceConfigResponse, RoomSnapshot } from "@soqaro/shared";
+import {
+  errorCodes,
+  type AuthSession,
+  type ErrorCode,
+  type IceConfigResponse,
+  type RoomSnapshot
+} from "@soqaro/shared";
 import type { Route } from "next";
 import { toUserFacingError } from "@/lib/domain/soqaro-ui";
-import { soqaroApi } from "@/lib/network/soqaro-api";
+import { SoqaroApiError, soqaroApi } from "@/lib/network/soqaro-api";
 import type { PeerDiagnosticRecorder } from "@/features/p2p/use-peer-diagnostics";
 import type { RoomSnapshotResyncReason } from "@/features/room/room-snapshot-resync";
 import type { RoomStateEvent } from "@/features/room/room-state-reducer";
@@ -42,10 +49,26 @@ export function shouldRedirectRoomRouteToAuth(input: {
   );
 }
 
+const terminalRecoveryErrorCodes = new Set<ErrorCode>([
+  errorCodes.roomNotFound,
+  errorCodes.roomClosed,
+  errorCodes.unauthorized,
+  errorCodes.unauthorizedRoomAction,
+  errorCodes.invalidCredentials
+]);
+
 export function shouldSuppressRoomRecoveryAfterFailure(input: {
   cancelled: boolean;
+  error?: unknown;
+  hasExistingSnapshot?: boolean;
 }) {
-  return !input.cancelled;
+  if (input.cancelled) {
+    return false;
+  }
+  if (input.error instanceof SoqaroApiError && input.error.code) {
+    return terminalRecoveryErrorCodes.has(input.error.code);
+  }
+  return !input.hasExistingSnapshot && input.error === undefined;
 }
 
 export function resetInitialRoomRecoveryAttemptOnCancellation(input: {
@@ -409,31 +432,39 @@ export function useRoomRuntimeLifecycle(input: {
     recordPeerDiagnostic
   ]);
 
+  const activeSessionUserId = activeSession?.userId ?? null;
+
   useEffect(() => {
     if (
       suppressRoomRecovery ||
       !workspaceOnly ||
       !initialRoomId ||
       !hydrated ||
-      !activeSession ||
+      !activeSessionUserId ||
       isNavigatingRoomExit
     ) {
       return;
     }
 
-    const recoveryKey = `${activeSession.userId}:${initialRoomId}`;
+    const recoveryKey = `${activeSessionUserId}:${initialRoomId}`;
     if (initialRecoveryAttemptRef.current === recoveryKey) {
       return;
     }
     initialRecoveryAttemptRef.current = recoveryKey;
 
+    const existingSnapshot =
+      currentRoomRef.current?.room.id === initialRoomId ? currentRoomRef.current : null;
+    const hasFullExistingSnapshot = Boolean(
+      existingSnapshot && (existingSnapshot.room.roomRevision ?? 0) > 0
+    );
+
     let cancelled = false;
     let completed = false;
     setIsRecoveringRoom(true);
 
-    void (async () => {
-      try {
-        let joinError: unknown = null;
+    const recoverOnce = async (): Promise<"recovered" | "missing"> => {
+      let joinError: unknown = null;
+      if (!hasFullExistingSnapshot) {
         try {
           await soqaroApi.joinRoom(initialRoomId);
         } catch (error) {
@@ -441,41 +472,93 @@ export function useRoomRuntimeLifecycle(input: {
           // the room password prevents a redundant join request.
           joinError = error;
         }
+      }
 
-        const sync = await soqaroApi.syncRoom(initialRoomId, 0);
-        if (sync.roomDeleted) {
-          await deleteRoomTrackArtifacts(
-            sync.deletedTracks.map((track) => track.trackId),
-            initialRoomId,
-            true
-          );
-        }
-        const snapshot = sync.roomDeleted ? null : sync.snapshot;
-        if (
-          joinError &&
-          (!snapshot || !snapshot.room.members.some((member) => member.id === activeSession.userId))
-        ) {
-          throw joinError;
-        }
-        if (!snapshot || cancelled) {
-          if (!cancelled) {
-            setSuppressRoomRecovery(true);
-            setStatusMessage("未找到可恢复的房间状态，请返回音乐房重新创建或加入房间。");
-            setIsRecoveringRoom(false);
-          }
-          return;
-        }
+      const sinceRevision =
+        hasFullExistingSnapshot && existingSnapshot
+          ? (existingSnapshot.room.roomRevision ?? 0)
+          : 0;
+      const sync = await soqaroApi.syncRoom(initialRoomId, sinceRevision);
+      if (sync.roomDeleted) {
+        await deleteRoomTrackArtifacts(
+          sync.deletedTracks.map((track) => track.trackId),
+          initialRoomId,
+          true
+        );
+        return "missing";
+      }
 
-        dispatchRoomStateEvent({
-          type: "recover-snapshot",
-          snapshot
-        });
-        setStatusMessage(`已进入房间 ${snapshot.room.joinCode}。`);
+      if (sync.unchanged && hasFullExistingSnapshot && existingSnapshot) {
+        if (cancelled) return "recovered";
+        setStatusMessage(`已进入房间 ${existingSnapshot.room.joinCode}。`);
         await refreshPlaylists();
-      } catch {
-        if (shouldSuppressRoomRecoveryAfterFailure({ cancelled })) {
+        return "recovered";
+      }
+
+      const snapshot = sync.snapshot;
+      if (
+        joinError &&
+        (!snapshot || !snapshot.room.members.some((member) => member.id === activeSessionUserId))
+      ) {
+        throw joinError;
+      }
+      if (!snapshot) {
+        return "missing";
+      }
+      if (cancelled) {
+        return "recovered";
+      }
+
+      dispatchRoomStateEvent({
+        type: "recover-snapshot",
+        snapshot
+      });
+      setStatusMessage(`已进入房间 ${snapshot.room.joinCode}。`);
+      await refreshPlaylists();
+      return "recovered";
+    };
+
+    void (async () => {
+      try {
+        let outcome = await recoverOnce().catch(async (firstError) => {
+          if (
+            cancelled ||
+            hasFullExistingSnapshot ||
+            shouldSuppressRoomRecoveryAfterFailure({
+              cancelled,
+              error: firstError,
+              hasExistingSnapshot: hasFullExistingSnapshot
+            })
+          ) {
+            throw firstError;
+          }
+          // Retry once for transient startup/network glitches before giving up.
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+          if (cancelled) {
+            throw firstError;
+          }
+          return recoverOnce();
+        });
+
+        if (outcome === "missing" && !cancelled) {
           setSuppressRoomRecovery(true);
           setStatusMessage("未找到可恢复的房间状态，请返回音乐房重新创建或加入房间。");
+        }
+      } catch (error) {
+        if (cancelled) return;
+        if (hasFullExistingSnapshot) {
+          setStatusMessage(toUserFacingError(error));
+        } else {
+          setSuppressRoomRecovery(true);
+          setStatusMessage(
+            shouldSuppressRoomRecoveryAfterFailure({
+              cancelled,
+              error,
+              hasExistingSnapshot: false
+            })
+              ? "未找到可恢复的房间状态，请返回音乐房重新创建或加入房间。"
+              : toUserFacingError(error)
+          );
         }
       } finally {
         completed = true;
@@ -497,9 +580,10 @@ export function useRoomRuntimeLifecycle(input: {
     workspaceOnly,
     initialRoomId,
     hydrated,
-    activeSession,
+    activeSessionUserId,
     suppressRoomRecovery,
     isNavigatingRoomExit,
+    currentRoomRef,
     refreshPlaylists,
     dispatchRoomStateEvent,
     deleteRoomTrackArtifacts,
@@ -553,4 +637,12 @@ export function useRoomRuntimeLifecycle(input: {
 
     window.localStorage.setItem(lastRoomStorageKey, roomSnapshot.room.id);
   }, [roomSnapshot?.room.id, peerId, lastRoomStorageKey]);
+
+  const retryRoomRecovery = useCallback(() => {
+    initialRecoveryAttemptRef.current = null;
+    setSuppressRoomRecovery(false);
+    setStatusMessage("");
+  }, [initialRecoveryAttemptRef, setSuppressRoomRecovery, setStatusMessage]);
+
+  return { retryRoomRecovery };
 }

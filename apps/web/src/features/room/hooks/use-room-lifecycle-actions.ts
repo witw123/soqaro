@@ -71,6 +71,7 @@ export function useRoomLifecycleActions({
 
   const handleLeaveRoomAction = useCallback(async () => {
     const exitingRoomId = currentRoomId;
+    setIsNavigatingRoomExit(true);
     closeDesktopLyricsNative();
     const didLeave = await leaveRoom();
     if (!didLeave) {
@@ -115,6 +116,7 @@ export function useRoomLifecycleActions({
 
   const handleDeleteRoomAction = useCallback(async () => {
     const exitingRoomId = currentRoomId;
+    setIsNavigatingRoomExit(true);
     closeDesktopLyricsNative();
     const didDelete = await deleteRoom();
     if (!didDelete) {

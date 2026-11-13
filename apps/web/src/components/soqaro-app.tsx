@@ -159,6 +159,11 @@ export function SoqaroApp({
     setStatusMessage("已返回房间。");
   }, [backgroundOnly, initialRoomId, setStatusMessage]);
 
+  useEffect(() => {
+    if (!workspaceOnly || backgroundOnly) return;
+    router.prefetch(appEntries.workspaceEntryHref as Route);
+  }, [appEntries.workspaceEntryHref, backgroundOnly, router, workspaceOnly]);
+
   const currentRoomPermissions = getCurrentRoomMemberPermissions(
     roomSnapshot,
     activeSession?.userId
@@ -427,6 +432,7 @@ export function SoqaroApp({
       isRoomAway={isRoomAway}
       awayRoomId={isRoomAway ? currentRoomId : null}
       onAwayRoom={handleAwayRoom}
+      onRetryRecovery={roomRuntime.retryRoomRecovery}
       statusMessage={statusMessage}
       uploads={uploads}
       workspaceEntryHref={appEntries.workspaceEntryHref}

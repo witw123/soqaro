@@ -133,6 +133,7 @@ type UseRoomRuntimeResult = {
   setMediaPlaybackEnabled: (enabled: boolean) => Promise<void>;
   restartMediaPeer: (peerId: string, options?: { forceRecreate?: boolean }) => Promise<unknown>;
   subscribeRemoteAudioTrack: (listener: RemoteAudioTrackListener) => () => void;
+  retryRoomRecovery: () => void;
 };
 
 export function shouldStartRoomRealtimeRuntime(input: {
@@ -495,7 +496,7 @@ export function useRoomRuntime({
     requestRoomSnapshotResync
   });
 
-  useRoomRuntimeLifecycle({
+  const { retryRoomRecovery } = useRoomRuntimeLifecycle({
     workspaceOnly,
     initialRoomId,
     hydrated,
@@ -718,6 +719,7 @@ export function useRoomRuntime({
     getPeerMediaState,
     setMediaPlaybackEnabled,
     restartMediaPeer,
-    subscribeRemoteAudioTrack
+    subscribeRemoteAudioTrack,
+    retryRoomRecovery
   };
 }

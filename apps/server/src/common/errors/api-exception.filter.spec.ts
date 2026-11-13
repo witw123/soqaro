@@ -1,5 +1,6 @@
-﻿import { HttpStatus } from "@nestjs/common";
+﻿import { HttpException, HttpStatus } from "@nestjs/common";
 import { errorCodes } from "@soqaro/shared";
+import { z } from "zod";
 import { toHttpApiError } from "./api-exception.filter";
 
 describe("toHttpApiError", () => {
@@ -57,6 +58,57 @@ describe("toHttpApiError", () => {
       body: {
         code: errorCodes.trackOwnerOffline,
         message: "Track owner is not online, so this song cannot be played right now."
+      }
+    });
+  });
+
+  it("maps ZodError to 400 VALIDATION_FAILED with flattened details", () => {
+    const schema = z.object({ reason: z.string().min(1) });
+    const parsed = schema.safeParse({ reason: "" });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+
+    const result = toHttpApiError(parsed.error);
+    expect(result.status).toBe(HttpStatus.BAD_REQUEST);
+    expect(result.body.code).toBe(errorCodes.validationFailed);
+    expect(result.body.message).toBe("Invalid request payload.");
+    expect(result.body.details).toEqual(parsed.error.flatten());
+  });
+
+  it("sanitizes 5xx HttpException messages without explicit API error code", () => {
+    const error = new HttpException("select * from users leaked", HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(toHttpApiError(error)).toEqual({
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      body: {
+        code: errorCodes.internal,
+        message: "Internal server error."
+      }
+    });
+
+    const badGateway = new HttpException("NetEase upstream cookie=abc failed", HttpStatus.BAD_GATEWAY);
+    expect(toHttpApiError(badGateway)).toEqual({
+      status: HttpStatus.BAD_GATEWAY,
+      body: {
+        code: errorCodes.internal,
+        message: "Internal server error."
+      }
+    });
+  });
+
+  it("sanitizes broad plain-Error matches for upstream/rate-limit/unauthorized", () => {
+    expect(toHttpApiError(new Error("Unauthorized: secret session=xyz"))).toEqual({
+      status: HttpStatus.UNAUTHORIZED,
+      body: {
+        code: errorCodes.unauthorized,
+        message: "Unauthorized."
+      }
+    });
+
+    expect(toHttpApiError(new Error("Upstream rate limit hit with key=secret"))).toEqual({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+      body: {
+        code: errorCodes.rateLimited,
+        message: "Too many requests."
       }
     });
   });

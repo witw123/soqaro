@@ -1,16 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  createPlaylistRequestSchema,
   createRoomRequestSchema,
+  createRoomSongRequestSchema,
   insertRadioAutopilotNextTrackRequestSchema,
   joinRoomByCodeRequestSchema,
+  joinRoomRequestSchema,
   loginRequestSchema,
   registerRequestSchema,
   registerTrackRequestSchema,
+  registerTracksRequestSchema,
+  updatePlaylistRequestSchema,
   updateRadioAutopilotRequestSchema,
   updateRoomRequestSchema,
   updatePlaybackRequestSchema,
   reportTrackAssetUnavailableRequestSchema
 } from "./requests";
+import { personalizationTrackSchema } from "../personalization/models";
+import { neteaseTrackCandidateSchema } from "../providers/netease";
+import { qqMusicTrackCandidateSchema } from "../providers/qqmusic";
+import { bilibiliTrackCandidateSchema } from "../providers/bilibili";
 
 describe("request contracts", () => {
   it("trims auth input and rejects unknown fields", () => {
@@ -279,6 +288,182 @@ describe("request contracts", () => {
       reportTrackAssetUnavailableRequestSchema.parse({
         trackId: "track_123",
         reason: "invalid-reason"
+      })
+    ).toThrow();
+  });
+
+  it("caps registerTracks batch size, trackIdListSchema size, and joinRoom password length", () => {
+    expect(joinRoomRequestSchema.parse({})).toEqual({});
+    expect(joinRoomRequestSchema.parse({ password: "  secret  " })).toEqual({ password: "secret" });
+    expect(() => joinRoomRequestSchema.parse({ password: "x".repeat(129) })).toThrow();
+    expect(() => joinRoomRequestSchema.parse({ password: "ok", extra: true })).toThrow();
+
+    expect(() =>
+      createPlaylistRequestSchema.parse({
+        title: "Cap",
+        trackIds: Array.from({ length: 1001 }, (_, index) => `track_${index}`)
+      })
+    ).toThrow();
+
+    const minimalTrack = {
+      title: "Track",
+      artist: "Artist",
+      album: null,
+      durationMs: 120000,
+      bitrate: null,
+      sizeBytes: 1024,
+      mimeType: "audio/mpeg",
+      fileHash: "a".repeat(64),
+      artworkUrl: null,
+      sourceType: "local_upload" as const
+    };
+    expect(() =>
+      registerTracksRequestSchema.parse({
+        tracks: Array.from({ length: 501 }, () => minimalTrack)
+      })
+    ).toThrow();
+  });
+
+  it("validates artworkUrl/coverUrl and provider URLs against unsafe schemes", () => {
+    const allowedArtworkUrls = [
+      "https://cdn.example.com/cover.jpg",
+      "http://localhost:3000/cover.png",
+      "/v1/assets/asset_1/artwork",
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ];
+    for (const url of allowedArtworkUrls) {
+      expect(
+        createPlaylistRequestSchema.parse({ title: "Safe", coverUrl: url }).coverUrl
+      ).toBe(url);
+      expect(
+        updatePlaylistRequestSchema.parse({ coverUrl: url }).coverUrl
+      ).toBe(url);
+      expect(
+        createRoomSongRequestSchema.parse({
+          provider: "netease",
+          providerTrackId: "1",
+          title: "Song",
+          artist: "Artist",
+          durationMs: 1000,
+          artworkUrl: url
+        }).artworkUrl
+      ).toBe(url);
+      expect(
+        registerTrackRequestSchema.parse({
+          title: "Song",
+          artist: "Artist",
+          album: null,
+          durationMs: 1000,
+          bitrate: null,
+          sizeBytes: 128,
+          mimeType: "audio/mpeg",
+          fileHash: "b".repeat(64),
+          sourceType: "local_upload",
+          artworkUrl: url
+        }).artworkUrl
+      ).toBe(url);
+      expect(
+        personalizationTrackSchema.parse({
+          provider: "netease",
+          providerTrackId: "1",
+          access: "free",
+          quality: null,
+          title: "Song",
+          artist: "Artist",
+          album: null,
+          durationMs: 1000,
+          artworkUrl: url
+        }).artworkUrl
+      ).toBe(url);
+    }
+
+    const blockedArtworkUrls = [
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIi8+",
+      "//evil.example/cover.png",
+      "/\\evil.example/cover.png"
+    ];
+    for (const url of blockedArtworkUrls) {
+      expect(() =>
+        createPlaylistRequestSchema.parse({ title: "Bad", coverUrl: url })
+      ).toThrow();
+      expect(() =>
+        createRoomSongRequestSchema.parse({
+          provider: "netease",
+          providerTrackId: "1",
+          title: "Song",
+          artist: "Artist",
+          durationMs: 1000,
+          artworkUrl: url
+        })
+      ).toThrow();
+      expect(() =>
+        registerTrackRequestSchema.parse({
+          title: "Song",
+          artist: "Artist",
+          album: null,
+          durationMs: 1000,
+          bitrate: null,
+          sizeBytes: 128,
+          mimeType: "audio/mpeg",
+          fileHash: "b".repeat(64),
+          sourceType: "local_upload",
+          artworkUrl: url
+        })
+      ).toThrow();
+      expect(() =>
+        personalizationTrackSchema.parse({
+          provider: "netease",
+          providerTrackId: "1",
+          access: "free",
+          quality: null,
+          title: "Song",
+          artist: "Artist",
+          album: null,
+          durationMs: 1000,
+          artworkUrl: url
+        })
+      ).toThrow();
+      expect(() =>
+        bilibiliTrackCandidateSchema.parse({
+          provider: "bilibili",
+          providerTrackId: "BV1xx411c7mD",
+          bvid: "BV1xx411c7mD",
+          cid: 1,
+          title: "Song",
+          artist: "Artist",
+          durationMs: 1000,
+          artworkUrl: url
+        })
+      ).toThrow();
+    }
+
+    expect(() =>
+      neteaseTrackCandidateSchema.parse({
+        provider: "netease",
+        providerTrackId: "1",
+        access: "free",
+        quality: "high",
+        title: "Song",
+        artist: "Artist",
+        album: null,
+        durationMs: 1000,
+        artworkUrl: "javascript:alert(1)"
+      })
+    ).toThrow();
+
+    expect(() =>
+      qqMusicTrackCandidateSchema.parse({
+        provider: "qqmusic",
+        providerTrackId: "mid_1",
+        access: "free",
+        quality: "high",
+        title: "Song",
+        artist: "Artist",
+        album: null,
+        durationMs: 1000,
+        artworkUrl: "data:image/svg+xml,<svg/>"
       })
     ).toThrow();
   });

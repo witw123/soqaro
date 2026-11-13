@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeArtworkUrlSchema, safeHttpUrlSchema } from "../contracts/url";
 
 export const bilibiliQualitySchema = z.enum(["standard", "high", "exhigh"]);
 
@@ -15,7 +16,7 @@ export const bilibiliTrackCandidateSchema = z
     providerAlbumId: z.string().trim().min(1).optional(),
     releaseTime: z.string().nullable().optional(),
     durationMs: z.number().int().nonnegative(),
-    artworkUrl: z.string().nullable().default(null),
+    artworkUrl: safeArtworkUrlSchema(4096).nullable().default(null),
     access: z.enum(["free", "vip", "paid", "unknown"]).default("free"),
     quality: bilibiliQualitySchema.nullable().default("exhigh"),
     pageCount: z.number().int().positive().optional()
@@ -34,9 +35,9 @@ export const bilibiliVideoDetailSchema = z
   .object({
     bvid: z.string(),
     title: z.string(),
-    pic: z.string().url().nullable(),
+    pic: safeHttpUrlSchema().nullable(),
     ownerName: z.string(),
-    ownerFace: z.string().url().nullable(),
+    ownerFace: safeHttpUrlSchema().nullable(),
     duration: z.number(),
     pages: z.array(bilibiliPageSchema)
   })

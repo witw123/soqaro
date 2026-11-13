@@ -1,6 +1,8 @@
 import { validateRuntimeConfig } from "./runtime-config";
 
 const validTurnstileConfig = {
+  CORS_ORIGINS: "https://example.com",
+  AUDIT_HASH_SECRET: "super-secret-audit-hash-key",
   TURNSTILE_ENABLED: "true",
   TURNSTILE_SITE_KEY: "1x0000000000000000000000000000000AA",
   TURNSTILE_SECRET_KEY: "0x0000000000000000000000000000000AA",
@@ -69,7 +71,107 @@ describe("validateRuntimeConfig", () => {
         TURN_ENABLED: "false",
         NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
       })
-    ).toThrow("Production TRUST_PROXY must be false or a non-negative proxy hop count.");
+    ).toThrow(
+      "Production TRUST_PROXY must be false, a non-negative proxy hop count, or a trusted proxy IP/CIDR/subnet list."
+    );
+  });
+
+  it("allows valid trusted proxy subnet and CIDR lists in production", () => {
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        TRUST_PROXY: "loopback, linklocal, uniquelocal",
+        JWT_SECRET: "super-secret-jwt",
+        TURN_ENABLED: "false",
+        NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        TRUST_PROXY: "10.0.0.0/8, 127.0.0.1",
+        JWT_SECRET: "super-secret-jwt",
+        TURN_ENABLED: "false",
+        NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
+      })
+    ).not.toThrow();
+  });
+
+  it("rejects RATE_LIMIT_DISABLED=true in production", () => {
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        RATE_LIMIT_DISABLED: "true",
+        JWT_SECRET: "super-secret-jwt",
+        TURN_ENABLED: "false",
+        NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
+      })
+    ).toThrow("RATE_LIMIT_DISABLED must be false in production startup.");
+  });
+
+  it("requires CORS_ORIGINS in production", () => {
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        CORS_ORIGINS: "   ",
+        JWT_SECRET: "super-secret-jwt",
+        TURN_ENABLED: "false",
+        NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
+      })
+    ).toThrow("CORS_ORIGINS must be configured in production startup.");
+  });
+
+  it("rejects short JWT_SECRET, AUDIT_HASH_SECRET, and TURN_SHARED_SECRET in production", () => {
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        JWT_SECRET: "too-short",
+        TURN_ENABLED: "false",
+        NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
+      })
+    ).toThrow("Invalid JWT_SECRET for production startup.");
+
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        JWT_SECRET: "super-secret-jwt",
+        AUDIT_HASH_SECRET: "short",
+        TURN_ENABLED: "false",
+        NEXT_PUBLIC_TURN_URL: "turn:static.example.com:3478?transport=udp"
+      })
+    ).toThrow("AUDIT_HASH_SECRET must be at least 16 characters in production startup.");
+
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        JWT_SECRET: "super-secret-jwt",
+        TURN_PUBLIC_HOST: "turn.example.com",
+        TURN_ENABLED: "true",
+        TURN_SHARED_SECRET: "short-turn-sec"
+      })
+    ).toThrow("Invalid TURN_SHARED_SECRET for production startup.");
+  });
+
+  it("requires APP_DOMAIN even when TURN_PUBLIC_HOST is configured in production", () => {
+    expect(() =>
+      validateRuntimeConfig({
+        NODE_ENV: "production",
+        ...validTurnstileConfig,
+        APP_DOMAIN: "",
+        JWT_SECRET: "super-secret-jwt",
+        TURN_PUBLIC_HOST: "turn.example.com",
+        TURN_ENABLED: "true",
+        TURN_SHARED_SECRET: "super-secret-turn"
+      })
+    ).toThrow("APP_DOMAIN must be configured in production startup to bind Turnstile tokens.");
   });
 
   it("requires an explicit TURN host or app domain in production when TURN is enabled", () => {

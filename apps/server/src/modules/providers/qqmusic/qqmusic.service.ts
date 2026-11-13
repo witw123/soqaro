@@ -113,15 +113,15 @@ export class QqMusicService {
     return { status: result.status, ...(result.message ? { message: result.message } : {}) };
   }
   async disconnectAccount(userId: string) { this.assertEnabled(); return this.accounts.disconnect(userId); }
-  async searchTracks(userId: string, query: QqMusicSearchQuery): Promise<QqMusicSearchResponse> {
-    this.assertEnabled(); this.assertRateLimit(`search:${userId}`, 30); const cookie = await this.getOptionalCookie(userId);
+  async searchTracks(userId: string, query: QqMusicSearchQuery, clientIp?: string): Promise<QqMusicSearchResponse> {
+    this.assertEnabled(); this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30); const cookie = await this.getOptionalCookie(userId);
     const records = await this.callProvider(() => this.api.searchTracks({ ...query, cookie }));
     return { items: records.map((record) => toTrackCandidate(record)).filter((value): value is QqMusicTrackCandidate => !!value), limit: query.limit, offset: query.offset };
   }
 
-  async searchPlaylists(userId: string, query: QqMusicSearchQuery): Promise<ProviderPlaylistListResponse> {
+  async searchPlaylists(userId: string, query: QqMusicSearchQuery, clientIp?: string): Promise<ProviderPlaylistListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search:${userId}`, 30);
+    this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30);
     const cookie = await this.getOptionalCookie(userId);
     const records = await this.callProvider(() => this.api.searchPlaylists({ ...query, cookie }));
     return {
@@ -131,9 +131,9 @@ export class QqMusicService {
     };
   }
 
-  async searchAlbums(userId: string, query: QqMusicSearchQuery): Promise<ProviderAlbumListResponse> {
+  async searchAlbums(userId: string, query: QqMusicSearchQuery, clientIp?: string): Promise<ProviderAlbumListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search:${userId}`, 30);
+    this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30);
     const cookie = await this.getOptionalCookie(userId);
     const records = await this.callProvider(() => this.api.searchTracks({ ...query, cookie, kind: "album" }));
     const albumItems = records
@@ -154,9 +154,9 @@ export class QqMusicService {
     };
   }
 
-  async searchSuggestions(userId: string, query: QqMusicSearchSuggestQuery): Promise<ProviderSearchSuggestionListResponse> {
+  async searchSuggestions(userId: string, query: QqMusicSearchSuggestQuery, clientIp?: string): Promise<ProviderSearchSuggestionListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search-suggest:${userId}`, 60);
+    this.assertRateLimit(`search-suggest:${this.resolveRateLimitSubject(userId, clientIp)}`, 60);
     const key = query.keywords.trim().toLocaleLowerCase();
     const cached = readTermCache(this.searchSuggestionCache.get(key));
     if (cached) return { items: cached };
@@ -172,9 +172,9 @@ export class QqMusicService {
     }
   }
 
-  async getSearchHot(userId: string): Promise<ProviderSearchSuggestionListResponse> {
+  async getSearchHot(userId: string, clientIp?: string): Promise<ProviderSearchSuggestionListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search-hot:${userId}`, 12);
+    this.assertRateLimit(`search-hot:${this.resolveRateLimitSubject(userId, clientIp)}`, 12);
     const cached = readTermCache(this.searchHotCache);
     if (cached) return { items: cached };
 
@@ -461,7 +461,17 @@ export class QqMusicService {
     throw new HttpException(createApiErrorResponse(errorCodes.qqMusicTrackNotFound, "QQ Music audio is unavailable."), HttpStatus.NOT_FOUND);
   }
 
+  private resolveRateLimitSubject(userId: string, clientIp?: string): string {
+    if (userId && userId !== "anonymous") {
+      return `user:${userId}`;
+    }
+    return `ip:${clientIp?.trim() || "unknown"}`;
+  }
+
   private async getOptionalCookie(userId: string): Promise<string> {
+    if (!userId || userId === "anonymous") {
+      return "";
+    }
     try {
       return await this.accounts.getCookieOrThrow(userId);
     } catch {

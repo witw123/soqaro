@@ -63,7 +63,7 @@ export class PlaylistController {
     await this.limitPlaylistWrite(userId, ipAddress);
     const payload = parseRequestBody(createPlaylistRequestSchema, body);
     if (payload.roomId) {
-      await this.roomService.assertRoomMember(payload.roomId, userId);
+      await this.roomService.assertRoomPermission(payload.roomId, userId, "library");
     }
     const playlist = await this.playlistService.createPlaylist({
       ...payload,

@@ -65,6 +65,7 @@ export class AuthController {
       this.logger.log(
         this.buildAuthLog("register.accepted", clientIp, username, HttpStatus.CREATED)
       );
+      response?.setHeader("Cache-Control", "no-store");
       setUserSessionCookie(response, session.token);
       return toPublicAuthSession(session);
     } catch (error) {
@@ -132,31 +133,74 @@ export class AuthController {
       });
       await this.clearLoginFailures(username);
       this.logger.log(this.buildAuthLog("login.accepted", clientIp, username, HttpStatus.OK));
+      response?.setHeader("Cache-Control", "no-store");
       setUserSessionCookie(response, session.token);
       return toPublicAuthSession(session);
     } catch (error) {
-      // Per-username throttling counts only attempts that actually reached
-      // credential verification (i.e. passed Turnstile) and failed. Pre-auth
-      // garbage traffic must not be able to lock a victim's username.
-      await this.recordLoginFailure(username).catch(() => undefined);
+      if (error instanceof HttpException) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : "Unauthorized.";
-      this.logger.warn(
-        this.buildAuthLog("login.rejected", clientIp, username, HttpStatus.UNAUTHORIZED, message)
-      );
+      const isCredentialFailure =
+        message === "Invalid username or password." ||
+        message === "Account is disabled.";
+      if (isCredentialFailure) {
+        // Per-username throttling counts only attempts that actually reached
+        // credential verification (i.e. passed Turnstile) and failed. Pre-auth
+        // garbage traffic must not be able to lock a victim's username.
+        await this.recordLoginFailure(username).catch(() => undefined);
+      }
       if (message.includes("Account storage is temporarily unavailable")) {
+        this.logger.warn(
+          this.buildAuthLog("login.rejected", clientIp, username, HttpStatus.SERVICE_UNAVAILABLE, message)
+        );
         throw new ServiceUnavailableException(message);
       }
-      throw new UnauthorizedException(message);
+      const knownAuthFailures = [
+        "Invalid username or password.",
+        "Username and password are required.",
+        "Account is disabled."
+      ];
+      if (knownAuthFailures.includes(message)) {
+        this.logger.warn(
+          this.buildAuthLog("login.rejected", clientIp, username, HttpStatus.UNAUTHORIZED, message)
+        );
+        throw new UnauthorizedException(message);
+      }
+      this.logger.error(
+        this.buildAuthLog("login.error", clientIp, username, HttpStatus.INTERNAL_SERVER_ERROR, message),
+        error instanceof Error ? error.stack : undefined
+      );
+      throw new InternalServerErrorException("登录失败，请稍后重试。");
     }
   }
 
   @Post("logout")
   async logout(
     @Headers("x-session-token") sessionToken: string | undefined,
+    @Req()
+    request?: {
+      ip?: string;
+      headers?: Record<string, string | string[] | undefined>;
+      socket?: { remoteAddress?: string };
+    },
+    @Ip() ipAddress?: string,
     @Res({ passthrough: true }) response?: Response
   ) {
+    const clientIp = resolveClientIp(request ?? {}, ipAddress);
+    await this.abuseProtection?.enforce(
+      "auth:logout",
+      [{ name: "ip", value: clientIp }],
+      { limit: 60, windowMs: 60_000 }
+    );
+    response?.setHeader("Cache-Control", "no-store");
     const result = await this.authService.logout(sessionToken);
-    response?.clearCookie(userSessionCookieName, { path: "/" });
+    response?.clearCookie(userSessionCookieName, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production"
+    });
     return result;
   }
 
@@ -169,20 +213,42 @@ export class AuthController {
       headers?: Record<string, string | string[] | undefined>;
       socket?: { remoteAddress?: string };
     },
-    @Ip() ipAddress?: string
+    @Ip() ipAddress?: string,
+    @Res({ passthrough: true }) response?: Response
   ) {
     // Unknown tokens miss every cache and hit the session store; without a
     // limit, garbage-token floods translate directly into database load.
+    const clientIp = resolveClientIp(request, ipAddress);
     await this.abuseProtection?.enforce(
       "auth:me",
-      [{ name: "ip", value: ipAddress?.trim() || request.ip?.trim() || request.socket?.remoteAddress?.trim() || "unknown" }],
+      [{ name: "ip", value: clientIp }],
       { limit: 120, windowMs: 60_000 }
     );
+    response?.setHeader("Cache-Control", "no-store");
     try {
       const session = await this.authService.getAuthSessionByTokenOrThrow(sessionToken);
       return toPublicAuthSession(session);
     } catch (error) {
-      throw new UnauthorizedException(error instanceof Error ? error.message : "Unauthorized.");
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : "Unauthorized.";
+      if (message.includes("Account storage is temporarily unavailable")) {
+        throw new ServiceUnavailableException(message);
+      }
+      const knownSessionErrors = [
+        "Invalid session token.",
+        "Session expired.",
+        "Account is disabled."
+      ];
+      if (knownSessionErrors.includes(message)) {
+        throw new UnauthorizedException(message);
+      }
+      this.logger.error(
+        `Unexpected error verifying auth session: ${message}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      throw new InternalServerErrorException("获取会话失败，请稍后重试。");
     }
   }
 
@@ -420,6 +486,11 @@ export class AuthController {
         ) {
           buckets.delete(existingKey);
         }
+      }
+      while (buckets.size >= 10_000) {
+        const oldestKey = buckets.keys().next().value;
+        if (oldestKey === undefined) break;
+        buckets.delete(oldestKey);
       }
     }
     const bucket = buckets.get(key) ?? { timestamps: [] };

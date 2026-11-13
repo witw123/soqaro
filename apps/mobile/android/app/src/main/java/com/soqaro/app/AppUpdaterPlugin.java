@@ -5,11 +5,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.content.pm.SigningInfo;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
 import android.provider.Settings;
 
 import androidx.core.content.FileProvider;
@@ -21,26 +23,31 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 /**
- * 应用内更新:下载 APK(系统 DownloadManager,自带断点/通知栏进度)并拉起安装器。
- * 三个方法配合使用:downloadApk 启动下载 → getDownloadStatus 轮询进度 →
- * 完成后 installApk 拉起系统安装器。
+ * 应用内更新:从受信任 GitHub Release HTTPS 源下载 APK 到应用私有目录，
+ * 校验 APK 签名证书与当前应用一致后拉起系统安装器。
  */
 @CapacitorPlugin(name = "AppUpdater")
 public class AppUpdaterPlugin extends Plugin {
     private static final String FILE_PROVIDER_AUTHORITY = "com.soqaro.app.fileprovider";
-    private static final long STALE_DOWNLOAD_MS = 30 * 60 * 1000L;
+    private static final String UPDATES_SUBDIR = "updates";
 
     private long downloadId = -1;
+    private File pendingApkFile;
     private BroadcastReceiver completionReceiver;
 
     @PluginMethod
     public void downloadApk(PluginCall call) {
         String url = call.getString("url");
-        String versionName = call.getString("versionName", "update");
-        if (url == null || url.trim().isEmpty()) {
-            call.reject("缺少下载地址。");
+        String versionName = sanitizeVersionName(call.getString("versionName", "update"));
+        if (!isTrustedApkDownloadUrl(url)) {
+            call.reject("仅允许从受信任的 HTTPS 更新源下载安装包。");
             return;
         }
 
@@ -56,13 +63,22 @@ public class AppUpdaterPlugin extends Plugin {
 
         unregisterCompletionReceiver();
 
-        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+        File updatesDir = getUpdatesDirectory(context);
+        if (updatesDir == null) {
+            call.reject("更新目录不可用。");
+            return;
+        }
+        cleanupOldApks(updatesDir);
+
         String fileName = "Soqaro-" + versionName + ".apk";
+        pendingApkFile = new File(updatesDir, fileName);
+
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url.trim()));
         request.setTitle("Soqaro " + versionName);
         request.setDescription("正在下载更新包…");
         request.setMimeType("application/vnd.android.package-archive");
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+        request.setDestinationInExternalFilesDir(context, null, UPDATES_SUBDIR + "/" + fileName);
         request.setAllowedOverMetered(true);
         request.setAllowedOverRoaming(false);
 
@@ -179,22 +195,19 @@ public class AppUpdaterPlugin extends Plugin {
             return;
         }
 
-        Uri downloadUri = manager.getUriForDownloadedFile(downloadId);
-        if (downloadUri == null) {
-            // 下载记录可能已被清理:回退到 Downloads 公共目录里的同名文件。
-            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            File fallback = new File(downloadsDir, "Soqaro-update.apk");
-            if (fallback.exists()) {
-                downloadUri = FileProvider.getUriForFile(
-                    context, FILE_PROVIDER_AUTHORITY, fallback
-                );
-            }
-        }
-        if (downloadUri == null) {
+        File apkFile = resolveCompletedApkFile(context, manager);
+        if (apkFile == null || !apkFile.isFile()) {
             call.reject("未找到已下载的安装包,请重新下载。");
             return;
         }
 
+        if (!verifyApkMatchesInstalledSigner(context, apkFile)) {
+            apkFile.delete();
+            call.reject("安装包签名校验失败,已取消安装。");
+            return;
+        }
+
+        Uri downloadUri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, apkFile);
         Intent installIntent = new Intent(Intent.ACTION_INSTALL_PACKAGE, downloadUri);
         installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -206,16 +219,162 @@ public class AppUpdaterPlugin extends Plugin {
         }
     }
 
-    /** DownloadManager 只暴露下载中/失败,不给“开始时间”:超期任务视为失效,避免复用陈旧下载。 */
+    static boolean isTrustedApkDownloadUrl(String rawUrl) {
+        if (rawUrl == null) return false;
+        String trimmed = rawUrl.trim();
+        if (trimmed.isEmpty()) return false;
+        Uri uri = Uri.parse(trimmed);
+        if (!"https".equalsIgnoreCase(uri.getScheme())) {
+            return false;
+        }
+        if (uri.getUserInfo() != null && !uri.getUserInfo().isEmpty()) {
+            return false;
+        }
+        String host = uri.getHost();
+        if (host == null) return false;
+        String lower = host.toLowerCase(Locale.US);
+        if (lower.equals("github.com")) {
+            String path = uri.getPath();
+            return path != null && path.startsWith("/witw123/soqaro/");
+        }
+        return lower.equals("objects.githubusercontent.com")
+            || lower.equals("release-assets.githubusercontent.com")
+            || lower.endsWith(".githubusercontent.com");
+    }
+
+    private static String sanitizeVersionName(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return "update";
+        }
+        String sanitized = raw.trim().replaceAll("[^A-Za-z0-9._-]", "_");
+        return sanitized.isEmpty() ? "update" : sanitized;
+    }
+
+    private static File getUpdatesDirectory(Context context) {
+        File base = context.getExternalFilesDir(null);
+        if (base == null) return null;
+        File dir = new File(base, UPDATES_SUBDIR);
+        if (!dir.exists() && !dir.mkdirs()) {
+            return null;
+        }
+        return dir;
+    }
+
+    private static void cleanupOldApks(File updatesDir) {
+        File[] files = updatesDir.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.isFile() && file.getName().endsWith(".apk")) {
+                file.delete();
+            }
+        }
+    }
+
+    private File resolveCompletedApkFile(Context context, DownloadManager manager) {
+        if (downloadId == -1) return null;
+        File updatesDir = getUpdatesDirectory(context);
+        if (updatesDir == null) return null;
+
+        try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(downloadId))) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                return null;
+            }
+            int statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+            if (statusIdx < 0 || cursor.getInt(statusIdx) != DownloadManager.STATUS_SUCCESSFUL) {
+                return null;
+            }
+            int localUriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+            String localUri = localUriIdx >= 0 ? cursor.getString(localUriIdx) : null;
+            File candidate = pendingApkFile;
+            if (localUri != null && !localUri.isEmpty()) {
+                Uri parsed = Uri.parse(localUri);
+                if ("file".equalsIgnoreCase(parsed.getScheme()) && parsed.getPath() != null) {
+                    candidate = new File(parsed.getPath());
+                }
+            }
+            if (candidate == null) return null;
+            String rootCanonical = updatesDir.getCanonicalPath() + File.separator;
+            String fileCanonical = candidate.getCanonicalPath();
+            if (!fileCanonical.startsWith(rootCanonical)) {
+                return null;
+            }
+            return candidate;
+        } catch (IOException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean verifyApkMatchesInstalledSigner(Context context, File apkFile) {
+        try {
+            PackageManager pm = context.getPackageManager();
+            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? PackageManager.GET_SIGNING_CERTIFICATES
+                : getLegacySignatureFlag();
+
+            PackageInfo installedInfo = pm.getPackageInfo(context.getPackageName(), flags);
+            PackageInfo archiveInfo = pm.getPackageArchiveInfo(apkFile.getAbsolutePath(), flags);
+            if (installedInfo == null || archiveInfo == null) {
+                return false;
+            }
+            if (!context.getPackageName().equals(archiveInfo.packageName)) {
+                return false;
+            }
+
+            Set<String> installedDigests = extractCertDigests(installedInfo);
+            Set<String> archiveDigests = extractCertDigests(archiveInfo);
+            if (installedDigests.isEmpty() || archiveDigests.isEmpty()) {
+                return false;
+            }
+            return installedDigests.equals(archiveDigests);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private static int getLegacySignatureFlag() {
+        return PackageManager.GET_SIGNATURES;
+    }
+
+    private static Set<String> extractCertDigests(PackageInfo info) throws Exception {
+        Set<String> digests = new HashSet<>();
+        Signature[] signatures = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && info.signingInfo != null) {
+            SigningInfo signingInfo = info.signingInfo;
+            signatures = signingInfo.hasMultipleSigners()
+                ? signingInfo.getApkContentsSigners()
+                : signingInfo.getSigningCertificateHistory();
+        } else {
+            signatures = getLegacySignatures(info);
+        }
+        if (signatures == null) return digests;
+
+        MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+        for (Signature sig : signatures) {
+            byte[] hash = sha256.digest(sig.toByteArray());
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(String.format(Locale.US, "%02x", b));
+            }
+            digests.add(hex.toString());
+        }
+        return digests;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static Signature[] getLegacySignatures(PackageInfo info) {
+        return info.signatures;
+    }
+
     private boolean isDownloadRunning() {
         DownloadManager manager = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
         if (manager == null || downloadId == -1) return false;
-        Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(downloadId));
-        if (cursor == null || !cursor.moveToFirst()) return false;
-        int status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS));
-        cursor.close();
-        return status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PAUSED
-            || status == DownloadManager.STATUS_PENDING;
+        try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(downloadId))) {
+            if (cursor == null || !cursor.moveToFirst()) return false;
+            int status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS));
+            return status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PAUSED
+                || status == DownloadManager.STATUS_PENDING;
+        }
     }
 
     private void notifyComplete(long id) {

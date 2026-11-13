@@ -10,7 +10,7 @@
     "frontendDist": "https://soqaro.witw.top/app"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "label": "main",
@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' https://soqaro.witw.top; script-src 'self' 'unsafe-inline' https://soqaro.witw.top https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://soqaro.witw.top; img-src 'self' https: blob: data:; media-src 'self' https: blob: data:; connect-src 'self' https: wss:; frame-src https://challenges.cloudflare.com; font-src 'self' https: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
   },
   "bundle": {

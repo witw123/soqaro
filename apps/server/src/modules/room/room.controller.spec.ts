@@ -54,7 +54,8 @@ function createRoomRealtimePublisherMock() {
     emitLibrarySnapshot: jest.fn(),
     emitPlaybackPatch: jest.fn(),
     emitTrackAssetReady: jest.fn(),
-    emitTrackAssetUnavailable: jest.fn()
+    emitTrackAssetUnavailable: jest.fn(),
+    evictMemberSession: jest.fn()
   };
 }
 
@@ -663,5 +664,51 @@ describe("RoomController", () => {
     expect(playlistService.listPlaylistsForRoom).toHaveBeenCalledWith("room_1");
     expect(roomService.syncRoom).toHaveBeenCalledWith("room_1", "guest_host", 2, playlists);
     expect(result).toEqual(syncResponse);
+  });
+
+  it("rejects joinRoom passwords longer than 128 characters", async () => {
+    const roomService = {
+      joinRoom: jest.fn()
+    };
+    const roomRealtimePublisher = createRoomRealtimePublisherMock();
+    const authService = createAuthServiceMock();
+    const playlistService = createPlaylistServiceMock();
+    const controller = new RoomController(
+      roomService as never,
+      roomRealtimePublisher as never,
+      authService as never,
+      playlistService as never,
+      undefined as never,
+      undefined as never
+    );
+
+    await expect(
+      controller.joinRoom("room_1", "token", { password: "x".repeat(129) })
+    ).rejects.toThrow();
+
+    expect(roomService.joinRoom).not.toHaveBeenCalled();
+  });
+
+  it("evicts the leaving member's realtime socket session on leaveRoom", async () => {
+    const emptyRoom = buildSnapshot({ members: [] }).room;
+    const roomService = {
+      leaveRoom: jest.fn().mockResolvedValue(emptyRoom)
+    };
+    const roomRealtimePublisher = createRoomRealtimePublisherMock();
+    const authService = createAuthServiceMock();
+    const playlistService = createPlaylistServiceMock();
+    const controller = new RoomController(
+      roomService as never,
+      roomRealtimePublisher as never,
+      authService as never,
+      playlistService as never,
+      undefined as never,
+      undefined as never
+    );
+
+    await controller.leaveRoom("room_1", "token");
+
+    expect(roomRealtimePublisher.evictMemberSession).toHaveBeenCalledWith("room_1", "guest_host");
+    expect(roomRealtimePublisher.emitTopologySnapshot).toHaveBeenCalledWith("room_1");
   });
 });

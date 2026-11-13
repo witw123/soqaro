@@ -19,6 +19,7 @@ type PersistedPlaylistRecord = {
 };
 
 const maxPlaylistsPerUser = 1000;
+const maxPlaylistsPerRoom = 100;
 
 @Injectable()
 export class PlaylistService {
@@ -97,9 +98,17 @@ export class PlaylistService {
     if (!input.title.trim()) {
       throw new BadRequestException("播放列表标题不能为空。");
     }
-    const ownedPlaylists = await this.listPlaylists(input.ownerId);
-    if (ownedPlaylists.length >= maxPlaylistsPerUser) {
+    const ownedCount = this.prisma.isAvailable()
+      ? await this.prisma.playlist.count({ where: { ownerId: input.ownerId } })
+      : [...this.playlists.values()].filter((playlist) => playlist.ownerId === input.ownerId).length;
+    if (ownedCount >= maxPlaylistsPerUser) {
       throw new BadRequestException("播放列表数量已达到上限。");
+    }
+    if (input.roomId) {
+      const roomPlaylists = await this.listPlaylistsForRoom(input.roomId);
+      if (roomPlaylists.length >= maxPlaylistsPerRoom) {
+        throw new BadRequestException("房间播放列表数量已达到上限。");
+      }
     }
 
     const playlist: Playlist = {

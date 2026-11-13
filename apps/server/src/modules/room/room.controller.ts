@@ -4,6 +4,7 @@ import {
   computeAssetId,
   createRoomRequestSchema,
   createRoomSongRequestSchema,
+  joinRoomRequestSchema,
   joinRoomByCodeRequestSchema,
   insertRadioAutopilotNextTrackRequestSchema,
   registerTrackRequestSchema,
@@ -243,8 +244,9 @@ export class RoomController {
       { name: "ip", value: ipAddress },
       { name: "user", value: userId }
     ], { limit: 30, windowMs: 10 * 60 * 1000 });
-    if (body?.password !== undefined) {
-      await this.roomService.joinRoom(roomId, userId, body.password);
+    const payload = parseRequestBody(joinRoomRequestSchema, body ?? {});
+    if (payload.password !== undefined) {
+      await this.roomService.joinRoom(roomId, userId, payload.password);
     } else {
       await this.roomService.joinRoom(roomId, userId);
     }
@@ -310,6 +312,7 @@ export class RoomController {
     const userId = await this.getCurrentUserId(sessionToken);
     const room = await this.roomService.leaveRoom(roomId, userId);
     await this.roomRealtimePublisher.emitTopologySnapshot(roomId);
+    this.roomRealtimePublisher.evictMemberSession?.(roomId, userId);
     return room;
   }
 

@@ -12,6 +12,7 @@ import {
   type ApiErrorResponse,
   type ErrorCode
 } from "@soqaro/shared";
+import { ZodError } from "zod";
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -38,11 +39,25 @@ export function toHttpApiError(exception: unknown): {
   status: number;
   body: ApiErrorResponse;
 } {
+  if (isZodError(exception)) {
+    return {
+      status: HttpStatus.BAD_REQUEST,
+      body: createApiErrorResponse(
+        errorCodes.validationFailed,
+        "Invalid request payload.",
+        exception.flatten()
+      )
+    };
+  }
+
   if (exception instanceof HttpException) {
     const status = exception.getStatus();
     const response = exception.getResponse();
     const rawMessage = getExceptionMessage(response, exception.message);
-    const code = getApiErrorCode(response) ?? mapErrorCode(rawMessage, status);
+    const explicitCode = getApiErrorCode(response);
+    const code = explicitCode ?? (status >= HttpStatus.INTERNAL_SERVER_ERROR
+      ? errorCodes.internal
+      : mapErrorCode(rawMessage, status));
     const message = publicErrorMessage(
       rawMessage,
       code
@@ -61,7 +76,7 @@ export function toHttpApiError(exception: unknown): {
 
   const rawMessage = exception instanceof Error ? exception.message : "Internal server error.";
   const code = mapErrorCode(rawMessage, HttpStatus.INTERNAL_SERVER_ERROR);
-  const message = publicErrorMessage(rawMessage, code);
+  const message = sanitizePlainErrorMessage(rawMessage, code);
   return {
     status: mapErrorStatus(code),
     body: createApiErrorResponse(code, message)
@@ -72,6 +87,33 @@ function publicErrorMessage(message: string, code: ErrorCode) {
   return code === errorCodes.internal
     ? "Internal server error."
     : message || "Internal server error.";
+}
+
+function sanitizePlainErrorMessage(message: string, code: ErrorCode) {
+  switch (code) {
+    case errorCodes.internal:
+      return "Internal server error.";
+    case errorCodes.neteaseUnavailable:
+      return "NetEase service unavailable.";
+    case errorCodes.qqMusicUnavailable:
+      return "QQ Music service unavailable.";
+    case errorCodes.rateLimited:
+      return "Too many requests.";
+    case errorCodes.unauthorized:
+      return message.includes("Invalid session token") ? "Invalid session token." : "Unauthorized.";
+    default:
+      return message || "Internal server error.";
+  }
+}
+
+function isZodError(exception: unknown): exception is ZodError {
+  return (
+    exception instanceof ZodError ||
+    (typeof exception === "object" &&
+      exception !== null &&
+      (exception as { name?: unknown }).name === "ZodError" &&
+      typeof (exception as { flatten?: unknown }).flatten === "function")
+  );
 }
 
 export function mapErrorCode(message: string, status?: number): ErrorCode {

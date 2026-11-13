@@ -47,12 +47,16 @@ export async function invokeTauri<T = void>(
     };
     __TAURI_INTERNALS__?: {
       invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+      core?: {
+        invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+      };
     };
   };
   const invoke =
     win.__TAURI__?.core?.invoke ??
     win.__TAURI__?.invoke ??
-    win.__TAURI_INTERNALS__?.invoke;
+    win.__TAURI_INTERNALS__?.invoke ??
+    win.__TAURI_INTERNALS__?.core?.invoke;
   if (!invoke) {
     return undefined;
   }
@@ -93,18 +97,49 @@ export async function listenTauri<T = unknown>(
           handler: (e: { payload: T }) => void
         ) => Promise<() => void>;
       };
+      invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+      transformCallback?: (callback: (response: unknown) => void, once?: boolean) => number;
+      core?: {
+        invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+        transformCallback?: (callback: (response: unknown) => void, once?: boolean) => number;
+      };
     };
   };
   const listen =
     win.__TAURI__?.event?.listen ??
     win.__TAURI__?.listen ??
     win.__TAURI_INTERNALS__?.event?.listen;
-  if (!listen) {
+  if (listen) {
+    try {
+      return await listen(event, (e) => handler(e.payload));
+    } catch (error) {
+      console.warn(`[tauri] listen "${event}" failed:`, error);
+      return undefined;
+    }
+  }
+
+  const invoke = win.__TAURI_INTERNALS__?.invoke ?? win.__TAURI_INTERNALS__?.core?.invoke;
+  const transformCallback =
+    win.__TAURI_INTERNALS__?.core?.transformCallback ??
+    win.__TAURI_INTERNALS__?.transformCallback;
+  if (!invoke || !transformCallback) {
     return undefined;
   }
   try {
-    const unlisten = await listen(event, (e) => handler(e.payload));
-    return unlisten;
+    const callbackId = transformCallback((response: unknown) => {
+      const data = response as { payload?: T } | undefined;
+      if (data && "payload" in data) {
+        handler(data.payload as T);
+      }
+    });
+    const eventId = await invoke("plugin:event|listen", {
+      event,
+      target: { kind: "Any" },
+      handler: callbackId
+    });
+    return () => {
+      void invoke("plugin:event|unlisten", { event, eventId }).catch(() => undefined);
+    };
   } catch (error) {
     console.warn(`[tauri] listen "${event}" failed:`, error);
     return undefined;

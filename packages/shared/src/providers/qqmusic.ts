@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeHttpUrlSchema } from "../contracts/url";
 
 export const qqMusicAccountStatusSchema = z.object({
   connected: z.boolean(),
@@ -32,7 +33,7 @@ export const qqMusicTrackCandidateSchema = z.object({
   providerAlbumId: z.string().trim().min(1).optional(),
   releaseTime: z.string().nullable().optional(),
   durationMs: z.number().int().nonnegative(),
-  artworkUrl: z.string().url().nullable()
+  artworkUrl: safeHttpUrlSchema().nullable()
 }).strict();
 export const qqMusicSearchResponseSchema = z.object({
   items: z.array(qqMusicTrackCandidateSchema),

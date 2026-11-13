@@ -1,8 +1,10 @@
 ﻿import { Controller, Delete, Get, Header, Headers, HttpException, HttpStatus, Param, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { createApiErrorResponse, errorCodes } from "@soqaro/shared";
 import { AuthService } from "../../auth/auth.service";
-import { AbuseProtectionService } from "../../../common/security/abuse-protection.service";
+import { AbuseProtectionService, type AbuseDimension } from "../../../common/security/abuse-protection.service";
+import { resolveClientIp } from "../../../common/security/client-ip";
 import { parseRequestBody } from "../../../common/validation/zod-validation";
 import {
   qqMusicAlbumIdSchema,
@@ -15,6 +17,8 @@ import {
 } from "./qqmusic.schemas";
 import { pipeWebStreamToResponse } from "../provider-stream";
 import { QqMusicService } from "./qqmusic.service";
+
+const attemptIdSchema = z.string().uuid();
 
 @Controller("v1/providers/qqmusic")
 export class QqMusicController {
@@ -36,7 +40,15 @@ export class QqMusicController {
 
   @Get("account/qr/:attemptId/status")
   async qrStatus(@Param("attemptId") id: string, @Headers("x-session-token") token?: string) {
-    return this.service.checkQrLogin(await this.user(token), id);
+    const userId = await this.user(token);
+    const parsedAttemptId = attemptIdSchema.safeParse(id);
+    if (!parsedAttemptId.success) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.validationFailed, "Invalid QQ Music QR attempt id."),
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return this.service.checkQrLogin(userId, parsedAttemptId.data);
   }
 
   @Delete("account")
@@ -47,28 +59,35 @@ export class QqMusicController {
   @Get("search")
   async search(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") token?: string
+    @Headers("x-session-token") token: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchTracks(
       await this.optionalUser(token),
-      parseRequestBody(qqMusicSearchQuerySchema, query)
+      parseRequestBody(qqMusicSearchQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
   @Get("search/suggest")
   async searchSuggest(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") token?: string
+    @Headers("x-session-token") token: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchSuggestions(
       await this.optionalUser(token),
-      parseRequestBody(qqMusicSearchSuggestQuerySchema, query)
+      parseRequestBody(qqMusicSearchSuggestQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
   @Get("search/hot")
-  async searchHot(@Headers("x-session-token") token?: string) {
-    return this.service.getSearchHot(await this.optionalUser(token));
+  async searchHot(
+    @Headers("x-session-token") token: string | undefined,
+    @Req() request: Request
+  ) {
+    return this.service.getSearchHot(await this.optionalUser(token), resolveClientIp(request));
   }
 
   @Get("tracks/:trackId")
@@ -79,22 +98,26 @@ export class QqMusicController {
   @Get("search/playlists")
   async searchPlaylists(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") token?: string
+    @Headers("x-session-token") token: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchPlaylists(
       await this.optionalUser(token),
-      parseRequestBody(qqMusicSearchQuerySchema, query)
+      parseRequestBody(qqMusicSearchQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
   @Get("search/albums")
   async searchAlbums(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") token?: string
+    @Headers("x-session-token") token: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchAlbums(
       await this.optionalUser(token),
-      parseRequestBody(qqMusicSearchQuerySchema, query)
+      parseRequestBody(qqMusicSearchQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
@@ -108,7 +131,15 @@ export class QqMusicController {
     @Param("trackId") trackId: string,
     @Headers("x-session-token") token?: string
   ) {
-    return this.service.getRelatedPlaylists(await this.user(token), trackId);
+    const userId = await this.user(token);
+    const parsedId = qqMusicTrackIdSchema.safeParse(trackId);
+    if (!parsedId.success) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.validationFailed, "Invalid QQ Music track id."),
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return this.service.getRelatedPlaylists(userId, parsedId.data);
   }
 
   @Get("artwork")
@@ -119,10 +150,11 @@ export class QqMusicController {
     @Res() response: Response
   ) {
     const userId = await this.optionalUser(token);
-    await this.abuseProtection?.enforce("qqmusic:artwork", [
-      { name: "ip", value: request.ip },
-      { name: "user", value: userId }
-    ], { limit: 120, windowMs: 10 * 60 * 1000 });
+    const dimensions: AbuseDimension[] = [{ name: "ip", value: resolveClientIp(request) }];
+    if (userId !== "anonymous") {
+      dimensions.push({ name: "user", value: userId });
+    }
+    await this.abuseProtection?.enforce("qqmusic:artwork", dimensions, { limit: 120, windowMs: 10 * 60 * 1000 });
     if (!rawUrl?.trim()) {
       throw new HttpException(
         createApiErrorResponse(errorCodes.validationFailed, "QQ Music artwork URL is required."),
@@ -135,7 +167,9 @@ export class QqMusicController {
       .status(upstream.status)
       .setHeader("Content-Type", result.mimeType)
       .setHeader("Cache-Control", "public, max-age=86400")
-      .setHeader("X-Content-Type-Options", "nosniff");
+      .setHeader("X-Content-Type-Options", "nosniff")
+      .setHeader("Content-Security-Policy", "default-src 'none'; sandbox")
+      .setHeader("Content-Disposition", "inline");
     const length = upstream.headers.get("content-length") ??
       (result.contentLength ? String(result.contentLength) : null);
     if (length) response.setHeader("Content-Length", length);

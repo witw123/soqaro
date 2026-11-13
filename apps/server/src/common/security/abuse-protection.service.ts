@@ -31,7 +31,10 @@ export class AbuseProtectionService {
   constructor(private readonly redis: RedisService) {}
 
   async enforce(scope: string, dimensions: AbuseDimension[], policy: AbuseLimit) {
-    if (process.env.RATE_LIMIT_DISABLED === "true" || process.env.NODE_ENV === "test") {
+    if (
+      (process.env.RATE_LIMIT_DISABLED === "true" && process.env.NODE_ENV !== "production") ||
+      process.env.NODE_ENV === "test"
+    ) {
       return;
     }
 
@@ -76,11 +79,16 @@ export class AbuseProtectionService {
     const now = Date.now();
     if (this.localBuckets.size >= 10_000) {
       // Bucket keys include caller-supplied values (IP, user, room); without a
-      // sweep, key rotation grows the map unbounded in fallback mode.
+      // sweep and hard cap, key rotation within a window grows the map unbounded.
       for (const [existingKey, existingBucket] of this.localBuckets) {
         if (existingBucket.expiresAt <= now) {
           this.localBuckets.delete(existingKey);
         }
+      }
+      while (this.localBuckets.size >= 10_000) {
+        const oldestKey = this.localBuckets.keys().next().value;
+        if (oldestKey === undefined) break;
+        this.localBuckets.delete(oldestKey);
       }
     }
     const exceeded = normalizedDimensions.some((dimension) => {

@@ -1,7 +1,18 @@
-﻿import { ConflictException, HttpException, HttpStatus, Injectable, NotFoundException, Optional, UnauthorizedException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+﻿import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException, Optional, UnauthorizedException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
-import { adminLoginRequestSchema, adminReasonSchema, adminUserStatusSchema, createAnnouncementRequestSchema, updateAnnouncementRequestSchema } from "@soqaro/shared";
+import {
+  adminActionRequestSchema,
+  adminLoginRequestSchema,
+  adminResetPasswordRequestSchema,
+  adminResolveIncidentRequestSchema,
+  adminRoleChangeRequestSchema,
+  adminRoomPlaybackRequestSchema,
+  adminTerminateRoomRequestSchema,
+  adminUserStatusRequestSchema,
+  createAnnouncementRequestSchema,
+  updateAnnouncementRequestSchema
+} from "@soqaro/shared";
 import type { RoomMember } from "@soqaro/shared";
 import { PrismaService } from "../../infra/prisma/prisma.service";
 import { RedisService } from "../../infra/redis/redis.service";
@@ -14,6 +25,8 @@ import { PlaylistService } from "../playlist/playlist.service";
 import { RoomRealtimePublisher } from "../room/services/room-realtime.publisher";
 import { MetricsService } from "../../common/metrics/metrics.service";
 import { getCorsOrigins, getRequestOrigin, isAllowedOrigin } from "../../common/cors/get-cors-origins";
+import { resolveClientIp } from "../../common/security/client-ip";
+import { parseRequestBody } from "../../common/validation/zod-validation";
 
 export const adminSessionCookie = "soqaro_admin_session";
 export const adminCsrfCookie = "soqaro_admin_csrf";
@@ -93,29 +106,33 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   }
 
   async login(input: unknown, request: Request) {
-    const payload = adminLoginRequestSchema.parse(input);
+    if (process.env.ADMIN_PANEL_ENABLED === "false") {
+      throw new ForbiddenException("管理后台当前已关闭。");
+    }
+    const payload = parseRequestBody(adminLoginRequestSchema, input);
     if (process.env.NODE_ENV === "production" && !process.env.AUDIT_HASH_SECRET?.trim()) {
       throw new UnauthorizedException("管理员审计密钥未配置。");
     }
+    const clientIp = resolveClientIp(request);
     if (this.turnstile) {
-      await this.turnstile.verify(
-        payload.turnstileToken,
-        request.ip || request.socket.remoteAddress || "unknown"
-      );
+      await this.turnstile.verify(payload.turnstileToken, clientIp);
     } else if (process.env.NODE_ENV === "production") {
       throw new UnauthorizedException("管理员人机验证服务未配置。");
     }
-    await this.assertLoginAllowed(payload.username, request);
+    await this.assertLoginAllowed(payload.username, clientIp);
     let user: Awaited<ReturnType<AuthService["authenticateCredentials"]>>;
     try {
       user = await this.auth.authenticateCredentials(payload);
     } catch {
+      await this.recordLoginFailure(payload.username, clientIp);
       throw new UnauthorizedException("用户名或密码错误。");
     }
     if (user.role !== "ADMIN" || user.status !== "ACTIVE") {
+      await this.recordLoginFailure(payload.username, clientIp);
       throw new UnauthorizedException("管理员账号不可用。");
     }
     if (!(await this.prisma.ensureAvailable())) throw new UnauthorizedException("数据库暂不可用。");
+    await this.clearLoginFailures(payload.username, clientIp);
     const sessionToken = randomBytes(32).toString("base64url");
     const csrfToken = randomBytes(24).toString("base64url");
     const now = new Date();
@@ -126,19 +143,46 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     return { sessionToken, csrfToken, principal: { userId: user.id, username: user.username, nickname: user.nickname, role: "ADMIN" as const, expiresAt: expiresAt.toISOString() } };
   }
 
-  private async assertLoginAllowed(username: string, request: Request) {
+  private getLoginLimitKeys(username: string, ip: string) {
+    const normalized = username.trim().toLowerCase();
+    return {
+      ipKey: `soqaro:admin:login:ip:${createHash("sha256").update(ip).digest("hex")}`,
+      userKey: `soqaro:admin:login:user:${createHash("sha256").update(normalized).digest("hex")}`
+    };
+  }
+
+  private async assertLoginAllowed(username: string, ip: string) {
     if (!this.redis.isAvailable()) {
       if (process.env.NODE_ENV === "production") throw new UnauthorizedException("登录限流依赖暂不可用。");
       return;
     }
-    const ip = request.ip || request.socket.remoteAddress || "unknown";
-    const normalized = username.trim().toLowerCase();
-    const windowMs = 15 * 60 * 1000;
-    const [ipCount, userCount] = await Promise.all([
-      this.redis.incrementWithTtlMs(`soqaro:admin:login:ip:${createHash("sha256").update(ip).digest("hex")}`, windowMs),
-      this.redis.incrementWithTtlMs(`soqaro:admin:login:user:${createHash("sha256").update(normalized).digest("hex")}`, windowMs)
+    const { ipKey, userKey } = this.getLoginLimitKeys(username, ip);
+    const [ipRaw, userRaw] = await Promise.all([
+      this.redis.getString(ipKey),
+      this.redis.getString(userKey)
     ]);
-    if (ipCount > 5 || userCount > 5) throw new HttpException("登录尝试过于频繁，请稍后再试。", HttpStatus.TOO_MANY_REQUESTS);
+    if (Number(ipRaw ?? 0) >= 5 || Number(userRaw ?? 0) >= 5) {
+      throw new HttpException("登录尝试过于频繁，请稍后再试。", HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private async recordLoginFailure(username: string, ip: string) {
+    if (!this.redis.isAvailable()) return;
+    const { ipKey, userKey } = this.getLoginLimitKeys(username, ip);
+    const windowMs = 15 * 60 * 1000;
+    await Promise.all([
+      this.redis.incrementWithTtlMs(ipKey, windowMs),
+      this.redis.incrementWithTtlMs(userKey, windowMs)
+    ]);
+  }
+
+  private async clearLoginFailures(username: string, ip: string) {
+    if (!this.redis.isAvailable() || typeof this.redis.delete !== "function") return;
+    const { ipKey, userKey } = this.getLoginLimitKeys(username, ip);
+    await Promise.all([
+      this.redis.delete(ipKey),
+      this.redis.delete(userKey)
+    ]).catch(() => undefined);
   }
 
   async validateRequest(request: Request): Promise<AdminPrincipal> {
@@ -156,7 +200,7 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
       const allowedOrigins = getCorsOrigins();
       if (!isAllowedOrigin(origin, getRequestOrigin(request), allowedOrigins)) throw new UnauthorizedException("Origin 校验失败。");
     }
-    if (now - row.lastActiveAt.getTime() > 5 * 60 * 1000) void this.prisma.adminSession.update({ where: { id: row.id }, data: { lastActiveAt: new Date() } });
+    if (now - row.lastActiveAt.getTime() > 5 * 60 * 1000) void this.prisma.adminSession.update({ where: { id: row.id }, data: { lastActiveAt: new Date() } }).catch(() => undefined);
     return { userId: row.user.id, username: row.user.username, nickname: row.user.nickname, role: "ADMIN", csrfToken: cookies[adminCsrfCookie] ?? "", expiresAt: row.expiresAt };
   }
 
@@ -326,35 +370,37 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     return { ...user, createdAt: user.createdAt.toISOString(), lastLoginAt: user.lastLoginAt?.toISOString() ?? null, disabledAt: user.disabledAt?.toISOString() ?? null, sessions: user.userSessions.map((session) => ({ ...session, createdAt: session.createdAt.toISOString(), expiresAt: session.expiresAt.toISOString() })), rooms, audits: audits.map((audit) => ({ ...audit, createdAt: audit.createdAt.toISOString() })) };
   }
 
-  async setUserStatus(actor: AdminPrincipal, userId: string, statusInput: unknown, request: Request) {
+  async setUserStatus(actor: AdminPrincipal, userId: string, body: unknown, request: Request) {
     this.assertMutationsEnabled();
-    const payload = adminUserStatusSchema.parse((statusInput as { status?: unknown }).status);
+    const payload = parseRequestBody(adminUserStatusRequestSchema, body);
     if (userId === actor.userId) throw new ConflictException("不能修改当前管理员账号。");
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.role === "ADMIN") throw new NotFoundException("普通用户不存在。");
-    const reason = adminReasonSchema.parse((statusInput as { reason?: unknown }).reason);
-    const disabled = payload === "DISABLED";
-    await this.prisma.$transaction(async (tx) => { await tx.user.update({ where: { id: userId }, data: { status: payload, disabledAt: disabled ? new Date() : null, disabledReason: disabled ? reason : null } }); if (disabled) await tx.userSession.deleteMany({ where: { userId } }); await tx.adminAuditLog.create({ data: { id: `audit_${randomUUID()}`, actorUserId: actor.userId, action: disabled ? "user.disable" : "user.enable", targetType: "user", targetId: userId, reason, result: "SUCCEEDED", userAgent: request.headers["user-agent"] ?? null } }); });
+    const reason = payload.reason;
+    const disabled = payload.status === "DISABLED";
+    await this.prisma.$transaction(async (tx) => { await tx.user.update({ where: { id: userId }, data: { status: payload.status, disabledAt: disabled ? new Date() : null, disabledReason: disabled ? reason : null } }); if (disabled) await tx.userSession.deleteMany({ where: { userId } }); await tx.adminAuditLog.create({ data: { id: `audit_${randomUUID()}`, actorUserId: actor.userId, action: disabled ? "user.disable" : "user.enable", targetType: "user", targetId: userId, reason, result: "SUCCEEDED", userAgent: request.headers["user-agent"] ?? null } }); });
     await this.auth.invalidateSessionsForUser(userId);
     await this.publishUserInvalidated(userId);
-    return { ok: true, status: payload };
+    return { ok: true, status: payload.status };
   }
 
-  async revokeUserSessions(actor: AdminPrincipal, userId: string, reason: string, request: Request) {
+  async revokeUserSessions(actor: AdminPrincipal, userId: string, body: unknown, request: Request) {
     this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminActionRequestSchema, body);
     if (userId === actor.userId) throw new ConflictException("不能撤销当前管理员会话。");
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.role === "ADMIN") throw new NotFoundException("普通用户不存在。");
     await this.prisma.userSession.deleteMany({ where: { userId } });
-    await this.writeAudit(actor.userId, "user.sessions.revoke", "user", userId, adminReasonSchema.parse(reason), "SUCCEEDED", request);
+    await this.writeAudit(actor.userId, "user.sessions.revoke", "user", userId, payload.reason, "SUCCEEDED", request);
     await this.auth.invalidateSessionsForUser(userId);
     await this.publishUserInvalidated(userId);
     return { ok: true };
   }
 
-  async terminateRoom(actor: AdminPrincipal, roomId: string, payload: { reason: string; expectedJoinCode: string }, request: Request) {
+  async terminateRoom(actor: AdminPrincipal, roomId: string, body: unknown, request: Request) {
     this.assertMutationsEnabled();
-    const reason = adminReasonSchema.parse(payload.reason);
+    const payload = parseRequestBody(adminTerminateRoomRequestSchema, body);
+    const reason = payload.reason;
     const room = await this.prisma.roomState.findUnique({ where: { id: roomId } });
     if (!room) return { ok: true, alreadyTerminated: true };
     if (room.joinCode !== payload.expectedJoinCode) throw new ConflictException("房间码已变化，请刷新后重试。");
@@ -375,7 +421,10 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
 
   // ── Incident Lifecycle ────────────────────────────────────────────────────────
 
-  async resolveIncident(actor: AdminPrincipal, incidentId: string, reason: string | null, request: Request) {
+  async resolveIncident(actor: AdminPrincipal, incidentId: string, body: unknown, request: Request) {
+    this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminResolveIncidentRequestSchema, body ?? {});
+    const reason = payload.reason ?? null;
     const incident = await this.prisma.operationalIncident.findUnique({ where: { id: incidentId } });
     if (!incident) throw new NotFoundException("异常事件不存在。");
     if (incident.status === "RECOVERED") return { ok: true, alreadyResolved: true };
@@ -388,7 +437,10 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     return { ok: true, id: incidentId, status: "RECOVERED", recoveredAt: now.toISOString() };
   }
 
-  async resolveAllIncidents(actor: AdminPrincipal, reason: string | null, request: Request) {
+  async resolveAllIncidents(actor: AdminPrincipal, body: unknown, request: Request) {
+    this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminResolveIncidentRequestSchema, body ?? {});
+    const reason = payload.reason ?? null;
     const now = new Date();
     const result = await this.prisma.operationalIncident.updateMany({
       where: { status: "OPEN" },
@@ -403,20 +455,21 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   async controlRoomPlayback(
     actor: AdminPrincipal,
     roomId: string,
-    action: "pause" | "play" | "next" | "clear-queue",
-    reason: string | null,
+    body: unknown,
     request: Request
   ) {
     this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminRoomPlaybackRequestSchema, body);
+    const reason = payload.reason ?? null;
     const room = await this.prisma.roomState.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException("房间不存在。");
-    const result = await this.roomService.controlPlaybackByAdmin(roomId, action);
+    const result = await this.roomService.controlPlaybackByAdmin(roomId, payload.action);
     await this.writeAudit(
       actor.userId,
       "room.playback_control",
       "room",
       roomId,
-      `${action}${reason ? `: ${reason}` : ""}`,
+      `${payload.action}${reason ? `: ${reason}` : ""}`,
       "SUCCEEDED",
       request
     );
@@ -427,10 +480,12 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     actor: AdminPrincipal,
     roomId: string,
     memberId: string,
-    reason: string | null,
+    body: unknown,
     request: Request
   ) {
     this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminResolveIncidentRequestSchema, body ?? {});
+    const reason = payload.reason ?? null;
     const room = await this.prisma.roomState.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException("房间不存在。");
     await this.roomService.removeMemberByAdmin(roomId, memberId);
@@ -458,10 +513,12 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     actor: AdminPrincipal,
     roomId: string,
     messageId: string,
-    reason: string | null,
+    body: unknown,
     request: Request
   ) {
     this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminResolveIncidentRequestSchema, body ?? {});
+    const reason = payload.reason ?? null;
     if (!this.roomChatService) throw new ConflictException("聊天服务暂未挂载。");
     const deleted = await this.roomChatService.deleteMessageByAdmin(roomId, messageId);
     this.roomPublisher.emitChatDeleted(roomId, messageId);
@@ -482,20 +539,20 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   async setUserRole(
     actor: AdminPrincipal,
     userId: string,
-    newRole: "ADMIN" | "USER",
-    reason: string,
+    body: unknown,
     request: Request
   ) {
     this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminRoleChangeRequestSchema, body);
     if (userId === actor.userId) throw new ConflictException("不能修改当前管理员自身的角色。");
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException("用户不存在。");
-    if (user.role === newRole) return { ok: true, role: newRole };
+    if (user.role === payload.role) return { ok: true, role: payload.role };
     await this.prisma.user.update({
       where: { id: userId },
-      data: { role: newRole }
+      data: { role: payload.role }
     });
-    if (newRole === "USER") {
+    if (payload.role === "USER") {
       await this.prisma.adminSession.deleteMany({ where: { userId } }).catch(() => undefined);
     }
     await this.writeAudit(
@@ -503,25 +560,35 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
       "user.set_role",
       "user",
       userId,
-      `${reason} (${user.role} -> ${newRole})`,
+      `${payload.reason} (${user.role} -> ${payload.role})`,
       "SUCCEEDED",
       request
     );
-    return { ok: true, role: newRole };
+    return { ok: true, role: payload.role };
   }
 
   async resetUserPassword(
     actor: AdminPrincipal,
     userId: string,
-    newPasswordInput: string | undefined,
-    reason: string,
+    body: unknown,
     request: Request
   ) {
     this.assertMutationsEnabled();
+    const payload = parseRequestBody(adminResetPasswordRequestSchema, body);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException("用户不存在。");
     if (user.id === actor.userId) throw new ConflictException("管理员重置自身密码请在设置页进行。");
-    const plainPassword = newPasswordInput?.trim() || randomBytes(6).toString("hex");
+    if (user.role === "ADMIN") throw new ForbiddenException("不能重置其他管理员账号的密码。");
+    let plainPassword: string;
+    if (payload.newPassword !== undefined) {
+      const trimmed = payload.newPassword.trim();
+      if (trimmed.length < 8) {
+        throw new BadRequestException("新密码长度不能少于 8 个字符。");
+      }
+      plainPassword = trimmed;
+    } else {
+      plainPassword = randomBytes(16).toString("base64url");
+    }
     const passwordHash = await this.auth.hashPassword(plainPassword);
     await this.prisma.user.update({
       where: { id: userId },
@@ -536,7 +603,7 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
       "user.reset_password",
       "user",
       userId,
-      reason,
+      payload.reason,
       "SUCCEEDED",
       request
     );
@@ -620,10 +687,11 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createAnnouncement(admin: AdminPrincipal, body: unknown, request: Request) {
+    this.assertMutationsEnabled();
     if (!(await this.prisma.ensureAvailable())) {
       throw new HttpException("数据库暂不可用", HttpStatus.SERVICE_UNAVAILABLE);
     }
-    const parsed = createAnnouncementRequestSchema.parse(body);
+    const parsed = parseRequestBody(createAnnouncementRequestSchema, body);
     const id = randomUUID();
     const item = await this.prisma.systemAnnouncement.create({
       data: {
@@ -653,10 +721,11 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateAnnouncement(admin: AdminPrincipal, id: string, body: unknown, request: Request) {
+    this.assertMutationsEnabled();
     if (!(await this.prisma.ensureAvailable())) {
       throw new HttpException("数据库暂不可用", HttpStatus.SERVICE_UNAVAILABLE);
     }
-    const parsed = updateAnnouncementRequestSchema.parse(body);
+    const parsed = parseRequestBody(updateAnnouncementRequestSchema, body);
     const existing = await this.prisma.systemAnnouncement.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException("公告不存在");
@@ -689,6 +758,7 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   }
 
   async deleteAnnouncement(admin: AdminPrincipal, id: string, request: Request) {
+    this.assertMutationsEnabled();
     if (!(await this.prisma.ensureAvailable())) {
       throw new HttpException("数据库暂不可用", HttpStatus.SERVICE_UNAVAILABLE);
     }
@@ -842,7 +912,7 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     if (!hashSecret && process.env.NODE_ENV === "production") {
       throw new Error("AUDIT_HASH_SECRET must be configured in production.");
     }
-    const ip = request.ip || request.socket.remoteAddress || "unknown";
+    const ip = resolveClientIp(request);
     // Non-production fallback is a per-process random so the audit ipHash can
     // never be brute-forced from a published source constant.
     const effectiveHashSecret = hashSecret || this.developmentAuditHashSecret;

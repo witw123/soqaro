@@ -43,19 +43,22 @@ export function getCorsOrigins() {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const sourceOrigins = configuredOrigins?.length ? configuredOrigins : defaultCorsOrigins;
-  return [...new Set(sourceOrigins.map(normalizeOriginVariant))];
+  if (configuredOrigins?.length) {
+    return [...new Set(configuredOrigins.map(normalizeOriginVariant))];
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return [];
+  }
+
+  return [...new Set(defaultCorsOrigins.map(normalizeOriginVariant))];
 }
 
 export function getRequestOrigin(request: OriginRequest) {
-  const rawForwardedProtocol = request.get?.("x-forwarded-proto") ?? request.headers?.["x-forwarded-proto"];
-  const forwardedProtocol = Array.isArray(rawForwardedProtocol)
-    ? rawForwardedProtocol[0]
-    : rawForwardedProtocol?.split(",")[0];
-  const configuredProtocol = forwardedProtocol?.trim().toLowerCase();
-  const protocol = ["http", "https"].includes(configuredProtocol ?? "")
-    ? configuredProtocol
-    : request.protocol?.trim().toLowerCase();
+  // Rely on Express's trust-proxy-aware `request.protocol` rather than reading
+  // raw `x-forwarded-proto`, which an untrusted direct peer can forge.
+  const rawProtocol = request.protocol?.trim().toLowerCase();
+  const protocol = rawProtocol === "http" || rawProtocol === "https" ? rawProtocol : null;
   const rawHost = request.get?.("host") ?? request.headers?.host;
   const host = Array.isArray(rawHost) ? rawHost[0]?.trim() : rawHost?.trim();
   if (!protocol || !host) return null;

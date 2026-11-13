@@ -6,9 +6,7 @@
   "remote": {
     "urls": [
       "https://soqaro.witw.top",
-      "https://soqaro.witw.top/*",
-      "http://localhost:*",
-      "http://localhost:*/*"
+      "https://soqaro.witw.top/*"
     ]
   },
   "permissions": [

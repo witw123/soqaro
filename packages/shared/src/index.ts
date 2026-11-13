@@ -4,6 +4,7 @@ export * from "./contracts/requests";
 export * from "./contracts/session";
 export * from "./contracts/admin";
 export * from "./contracts/telemetry";
+export * from "./contracts/url";
 export * from "./assets/models";
 export * from "./assets/integrity";
 export * from "./p2p/models";

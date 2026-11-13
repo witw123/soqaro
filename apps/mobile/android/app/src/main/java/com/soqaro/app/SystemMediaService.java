@@ -10,7 +10,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -26,9 +25,6 @@ import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.core.app.NotificationCompat;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -416,30 +412,7 @@ public class SystemMediaService extends Service {
     }
 
     private Bitmap decodeArtwork(String url) {
-        try {
-            if (url.startsWith("data:")) {
-                int comma = url.indexOf(',');
-                if (comma < 0) return null;
-                byte[] bytes = android.util.Base64.decode(
-                        url.substring(comma + 1), android.util.Base64.DEFAULT);
-                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-            }
-            if (url.startsWith("blob:")) {
-                // Blob URLs live inside the webview and are unreachable natively.
-                return null;
-            }
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setConnectTimeout(3000);
-            connection.setReadTimeout(3000);
-            InputStream input = connection.getInputStream();
-            try {
-                return BitmapFactory.decodeStream(input);
-            } finally {
-                input.close();
-            }
-        } catch (Exception error) {
-            return null;
-        }
+        return SafeImageLoader.loadBitmap(url);
     }
 
     private Notification buildNotification() {

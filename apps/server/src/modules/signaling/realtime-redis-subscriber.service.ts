@@ -166,8 +166,8 @@ export class RealtimeRedisSubscriber {
         return;
       }
 
-      this.registry.clearRoomState(parsed.data.roomId);
       this.server!.to(parsed.data.roomId).emit("room.deleted", parsed.data);
+      void this.registry.evictRoomSockets(parsed.data.roomId);
     }).then((unsubscribe) => {
       this.redisUnsubscribers.push(unsubscribe);
     });
@@ -375,6 +375,26 @@ export class RealtimeRedisSubscriber {
       }
 
       this.server!.to(message.roomId).emit("room.member.removed", parsed.data);
+      void this.registry.evictMemberSockets(parsed.data.roomId, parsed.data.memberId);
+    }).then((unsubscribe) => {
+      this.redisUnsubscribers.push(unsubscribe);
+    });
+
+    void this.redisService.subscribe("soqaro:room-member-evicted", (payload) => {
+      const message = payload as {
+        sourceId?: string;
+        roomId?: string;
+        memberId?: string;
+      };
+      if (
+        !hasForeignRedisEnvelope(message, this.roomRealtimeBroadcaster.instanceId) ||
+        typeof message.roomId !== "string" ||
+        typeof message.memberId !== "string"
+      ) {
+        return;
+      }
+
+      void this.registry.evictMemberSockets(message.roomId, message.memberId);
     }).then((unsubscribe) => {
       this.redisUnsubscribers.push(unsubscribe);
     });

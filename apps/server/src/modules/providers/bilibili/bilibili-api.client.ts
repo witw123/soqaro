@@ -6,6 +6,7 @@ import type {
 } from "./bilibili-subtitle";
 import { BilibiliWbiSigner } from "./bilibili-wbi";
 import { ConcurrencyGate } from "../provider-concurrency";
+import { fetchProviderUrl } from "../provider-fetch";
 
 const BILIBILI_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
@@ -14,6 +15,46 @@ const BILIBILI_REFERER = "https://www.bilibili.com/";
 const BILIBILI_TV_APPKEY = "4409e200fedc5a43";
 const BILIBILI_TV_APPSEC = "59b43e04ad6965f34319062b425580dd";
 const BILIBILI_TV_UA = "Bilibili/7.20.0 (Android; 10)";
+
+const BILIBILI_SUBTITLE_HOST_SUFFIXES = ["hdslb.com", "bilibili.com", "biliapi.net"] as const;
+const BILIBILI_AUDIO_HOST_SUFFIXES = [
+  "bilivideo.com",
+  "bilivideo.cn",
+  "hdslb.com",
+  "akamaized.net",
+  "biliapi.net",
+  "acgvideo.com",
+  "szbdyd.com"
+] as const;
+
+function matchesAllowedSuffix(hostname: string, suffixes: readonly string[]): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return suffixes.some((suffix) => normalized === suffix || normalized.endsWith(`.${suffix}`));
+}
+
+export function isAllowedBilibiliSubtitleHost(hostname: string): boolean {
+  return matchesAllowedSuffix(hostname, BILIBILI_SUBTITLE_HOST_SUFFIXES);
+}
+
+export function isAllowedBilibiliAudioHost(hostname: string): boolean {
+  return matchesAllowedSuffix(hostname, BILIBILI_AUDIO_HOST_SUFFIXES);
+}
+
+function normalizeBilibiliHttpsUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+  return trimmed.replace(/^http:\/\//i, "https://");
+}
+
+function extractResponseHeaders(res: Response): Record<string, string> {
+  const responseHeaders: Record<string, string> = {};
+  for (const [key, value] of res.headers.entries()) {
+    responseHeaders[key.toLowerCase()] = value;
+  }
+  return responseHeaders;
+}
 
 // 仅约束“建连 + 响应头”阶段：响应头到达后即解除，
 // 保证代理流式转发（Range 透传）不会被计时器中断。
@@ -462,18 +503,26 @@ export class BilibiliApiClient {
   }
 
   async fetchSubtitleContent(subtitleUrl: string): Promise<BilibiliSubtitleItem[]> {
-    let targetUrl = subtitleUrl.trim();
-    if (targetUrl.startsWith("//")) {
-      targetUrl = `https:${targetUrl}`;
-    }
+    const targetUrl = normalizeBilibiliHttpsUrl(subtitleUrl);
     try {
-      const res = await fetchUpstream(targetUrl, {
-        headers: {
-          "User-Agent": BILIBILI_UA,
-          Referer: BILIBILI_REFERER
-        }
-      });
-      if (!res.ok) return [];
+      const res = await upstreamGate.run(() =>
+        fetchProviderUrl(
+          new URL(targetUrl),
+          {
+            headers: {
+              "User-Agent": BILIBILI_UA,
+              Referer: BILIBILI_REFERER
+            }
+          },
+          UPSTREAM_HEADER_TIMEOUT_MS,
+          isAllowedBilibiliSubtitleHost,
+          { maxRedirects: 2 }
+        )
+      );
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
+        return [];
+      }
       const json = (await res.json()) as { body?: BilibiliSubtitleItem[] };
       return json.body ?? [];
     } catch (err) {
@@ -618,59 +667,53 @@ export class BilibiliApiClient {
     }
 
     let lastError: unknown = null;
-    let lastResponse: Response | null = null;
+    let lastStatus: number | null = null;
 
     for (let i = 0; i < urls.length; i++) {
-      const url = urls[i]!;
+      const url = normalizeBilibiliHttpsUrl(urls[i]!);
 
-      // 1. 尝试默认 Web 请求头
       try {
-        const res = await fetchUpstream(url, { headers: defaultHeaders });
+        const res = await this.fetchAudioCandidate(url, defaultHeaders);
         if (res.status === 200 || res.status === 206) {
-          const responseHeaders: Record<string, string> = {};
-          for (const [key, value] of res.headers.entries()) {
-            responseHeaders[key.toLowerCase()] = value;
-          }
           return {
             status: res.status,
-            headers: responseHeaders,
+            headers: extractResponseHeaders(res),
             body: res.body
           };
         }
 
+        const firstStatus = res.status;
+        await res.body?.cancel().catch(() => {});
+        lastStatus = firstStatus;
+
         // 若返回 403，尝试 TV 端请求头（TV 流针对空 Referer + TV UA 开放）
-        if (res.status === 403) {
-          const tvRes = await fetchUpstream(url, { headers: tvHeaders });
+        if (firstStatus === 403) {
+          const tvRes = await this.fetchAudioCandidate(url, tvHeaders);
           if (tvRes.status === 200 || tvRes.status === 206) {
-            const responseHeaders: Record<string, string> = {};
-            for (const [key, value] of tvRes.headers.entries()) {
-              responseHeaders[key.toLowerCase()] = value;
-            }
             return {
               status: tvRes.status,
-              headers: responseHeaders,
+              headers: extractResponseHeaders(tvRes),
               body: tvRes.body
             };
           }
+          lastStatus = tvRes.status;
+          await tvRes.body?.cancel().catch(() => {});
         }
 
-        this.logger.warn(`Bilibili audio stream URL [${i + 1}/${urls.length}] returned HTTP ${res.status}, trying next fallback CDN.`);
-        lastResponse = res;
+        this.logger.warn(`Bilibili audio stream URL [${i + 1}/${urls.length}] returned HTTP ${firstStatus}, trying next fallback CDN.`);
       } catch (err) {
         // 网络异常时也尝试 TV 请求头
         try {
-          const tvRes = await fetchUpstream(url, { headers: tvHeaders });
+          const tvRes = await this.fetchAudioCandidate(url, tvHeaders);
           if (tvRes.status === 200 || tvRes.status === 206) {
-            const responseHeaders: Record<string, string> = {};
-            for (const [key, value] of tvRes.headers.entries()) {
-              responseHeaders[key.toLowerCase()] = value;
-            }
             return {
               status: tvRes.status,
-              headers: responseHeaders,
+              headers: extractResponseHeaders(tvRes),
               body: tvRes.body
             };
           }
+          lastStatus = tvRes.status;
+          await tvRes.body?.cancel().catch(() => {});
         } catch {
           // ignore
         }
@@ -679,18 +722,22 @@ export class BilibiliApiClient {
       }
     }
 
-    if (lastResponse) {
-      const responseHeaders: Record<string, string> = {};
-      for (const [key, value] of lastResponse.headers.entries()) {
-        responseHeaders[key.toLowerCase()] = value;
-      }
-      return {
-        status: lastResponse.status,
-        headers: responseHeaders,
-        body: lastResponse.body
-      };
+    if (lastStatus !== null) {
+      throw new Error(`All Bilibili audio stream CDNs returned non-200/206 status (last HTTP ${lastStatus})`);
     }
 
     throw lastError || new Error("Failed to connect to all Bilibili audio stream CDNs");
+  }
+
+  private async fetchAudioCandidate(url: string, headers: Record<string, string>): Promise<Response> {
+    return upstreamGate.run(() =>
+      fetchProviderUrl(
+        new URL(url),
+        { headers },
+        UPSTREAM_HEADER_TIMEOUT_MS,
+        isAllowedBilibiliAudioHost,
+        { maxRedirects: 3 }
+      )
+    );
   }
 }

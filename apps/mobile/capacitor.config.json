@@ -5,16 +5,15 @@
   "server": {
     "url": "https://soqaro.witw.top/app",
     "androidScheme": "https",
-    "cleartext": true,
+    "cleartext": false,
     "allowNavigation": [
-      "soqaro.witw.top",
-      "*.witw.top"
+      "soqaro.witw.top"
     ]
   },
   "android": {
-    "allowMixedContent": true,
+    "allowMixedContent": false,
     "captureInput": true,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": false
   },
   "loggingBehavior": "none",
   "plugins": {

@@ -1,5 +1,7 @@
 "use client";
 
+import { sanitizeArtworkUrl } from "@/lib/domain/url-safety";
+
 import { useEffect, useState } from "react";
 import {
   appSettingsChangeEvent,
@@ -97,12 +99,7 @@ export function useArtworkPalette(artworkUrl: string | null | undefined) {
 }
 
 export function getArtworkSourceUrl(artworkUrl: string) {
-  return normalizeArtworkUrl(artworkUrl);
-}
-
-function normalizeArtworkUrl(value: string) {
-  if (value.startsWith("//")) return `https:${value}`;
-  return value.replace(/^http:\/\//i, "https://");
+  return sanitizeArtworkUrl(artworkUrl) ?? "";
 }
 
 function extractArtworkPalette(image: HTMLImageElement): ArtworkPalette {

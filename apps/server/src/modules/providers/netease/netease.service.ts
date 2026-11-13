@@ -156,9 +156,9 @@ export class NeteaseService {
     return this.accounts.disconnect(userId);
   }
 
-  async searchTracks(userId: string, query: NeteaseSearchQuery): Promise<NeteaseSearchResponse> {
+  async searchTracks(userId: string, query: NeteaseSearchQuery, clientIp?: string): Promise<NeteaseSearchResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search:${userId}`, 30, 60_000);
+    this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30, 60_000);
     const cookie = await this.getOptionalCookie(userId);
     const response = await this.callProvider(userId, () =>
       this.api.searchTracks({ ...query, cookie })
@@ -181,9 +181,9 @@ export class NeteaseService {
     };
   }
 
-  async searchPlaylists(userId: string, query: NeteaseSearchQuery): Promise<ProviderPlaylistListResponse> {
+  async searchPlaylists(userId: string, query: NeteaseSearchQuery, clientIp?: string): Promise<ProviderPlaylistListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search:${userId}`, 30, 60_000);
+    this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30, 60_000);
     const cookie = await this.getOptionalCookie(userId);
     const response = await this.callProvider(userId, () => this.api.searchPlaylists({ ...query, cookie }));
     return {
@@ -195,9 +195,9 @@ export class NeteaseService {
     };
   }
 
-  async searchAlbums(userId: string, query: NeteaseSearchQuery): Promise<ProviderAlbumListResponse> {
+  async searchAlbums(userId: string, query: NeteaseSearchQuery, clientIp?: string): Promise<ProviderAlbumListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search:${userId}`, 30, 60_000);
+    this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30, 60_000);
     const cookie = await this.getOptionalCookie(userId);
     const response = await this.callProvider(userId, () => this.api.searchAlbums({ ...query, cookie }));
     return {
@@ -209,9 +209,9 @@ export class NeteaseService {
     };
   }
 
-  async searchSuggestions(userId: string, query: NeteaseSearchSuggestQuery): Promise<ProviderSearchSuggestionListResponse> {
+  async searchSuggestions(userId: string, query: NeteaseSearchSuggestQuery, clientIp?: string): Promise<ProviderSearchSuggestionListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search-suggest:${userId}`, 60, 60_000);
+    this.assertRateLimit(`search-suggest:${this.resolveRateLimitSubject(userId, clientIp)}`, 60, 60_000);
     const key = query.keywords.trim().toLocaleLowerCase();
     const cached = readTermCache(this.searchSuggestionCache.get(key));
     if (cached) return { items: cached };
@@ -227,9 +227,9 @@ export class NeteaseService {
     }
   }
 
-  async getSearchHot(userId: string): Promise<ProviderSearchSuggestionListResponse> {
+  async getSearchHot(userId: string, clientIp?: string): Promise<ProviderSearchSuggestionListResponse> {
     this.assertEnabled();
-    this.assertRateLimit(`search-hot:${userId}`, 12, 60_000);
+    this.assertRateLimit(`search-hot:${this.resolveRateLimitSubject(userId, clientIp)}`, 12, 60_000);
     const cached = readTermCache(this.searchHotCache);
     if (cached) return { items: cached };
 
@@ -503,7 +503,17 @@ export class NeteaseService {
     return { url, type: audio.type ?? null };
   }
 
+  private resolveRateLimitSubject(userId: string, clientIp?: string): string {
+    if (userId && userId !== "anonymous") {
+      return `user:${userId}`;
+    }
+    return `ip:${clientIp?.trim() || "unknown"}`;
+  }
+
   private async getOptionalCookie(userId: string): Promise<string> {
+    if (!userId || userId === "anonymous") {
+      return "";
+    }
     try {
       return await this.accounts.getCookieOrThrow(userId);
     } catch {

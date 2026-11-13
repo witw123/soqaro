@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeArtworkUrlSchema } from "../contracts/url";
 import { providerPlaylistSummarySchema, providerTrackCandidateSchema } from "../providers/catalog";
 
 export const personalizationSurfaceSchema = z.enum(["discover", "radio", "search"]);
@@ -47,7 +48,7 @@ export const personalizationTrackSchema = z.object({
   providerAlbumId: z.string().trim().min(1).max(512).nullable().optional(),
   releaseTime: z.string().trim().min(4).max(80).nullable().optional(),
   durationMs: z.number().int().min(0).max(86_400_000),
-  artworkUrl: z.string().url().nullable()
+  artworkUrl: safeArtworkUrlSchema(4096).nullable()
 }).strict();
 
 export const recordPersonalizationEventSchema = z.object({

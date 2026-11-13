@@ -10,6 +10,7 @@ import {
 } from "../playlist/models";
 import { playbackModeSchema } from "../playback/models";
 import { roomMemberPermissionsSchema, roomTypeSchema } from "../room/models";
+import { safeArtworkUrlSchema } from "./url";
 
 const trimmedString = (max: number) => z.string().trim().min(1).max(max);
 const accountSchema = trimmedString(64).regex(/^[a-zA-Z0-9_.-]+$/);
@@ -22,7 +23,7 @@ const optionalNullableText = (max: number) =>
     .optional();
 
 const stringId = trimmedString(160);
-const trackIdListSchema = z.array(stringId);
+const trackIdListSchema = z.array(stringId).max(1000);
 
 export const registerRequestSchema = z
   .object({
@@ -89,8 +90,14 @@ export const createRoomSongRequestSchema = z.object({
   artist: trimmedString(240),
   album: z.string().trim().max(240).nullable().optional(),
   durationMs: z.number().int().nonnegative().max(3 * 60 * 60 * 1000),
-  artworkUrl: z.string().trim().max(4096).nullable().optional()
+  artworkUrl: safeArtworkUrlSchema(4096).nullable().optional()
 }).strict();
+
+export const joinRoomRequestSchema = z
+  .object({
+    password: z.string().trim().max(128).optional()
+  })
+  .strict();
 
 export const joinRoomByCodeRequestSchema = z
   .object({
@@ -114,7 +121,7 @@ export const registerTrackRequestSchema = z
     codec: z.string().trim().max(80).nullable().optional(),
     mimeType: z.string().trim().max(120).nullable().optional(),
     fileHash: trimmedString(256),
-    artworkUrl: z.string().trim().max(4096).nullable(),
+    artworkUrl: safeArtworkUrlSchema(4096).nullable(),
     ownerSessionId: stringId.optional(),
     ownerNickname: z.string().trim().max(80).optional(),
     sourceType: trackSourceTypeSchema,
@@ -156,7 +163,7 @@ export const registerTrackRequestSchema = z
 
 export const registerTracksRequestSchema = z
   .object({
-    tracks: z.array(registerTrackRequestSchema).min(1)
+    tracks: z.array(registerTrackRequestSchema).min(1).max(500)
   })
   .strict();
 
@@ -259,7 +266,7 @@ export const createPlaylistRequestSchema = z
     description: optionalNullableText(5000),
     trackIds: trackIdListSchema.optional(),
     tags: z.array(trimmedString(128)).max(50).optional(),
-    coverUrl: z.string().trim().max(4096).nullable().optional(),
+    coverUrl: safeArtworkUrlSchema(4096).nullable().optional(),
     isCollaborative: z.boolean().optional(),
     roomId: z.string().trim().min(1).nullable().optional()
   })
@@ -270,7 +277,7 @@ export const updatePlaylistRequestSchema = z
     title: trimmedString(160).optional(),
     description: optionalNullableText(5000),
     tags: z.array(trimmedString(128)).max(50).optional(),
-    coverUrl: z.string().trim().max(4096).nullable().optional(),
+    coverUrl: safeArtworkUrlSchema(4096).nullable().optional(),
     trackIds: trackIdListSchema.optional()
   })
   .strict();

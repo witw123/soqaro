@@ -7,10 +7,13 @@ const encodingVersion = "v1";
 
 @Injectable()
 export class NeteaseCryptoService {
-  encrypt(value: string) {
+  encrypt(value: string, aad?: string) {
     const key = resolveEncryptionKey();
     const iv = randomBytes(12);
     const cipher = createCipheriv(cipherAlgorithm, key, iv);
+    if (aad !== undefined) {
+      cipher.setAAD(Buffer.from(aad, "utf8"));
+    }
     const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
     const tag = cipher.getAuthTag();
 
@@ -22,7 +25,7 @@ export class NeteaseCryptoService {
     ].join(":");
   }
 
-  decrypt(value: string) {
+  decrypt(value: string, aad?: string) {
     const [version, ivValue, tagValue, ciphertextValue] = value.split(":");
     if (version !== encodingVersion || !ivValue || !tagValue || !ciphertextValue) {
       throw new Error("Invalid NetEase account encryption payload.");
@@ -33,6 +36,9 @@ export class NeteaseCryptoService {
       resolveEncryptionKey(),
       Buffer.from(ivValue, "base64url")
     );
+    if (aad !== undefined) {
+      decipher.setAAD(Buffer.from(aad, "utf8"));
+    }
     decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
     return Buffer.concat([
       decipher.update(Buffer.from(ciphertextValue, "base64url")),

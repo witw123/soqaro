@@ -8,7 +8,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -26,9 +25,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -195,17 +191,6 @@ public class SystemNotificationPlugin extends Plugin {
     }
 
     private Bitmap downloadBitmap(String src) {
-        try {
-            URL url = new URL(src);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setDoInput(true);
-            connection.setConnectTimeout(3000);
-            connection.setReadTimeout(3000);
-            connection.connect();
-            InputStream input = connection.getInputStream();
-            return BitmapFactory.decodeStream(input);
-        } catch (Exception e) {
-            return null;
-        }
+        return SafeImageLoader.loadBitmap(src);
     }
 }

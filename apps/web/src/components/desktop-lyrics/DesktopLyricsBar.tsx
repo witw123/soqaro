@@ -15,7 +15,7 @@ import {
   getRoomLyricWordProgress,
   parseRoomLyrics
 } from "@/features/playback/lyrics";
-import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
+import { toCssUrlValue } from "@/lib/domain/url-safety";
 import { formatDuration } from "@/lib/domain/soqaro-ui";
 import { appSettingsChangeEvent, getAppSettings } from "@/features/settings/settings-store";
 
@@ -332,7 +332,7 @@ export function DesktopLyricsBar({
             isPlaying ? "scale-100" : "scale-95 opacity-80"
           }`}
           style={{
-            backgroundImage: artworkUrl ? `url("${getArtworkSourceUrl(artworkUrl)}")` : undefined
+            backgroundImage: toCssUrlValue(artworkUrl)
           }}
           title={artist ? `${title} - ${artist}` : title}
         >

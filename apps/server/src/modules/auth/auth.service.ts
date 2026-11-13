@@ -24,11 +24,11 @@ type StoredUser = UserProfile & {
 type StoredUserSession = {
   id: string;
   userId: string;
-  token: string;
   tokenHash: string;
   createdAt: string;
   expiresAt: string;
   persistence: PersistenceMode;
+  validatedAt?: number;
 };
 
 type FallbackAuthStore = {
@@ -36,12 +36,13 @@ type FallbackAuthStore = {
     Omit<StoredUser, "persistence">
   >;
   sessions: Array<
-    Omit<StoredUserSession, "persistence" | "token">
+    Omit<StoredUserSession, "persistence" | "validatedAt">
   >;
 };
 
 const sessionTtlMs = 1000 * 60 * 60 * 24 * 14;
 const sessionCleanupIntervalMs = 60 * 60 * 1000;
+const sessionCacheRevalidateMs = 60 * 1000;
 const userInvalidatedChannel = "soqaro:auth:user-invalidated";
 const MAX_CACHED_USERS = 20_000;
 const MAX_CACHED_SESSIONS = 50_000;
@@ -63,7 +64,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
   private readonly usersById = new Map<string, StoredUser>();
   private readonly userIdByUsername = new Map<string, string>();
-  private readonly sessionsByToken = new Map<string, StoredUserSession>();
   private readonly sessionsByTokenHash = new Map<string, StoredUserSession>();
   private readonly allowFallbackPersistence = resolveAllowFallbackPersistence();
   private readonly fallbackStorePath = resolve(
@@ -92,11 +92,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       // getAuthSessionByTokenOrThrow until its 14-day TTL.
       this.redisService
         .subscribe(userInvalidatedChannel, (payload) => {
-          const userId = (payload as { userId?: unknown }).userId;
-          if (typeof userId === "string") {
-            this.invalidateSessionsForUser(userId).catch((error) => {
+          const data = payload as { userId?: unknown; tokenHash?: unknown };
+          if (typeof data.userId === "string") {
+            this.invalidateSessionsForUser(data.userId).catch((error) => {
               this.logger.warn(`Failed to invalidate sessions for user: ${String(error)}`);
             });
+          }
+          if (typeof data.tokenHash === "string") {
+            this.sessionsByTokenHash.delete(data.tokenHash);
           }
         })
         .then((unsubscribe) => {
@@ -131,31 +134,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     for (const session of [...this.sessionsByTokenHash.values()]) {
       if (session.userId !== userId) continue;
       this.sessionsByTokenHash.delete(session.tokenHash);
-      if (session.token) {
-        this.sessionsByToken.delete(session.token);
-      }
       if (session.persistence === "fallback") {
         fallbackChanged = true;
       }
     }
 
-    // 缓存总量上限:超出时按插入序裁剪最老条目(等价 LRU 近似)。
-    // DB 是权威数据源,缓存缺失只会退化为一次 DB 读。
-    while (this.userIdByUsername.size > MAX_CACHED_USERS) {
-      const oldestUsername = this.userIdByUsername.keys().next().value;
-      if (oldestUsername === undefined) break;
-      const userId = this.userIdByUsername.get(oldestUsername);
-      this.userIdByUsername.delete(oldestUsername);
-      if (userId) this.usersById.delete(userId);
-    }
-    while (this.sessionsByTokenHash.size > MAX_CACHED_SESSIONS) {
-      const oldestHash = this.sessionsByTokenHash.keys().next().value;
-      if (oldestHash === undefined) break;
-      const session = this.sessionsByTokenHash.get(oldestHash);
-      this.sessionsByTokenHash.delete(oldestHash);
-      if (session && session.token) {
-        this.sessionsByToken.delete(session.token);
-      }
+    const cachedUser = this.usersById.get(userId);
+    if (cachedUser && cachedUser.persistence === "database") {
+      this.evictCachedUser(cachedUser);
     }
 
     if (fallbackChanged) {
@@ -326,24 +312,26 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.ensureFallbackStoreLoaded();
 
-    const session = this.sessionsByToken.get(token) ?? (await this.getPersistedSessionByToken(token));
-    if (!session) {
-      return { ok: true };
+    const tokenHash = hashSessionToken(token);
+    const cachedSession = this.sessionsByTokenHash.get(tokenHash);
+    this.sessionsByTokenHash.delete(tokenHash);
+
+    if (await this.prisma.ensureAvailable()) {
+      await this.prisma.userSession.deleteMany({
+        where: { tokenHash }
+      });
     }
 
-    this.sessionsByToken.delete(token);
-    this.sessionsByTokenHash.delete(session.tokenHash);
-
-    if (session.persistence === "database") {
-      if (await this.prisma.ensureAvailable()) {
-        await this.prisma.userSession.deleteMany({
-          where: { tokenHash: session.tokenHash }
-        });
-      }
-      return { ok: true };
+    if (cachedSession?.persistence === "fallback") {
+      await this.persistFallbackStore();
     }
 
-    await this.persistFallbackStore();
+    if (this.redisService?.isPubSubAvailable?.()) {
+      await this.redisService
+        .publish(userInvalidatedChannel, { tokenHash, at: new Date().toISOString() })
+        .catch(() => undefined);
+    }
+
     return { ok: true };
   }
 
@@ -354,15 +342,34 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.ensureFallbackStoreLoaded();
 
-    const storedSession =
-      this.sessionsByToken.get(token) ?? (await this.getPersistedSessionByToken(token));
+    const tokenHash = hashSessionToken(token);
+    let storedSession = this.sessionsByTokenHash.get(tokenHash) ?? null;
+
+    if (storedSession && storedSession.persistence === "database") {
+      const pubSubAvailable = Boolean(this.redisService?.isPubSubAvailable?.());
+      const staleCache = Date.now() - (storedSession.validatedAt ?? 0) > sessionCacheRevalidateMs;
+      if ((!pubSubAvailable || staleCache) && (await this.prisma.ensureAvailable())) {
+        const persisted = await this.prisma.userSession.findUnique({
+          where: { tokenHash }
+        });
+        if (!persisted) {
+          this.sessionsByTokenHash.delete(tokenHash);
+          throw new Error("Invalid session token.");
+        }
+        storedSession.expiresAt = persisted.expiresAt.toISOString();
+        storedSession.validatedAt = Date.now();
+      }
+    }
+
+    if (!storedSession) {
+      storedSession = await this.getPersistedSessionByTokenHash(tokenHash);
+    }
 
     if (!storedSession) {
       throw new Error("Invalid session token.");
     }
 
     if (new Date(storedSession.expiresAt).getTime() <= Date.now()) {
-      this.sessionsByToken.delete(token);
       this.sessionsByTokenHash.delete(storedSession.tokenHash);
       if (storedSession.persistence === "database") {
         if (await this.prisma.ensureAvailable()) {
@@ -380,7 +387,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if ((user as UserProfile & { status?: string }).status === "DISABLED") {
       throw new Error("Account is disabled.");
     }
-    return this.toAuthSession(user, storedSession);
+    return this.toAuthSession(user, storedSession, token);
   }
 
   async assertSessionToken(userId: string, token?: string) {
@@ -400,12 +407,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (cached) {
       if (cached.persistence === "database" && (await this.prisma.ensureAvailable())) {
         const persisted = await this.prisma.user.findUnique({ where: { id: userId } });
-        if (!persisted) throw new Error(`Unknown user: ${userId}`);
-        cached.role = persisted.role;
-        cached.status = persisted.status;
-        cached.disabledAt = persisted.disabledAt?.toISOString() ?? null;
-        cached.disabledReason = persisted.disabledReason ?? null;
-        cached.lastLoginAt = persisted.lastLoginAt?.toISOString() ?? null;
+        if (!persisted) {
+          this.evictCachedUser(cached);
+          throw new Error(`Unknown user: ${userId}`);
+        }
+        this.applyPersistedUserFields(cached, persisted);
       }
       return toUserProfile(cached);
     }
@@ -447,13 +453,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       if (cached) {
         if (cached.persistence === "database" && (await this.prisma.ensureAvailable())) {
           const persisted = await this.prisma.user.findUnique({ where: { id: cached.id } });
-          if (persisted) {
-            cached.role = persisted.role;
-            cached.status = persisted.status;
-            cached.disabledAt = persisted.disabledAt?.toISOString() ?? null;
-            cached.disabledReason = persisted.disabledReason ?? null;
-            cached.lastLoginAt = persisted.lastLoginAt?.toISOString() ?? null;
+          if (!persisted) {
+            this.evictCachedUser(cached);
+            throw new Error("Invalid username or password.");
           }
+          this.applyPersistedUserFields(cached, persisted);
         }
         return cached;
       }
@@ -503,15 +507,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const storedSession: StoredUserSession = {
       id: `session_${randomUUID()}`,
       userId: user.id,
-      token,
       tokenHash: hashSessionToken(token),
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
-      persistence
+      persistence,
+      validatedAt: Date.now()
     };
 
-    this.sessionsByToken.set(storedSession.token, storedSession);
-    this.sessionsByTokenHash.set(storedSession.tokenHash, storedSession);
+    this.cacheSession(storedSession);
 
     if (persistence === "database") {
       await this.prisma.userSession.create({
@@ -527,16 +530,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       await this.persistFallbackStore();
     }
 
-    return this.toAuthSession(user, storedSession);
+    return this.toAuthSession(user, storedSession, token);
   }
 
-  private toAuthSession(user: UserProfile, session: StoredUserSession): AuthSession {
+  private toAuthSession(user: UserProfile, session: StoredUserSession, token = ""): AuthSession {
     return {
       id: user.id,
       userId: user.id,
       username: user.username,
       nickname: user.nickname,
-      token: session.token,
+      token,
       createdAt: session.createdAt
     };
   }
@@ -559,38 +562,30 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async getPersistedSessionByToken(token: string) {
+  private async getPersistedSessionByTokenHash(tokenHash: string) {
     await this.ensureFallbackStoreLoaded();
 
     if (await this.prisma.ensureAvailable()) {
       const persisted = await this.prisma.userSession.findUnique({
-        where: { tokenHash: hashSessionToken(token) }
+        where: { tokenHash }
       });
 
       if (persisted) {
         const session: StoredUserSession = {
           id: persisted.id,
           userId: persisted.userId,
-          token,
           tokenHash: persisted.tokenHash,
           createdAt: persisted.createdAt.toISOString(),
           expiresAt: persisted.expiresAt.toISOString(),
-          persistence: "database"
+          persistence: "database",
+          validatedAt: Date.now()
         };
-        this.sessionsByToken.set(session.token, session);
-        this.sessionsByTokenHash.set(session.tokenHash, session);
+        this.cacheSession(session);
         return session;
       }
     }
 
-    const fallbackSession = this.sessionsByTokenHash.get(hashSessionToken(token));
-    if (fallbackSession) {
-      fallbackSession.token = token;
-      this.sessionsByToken.set(token, fallbackSession);
-      return fallbackSession;
-    }
-
-    return null;
+    return this.sessionsByTokenHash.get(tokenHash) ?? null;
   }
 
   private async resolvePersistenceModeOrThrow(): Promise<PersistenceMode> {
@@ -625,8 +620,63 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   private cacheUser(user: StoredUser) {
+    if (this.usersById.has(user.id)) {
+      this.usersById.delete(user.id);
+    }
+    if (this.userIdByUsername.has(user.username)) {
+      this.userIdByUsername.delete(user.username);
+    }
     this.usersById.set(user.id, user);
     this.userIdByUsername.set(user.username, user.id);
+    while (this.userIdByUsername.size > MAX_CACHED_USERS) {
+      const oldestUsername = this.userIdByUsername.keys().next().value;
+      if (oldestUsername === undefined) break;
+      const oldestUserId = this.userIdByUsername.get(oldestUsername);
+      this.userIdByUsername.delete(oldestUsername);
+      if (oldestUserId) this.usersById.delete(oldestUserId);
+    }
+  }
+
+  private evictCachedUser(user: StoredUser) {
+    this.usersById.delete(user.id);
+    if (this.userIdByUsername.get(user.username) === user.id) {
+      this.userIdByUsername.delete(user.username);
+    }
+  }
+
+  private applyPersistedUserFields(
+    cached: StoredUser,
+    persisted: {
+      passwordHash: string;
+      nickname: string;
+      role: "USER" | "ADMIN";
+      status: "ACTIVE" | "DISABLED";
+      disabledAt: Date | null;
+      disabledReason: string | null;
+      lastLoginAt: Date | null;
+      updatedAt: Date;
+    }
+  ) {
+    cached.passwordHash = persisted.passwordHash;
+    cached.nickname = persisted.nickname;
+    cached.role = persisted.role;
+    cached.status = persisted.status;
+    cached.disabledAt = persisted.disabledAt?.toISOString() ?? null;
+    cached.disabledReason = persisted.disabledReason ?? null;
+    cached.lastLoginAt = persisted.lastLoginAt?.toISOString() ?? null;
+    cached.updatedAt = persisted.updatedAt.toISOString();
+  }
+
+  private cacheSession(session: StoredUserSession) {
+    if (this.sessionsByTokenHash.has(session.tokenHash)) {
+      this.sessionsByTokenHash.delete(session.tokenHash);
+    }
+    this.sessionsByTokenHash.set(session.tokenHash, session);
+    while (this.sessionsByTokenHash.size > MAX_CACHED_SESSIONS) {
+      const oldestHash = this.sessionsByTokenHash.keys().next().value;
+      if (oldestHash === undefined) break;
+      this.sessionsByTokenHash.delete(oldestHash);
+    }
   }
 
   private async ensureFallbackStoreLoaded() {
@@ -659,16 +709,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        const restoredSession = {
-          ...session,
-          token: legacyToken ?? "",
+        const { token: _legacyToken, ...rest } = session as typeof session & { token?: unknown };
+        this.cacheSession({
+          ...rest,
           tokenHash,
           persistence: "fallback" as const
-        };
-        this.sessionsByTokenHash.set(tokenHash, restoredSession);
-        if (legacyToken) {
-          this.sessionsByToken.set(legacyToken, restoredSession);
-        }
+        });
       }
     } catch (error) {
       const code =
@@ -693,7 +739,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       sessions: Array.from(this.sessionsByTokenHash.values())
         .filter((session) => session.persistence === "fallback")
         .filter((session, index, sessions) => sessions.findIndex((item) => item.id === session.id) === index)
-        .map(({ persistence: _persistence, token: _token, ...session }) => session)
+        .map(({ persistence: _persistence, validatedAt: _validatedAt, ...session }) => session)
     };
 
     await mkdir(dirname(this.fallbackStorePath), { recursive: true });
@@ -708,9 +754,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     for (const session of [...this.sessionsByTokenHash.values()]) {
       if (new Date(session.expiresAt).getTime() > now) continue;
       this.sessionsByTokenHash.delete(session.tokenHash);
-      if (session.token) {
-        this.sessionsByToken.delete(session.token);
-      }
       if (session.persistence === "fallback") {
         fallbackChanged = true;
       }
@@ -773,7 +816,8 @@ function isUniqueConstraintError(error: unknown): boolean {
 }
 
 function resolveAllowFallbackPersistence() {
-  if (process.env.NODE_ENV === "production") {
+  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
+  if (nodeEnv === "production") {
     return false;
   }
 
@@ -786,5 +830,5 @@ function resolveAllowFallbackPersistence() {
     return false;
   }
 
-  return true;
+  return !nodeEnv || nodeEnv === "development" || nodeEnv === "test";
 }

@@ -195,7 +195,9 @@ export class BilibiliService {
     const audioStreams = playData?.dash?.audio ?? [];
     if (audioStreams.length > 0) {
       const bestAudio = [...audioStreams].sort((a, b) => b.bandwidth - a.bandwidth)[0]!;
-      const candidateUrls = sortBilibiliAudioUrls(bestAudio.baseUrl, bestAudio.backupUrl);
+      const candidateUrls = sortBilibiliAudioUrls(bestAudio.baseUrl, bestAudio.backupUrl).map(
+        (url) => url.replace(/^http:\/\//i, "https://")
+      );
       if (candidateUrls.length > 0) {
         const result = {
           candidateUrls,

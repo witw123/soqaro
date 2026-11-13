@@ -14,14 +14,14 @@ export class QqMusicAccountService {
   async getCookieOrThrow(userId: string) {
     const account = await this.findAccount(userId);
     if (!account) throw new Error("QQ Music account is required.");
-    try { return this.crypto.decrypt(account.encryptedCookie); } catch { throw new Error("QQ Music account credentials are invalid."); }
+    try { return this.crypto.decrypt(account.encryptedCookie, userId); } catch { throw new Error("QQ Music account credentials are invalid."); }
   }
   async getValidationState(userId: string) {
     const account = await this.findAccount(userId);
     if (!account) throw new Error("QQ Music account is required.");
     let cookie: string;
     try {
-      cookie = this.crypto.decrypt(account.encryptedCookie);
+      cookie = this.crypto.decrypt(account.encryptedCookie, userId);
     } catch {
       throw new Error("QQ Music account credentials are invalid.");
     }
@@ -36,7 +36,7 @@ export class QqMusicAccountService {
     await this.prisma.qqMusicAccount.updateMany({ where: { userId }, data: { lastValidatedAt: new Date() } });
   }
   async saveAccount(input: { userId: string; cookie: string; qqMusicUserId: string | null; nickname: string | null; avatarUrl: string | null }) {
-    await this.ensureDatabase(); const encryptedCookie = this.crypto.encrypt(input.cookie);
+    await this.ensureDatabase(); const encryptedCookie = this.crypto.encrypt(input.cookie, input.userId);
     return this.prisma.qqMusicAccount.upsert({ where: { userId: input.userId }, update: { qqMusicUserId: input.qqMusicUserId, nickname: input.nickname, avatarUrl: input.avatarUrl, encryptedCookie, lastValidatedAt: new Date() }, create: { id: `qqmusic_${randomUUID()}`, userId: input.userId, qqMusicUserId: input.qqMusicUserId, nickname: input.nickname, avatarUrl: input.avatarUrl, encryptedCookie, lastValidatedAt: new Date() } });
   }
   async disconnect(userId: string) { await this.ensureDatabase(); await this.prisma.qqMusicAccount.deleteMany({ where: { userId } }); return { ok: true }; }

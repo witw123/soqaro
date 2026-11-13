@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeHttpUrlSchema } from "../contracts/url";
 
 export const neteaseAccountStatusSchema = z
   .object({
@@ -48,7 +49,7 @@ export const neteaseTrackCandidateSchema = z
     providerAlbumId: z.string().trim().min(1).optional(),
     releaseTime: z.string().nullable().optional(),
     durationMs: z.number().int().nonnegative(),
-    artworkUrl: z.string().url().nullable()
+    artworkUrl: safeHttpUrlSchema().nullable()
   })
   .strict();
 

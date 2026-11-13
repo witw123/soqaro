@@ -94,10 +94,20 @@ export class TurnstileService {
       return false;
     }
 
-    const expectedHostname = configuredDomain
-      .replace(/^https?:\/\//, "")
-      .split("/", 1)[0]
-      ?.split(":", 1)[0];
-    return !expectedHostname || hostname.trim().toLowerCase() === expectedHostname;
+    let expectedHostname: string;
+    try {
+      const candidateUrl = /^https?:\/\//.test(configuredDomain)
+        ? configuredDomain
+        : `https://${configuredDomain}`;
+      expectedHostname = new URL(candidateUrl).hostname.toLowerCase();
+    } catch {
+      return false;
+    }
+
+    if (!expectedHostname) {
+      return false;
+    }
+
+    return hostname.trim().toLowerCase() === expectedHostname;
   }
 }

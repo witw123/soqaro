@@ -85,6 +85,10 @@ export class RoomRealtimePublisher {
     this.roomRealtimeBroadcaster.emitMemberRemoved(roomId, memberId);
   }
 
+  evictMemberSession(roomId: string, memberId: string) {
+    this.roomRealtimeBroadcaster.evictMemberSession(roomId, memberId);
+  }
+
   emitChatDeleted(roomId: string, messageId: string) {
     this.roomRealtimeBroadcaster.emitChatDeleted(roomId, messageId);
   }

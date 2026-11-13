@@ -1,5 +1,6 @@
 package com.soqaro.app;
 
+import android.content.pm.ApplicationInfo;
 import android.util.Base64;
 import android.net.Uri;
 import com.getcapacitor.JSArray;
@@ -59,16 +60,17 @@ public class LocalStoragePlugin extends Plugin {
     @PluginMethod
     public void execute(PluginCall call) {
         getActivity().runOnUiThread(() -> {
-            Uri uri = Uri.parse(getBridge().getWebView().getUrl());
+            String rawUrl = getBridge().getWebView().getUrl();
+            Uri uri = rawUrl != null ? Uri.parse(rawUrl) : null;
+            String scheme = uri != null ? uri.getScheme() : null;
             String host = uri != null ? uri.getHost() : null;
-            boolean isAllowedHost = host != null && (
-                host.equals("soqaro.witw.top") ||
-                host.endsWith(".witw.top") ||
-                host.equals("localhost") ||
-                host.equals("127.0.0.1") ||
-                host.equals("10.0.2.2")
-            );
-            if (!isAllowedHost) {
+            boolean isDebuggable = (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+            boolean isTrustedProd = "https".equalsIgnoreCase(scheme) && "soqaro.witw.top".equalsIgnoreCase(host);
+            boolean isTrustedDebug = isDebuggable
+                && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                && host != null
+                && (host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1") || host.equals("10.0.2.2"));
+            if (!isTrustedProd && !isTrustedDebug) {
                 call.reject("Storage is only available to Soqaro");
                 return;
             }

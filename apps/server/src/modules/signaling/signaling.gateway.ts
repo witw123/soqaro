@@ -99,7 +99,7 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
   server!: Server;
 
   afterInit() {
-    this.roomRealtimeBroadcaster.setServer(this.server);
+    this.ensureBroadcasterServer();
     this.peerSignals.setServer(this.server);
     this.readiness.setServer(this.server);
     this.registry.setServer(this.server);
@@ -184,10 +184,13 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     );
 
     this.assertRealtimeClient(client, message.roomId);
+    const sessionId = client.data.sessionId as string;
+    await this.assertUserStillActive(sessionId);
     await this.sessionLease.assert(client);
     if (client.data.peerId !== message.fromPeerId) {
       throw new WsException("Peer mismatch.");
     }
+    await this.assertRoomMemberForSocket(message.roomId, sessionId);
 
     const nextPayload = {
       ...message,
@@ -221,6 +224,7 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     if (client.data.sessionId !== report.sessionId || client.data.peerId !== report.peerId) {
       throw new WsException("Diagnostics identity mismatch.");
     }
+    await this.assertRoomMemberForSocket(report.roomId, report.sessionId);
     const rateKey = `${report.roomId}:${report.peerId}`;
     const now = Date.now();
     if (now - (this.telemetryLastReportAt.get(rateKey) ?? 0) < 5_000) { this.metrics.incrementDiagnosticsRateLimited(); return { ok: false, rateLimited: true }; }
@@ -296,7 +300,14 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
       throw new WsException("Unauthorized realtime request.");
     }
 
-    const user = await this.authService.getUserOrThrow(sessionId);
+    const user = await this.authService.getUserOrThrow(sessionId) as {
+      id: string;
+      nickname: string;
+      status?: string;
+    };
+    if (user.status === "DISABLED") {
+      throw new WsException("Account is disabled.");
+    }
     const nextPayload = await this.roomChatService.append({
       roomId: parsed.data.roomId,
       sessionId: user.id,
@@ -322,7 +333,14 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     await this.sessionLease.assert(client);
     const sessionId = client.data.sessionId as string | undefined;
     if (!sessionId) throw new WsException("Unauthorized realtime request.");
-    const user = await this.authService.getUserOrThrow(sessionId);
+    const user = await this.authService.getUserOrThrow(sessionId) as {
+      id: string;
+      nickname: string;
+      status?: string;
+    };
+    if (user.status === "DISABLED") {
+      throw new WsException("Account is disabled.");
+    }
     const rawTrackId = parsed.data.trackId?.trim() || null;
     const trackId = rawTrackId ?? (await this.roomService.getRoomCurrentTrackId(parsed.data.roomId)) ?? null;
     let totalCount = 0;
@@ -367,6 +385,7 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     }
 
     this.assertRealtimeClient(client, parsed.data.roomId);
+    await this.assertUserStillActive(client.data.sessionId as string);
     await this.sessionLease.assert(client);
     return { serverNow: new Date().toISOString() };
   }
@@ -419,6 +438,47 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     ) {
       throw createWsApiException("Realtime identity mismatch.", errorCodes.unauthorized);
     }
+    await this.assertUserStillActive(message.sessionId);
+
+    let playlists: Playlist[] = [];
+    try {
+      playlists = await this.playlistService.listPlaylistsForRoom(message.roomId);
+    } catch {
+      playlists = [];
+    }
+
+    let precheckSnapshot: RoomSnapshot;
+    try {
+      precheckSnapshot = await this.roomService.getAccessibleRoomSnapshot(
+        message.roomId,
+        playlists,
+        message.sessionId
+      );
+    } catch {
+      client.emit("room.snapshot.missing", { roomId: message.roomId });
+      return { ok: false };
+    }
+
+    const isMember =
+      precheckSnapshot.room.hostId === message.sessionId ||
+      precheckSnapshot.room.members.some((member) => member.id === message.sessionId);
+    if (!isMember) {
+      client.emit("room.snapshot.missing", { roomId: message.roomId });
+      return { ok: false };
+    }
+
+    const localPeerOwner = this.registry.findSessionByPeerId(message.roomId, message.peerId);
+    const snapshotPeerConflict = precheckSnapshot.room.members.some(
+      (member) =>
+        member.id !== message.sessionId &&
+        member.presenceState !== "offline" &&
+        member.peerId === message.peerId
+    );
+    if ((localPeerOwner && localPeerOwner !== message.sessionId) || snapshotPeerConflict) {
+      throw createWsApiException("Peer ID is already in use.", errorCodes.unauthorizedRoomAction);
+    }
+    await this.sessionLease.claimPeerId(message.roomId, message.sessionId, message.peerId);
+
     const pendingAuthenticationTimer = this.unauthenticatedConnectionTimers.get(client.id);
     if (pendingAuthenticationTimer) {
       clearTimeout(pendingAuthenticationTimer);
@@ -455,6 +515,7 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
       this.metrics.unbindRealtimeSocket(client.id);
       client.data ??= {};
     } catch (error) {
+      await this.sessionLease.releasePeerId(message.roomId, message.sessionId, message.peerId);
       await this.sessionLease.rollback(message.roomId, message.sessionId, previousLease, {
         peerId: message.peerId,
         socketId: client.id,
@@ -470,21 +531,8 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     client.data.protocolVersion = 4;
     client.data.capabilities = ["webrtc-opus-v1"];
     client.data.isRealtimeAuthenticated = true;
-    client.join(message.roomId);
-    const recoveryGeneration = this.peerSignals.registerRecoveryGeneration(
-      message.roomId,
-      message.sessionId,
-      message.peerId
-    );
-    this.peerSignals.registerPeerSocket(message.roomId, message.peerId, client.id);
-    this.registry.registerSessionSocket(
-      message.roomId,
-      message.sessionId,
-      message.peerId,
-      client.id,
-      fenceToken
-    );
 
+    let recoveryGeneration: number;
     try {
       this.registry.cancelPendingDisconnectCleanup(message.roomId, message.sessionId);
       const presenceUpdated = await this.registry.updatePeerPresence(
@@ -499,12 +547,6 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
       await this.registry.rememberRecentRoom(message.roomId, message.sessionId);
       let snapshot: RoomSnapshot;
       try {
-        let playlists: Playlist[] = [];
-        try {
-          playlists = await this.playlistService.listPlaylistsForRoom(message.roomId);
-        } catch {
-          playlists = [];
-        }
         snapshot = await this.roomService.getAccessibleRoomSnapshot(message.roomId, playlists, message.sessionId);
       } catch {
         await this.cleanupFailedRoomSubscribe(
@@ -518,6 +560,21 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
         return { ok: false };
       }
 
+      client.join(message.roomId);
+      recoveryGeneration = this.peerSignals.registerRecoveryGeneration(
+        message.roomId,
+        message.sessionId,
+        message.peerId
+      );
+      this.peerSignals.registerPeerSocket(message.roomId, message.peerId, client.id);
+      this.registry.registerSessionSocket(
+        message.roomId,
+        message.sessionId,
+        message.peerId,
+        client.id,
+        fenceToken
+      );
+
       // New subscription is fully established. Now commit the transition:
       if (
         previousRoomId &&
@@ -527,7 +584,7 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
         client.leave(previousRoomId);
         void this.registry.updatePeerPresence(previousRoomId, previousSessionId, null, "offline");
         this.readiness.clearForSession(previousRoomId, previousSessionId, previousPeerId);
-        await this.sessionLease.release(client);
+        await this.sessionLease.releasePeerId(previousRoomId, previousSessionId, previousPeerId);
       }
 
       await this.registry.replaceExistingRoomSession(
@@ -673,6 +730,7 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     }
     if (sessionId && isActiveSessionSocket) {
       await this.sessionLease.release(client);
+      await this.sessionLease.releasePeerId(message.roomId, sessionId, peerId);
     }
     if (peerId) {
       this.peerSignals.clearPendingPeerSignals(message.roomId, peerId);
@@ -785,6 +843,14 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     if (this.server) {
       this.roomRealtimeBroadcaster.setServer(this.server);
     }
+    this.roomRealtimeBroadcaster.setEvictionHandler?.({
+      evictMember: (roomId, memberId) => {
+        void this.registry.evictMemberSockets(roomId, memberId);
+      },
+      evictRoom: (roomId) => {
+        void this.registry.evictRoomSockets(roomId);
+      }
+    });
   }
 
   private async cleanupFailedRoomSubscribe(
@@ -825,6 +891,9 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     } else {
       await this.sessionLease.release(client);
     }
+    if (!isRestoringOtherSocket) {
+      await this.sessionLease.releasePeerId?.(roomId, sessionId, peerId);
+    }
 
     client.leave(roomId);
     client.data.roomId = undefined;
@@ -832,6 +901,17 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     client.data.peerId = undefined;
     client.data.sessionFenceToken = undefined;
     client.data.isRealtimeAuthenticated = false;
+  }
+
+  private async assertRoomMemberForSocket(roomId: string, sessionId: string) {
+    try {
+      await this.roomService.assertRoomMember(roomId, sessionId);
+    } catch (error) {
+      throw createWsApiException(
+        error instanceof Error ? error.message : "Unauthorized room action.",
+        errorCodes.unauthorizedRoomAction
+      );
+    }
   }
 
   private async assertUserStillActive(sessionId: string) {

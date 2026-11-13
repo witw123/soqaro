@@ -1,4 +1,10 @@
-import { ConflictException, HttpException, HttpStatus, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  InternalServerErrorException,
+  UnauthorizedException
+} from "@nestjs/common";
 import { AuthController } from "./auth.controller";
 import { TurnstileService } from "./turnstile.service";
 
@@ -182,5 +188,96 @@ describe("AuthController", () => {
       status: HttpStatus.BAD_REQUEST,
       message: "Password must be at least 8 characters."
     });
+  });
+
+  it("sets Cache-Control: no-store on register, login, logout, and me", async () => {
+    const fakeSession = {
+      id: "user_1",
+      username: "alice",
+      nickname: "Alice",
+      token: "secret-session-token",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    };
+    const authService = {
+      register: jest.fn().mockResolvedValue(fakeSession),
+      login: jest.fn().mockResolvedValue(fakeSession),
+      logout: jest.fn().mockResolvedValue({ ok: true }),
+      getAuthSessionByTokenOrThrow: jest.fn().mockResolvedValue(fakeSession)
+    };
+    const abuseProtection = { enforce: jest.fn().mockResolvedValue(undefined) };
+    const controller = new AuthController(
+      authService as never,
+      new TurnstileService(),
+      undefined as never,
+      abuseProtection as never
+    );
+
+    const makeResponse = () => ({
+      setHeader: jest.fn(),
+      cookie: jest.fn(),
+      clearCookie: jest.fn()
+    });
+
+    const regRes = makeResponse();
+    await controller.register(
+      { username: "alice", password: "password123", nickname: "Alice" },
+      request,
+      "127.0.0.1",
+      regRes as never
+    );
+    expect(regRes.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+
+    const loginRes = makeResponse();
+    await controller.login(
+      { username: "alice", password: "password123" },
+      request,
+      "127.0.0.1",
+      loginRes as never
+    );
+    expect(loginRes.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+
+    const logoutRes = makeResponse();
+    await controller.logout("secret-session-token", request, "127.0.0.1", logoutRes as never);
+    expect(logoutRes.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(abuseProtection.enforce).toHaveBeenCalledWith(
+      "auth:logout",
+      [{ name: "ip", value: "127.0.0.1" }],
+      { limit: 60, windowMs: 60_000 }
+    );
+
+    const meRes = makeResponse();
+    await controller.me("secret-session-token", request, "127.0.0.1", meRes as never);
+    expect(meRes.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+  });
+
+  it("sanitizes unexpected DB errors in login and me without counting them as credential failures", async () => {
+    const authService = {
+      login: jest.fn().mockRejectedValue(new Error("ECONNREFUSED 10.0.0.4:5432")),
+      getAuthSessionByTokenOrThrow: jest.fn().mockRejectedValue(new Error("P1001: Can't reach database"))
+    };
+    const redisService = {
+      isAvailable: jest.fn(() => true),
+      getString: jest.fn().mockResolvedValue(null),
+      incrementWithTtlMs: jest.fn().mockResolvedValue(1),
+      delete: jest.fn().mockResolvedValue(undefined)
+    };
+    const controller = new AuthController(
+      authService as never,
+      new TurnstileService(),
+      redisService as never,
+      undefined as never
+    );
+
+    await expect(
+      controller.login({ username: "alice", password: "password123" }, request, "127.0.0.1")
+    ).rejects.toThrow(InternalServerErrorException);
+
+    // Only IP key should have incremented; username failure counter must NOT increment on DB outage
+    expect(redisService.incrementWithTtlMs).toHaveBeenCalledTimes(1);
+    expect(redisService.incrementWithTtlMs).toHaveBeenCalledWith("auth:login:ip:127.0.0.1", 60_000);
+
+    await expect(
+      controller.me("some-token", request, "127.0.0.1")
+    ).rejects.toThrow(InternalServerErrorException);
   });
 });

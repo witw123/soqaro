@@ -29,7 +29,7 @@ export class NeteaseAccountService {
     }
 
     try {
-      return this.crypto.decrypt(account.encryptedCookie);
+      return this.crypto.decrypt(account.encryptedCookie, userId);
     } catch {
       throw new Error("NetEase account credentials are invalid.");
     }
@@ -43,7 +43,7 @@ export class NeteaseAccountService {
     avatarUrl: string | null;
   }) {
     await this.ensureDatabase();
-    const encryptedCookie = this.crypto.encrypt(input.cookie);
+    const encryptedCookie = this.crypto.encrypt(input.cookie, input.userId);
     return this.prisma.neteaseAccount.upsert({
       where: { userId: input.userId },
       update: {

@@ -3083,4 +3083,252 @@ describe("RoomService", () => {
     expect(result.playback?.status).toBe("playing");
     expect(result.playback?.currentTrackId).toBe(secondTrack.id);
   });
+
+  it("prevents track overwrite and ownership hijacking via client-supplied track.id", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const owner = await authService.createGuestSession("Owner");
+    const attacker = await authService.createGuestSession("Attacker");
+    const snapshot = await roomService.createRoom(host.id, "public", {
+      roomType: "interactive",
+      newMemberPermissions: {
+        library: true,
+        queue: true,
+        player: true
+      }
+    });
+    await roomService.joinRoom(snapshot.room.id, owner.id);
+    await roomService.joinRoom(snapshot.room.id, attacker.id);
+
+    const ownerTrack = await roomService.registerTrack(snapshot.room.id, owner.id, {
+      id: "attacker_chosen_id",
+      title: "Original Song",
+      artist: "Original Artist",
+      album: null,
+      durationMs: 180_000,
+      bitrate: null,
+      sizeBytes: 1024,
+      codec: "mp3",
+      mimeType: "audio/mpeg",
+      fileHash: "f".repeat(64),
+      artworkUrl: null,
+      ownerSessionId: owner.id,
+      ownerNickname: owner.nickname,
+      sourceType: "local_upload",
+      sourceRef: null,
+      playbackAsset: createPlaybackAssetMock("asset_owner_1", 180_000, "f".repeat(64))
+    });
+
+    expect(ownerTrack.id).toMatch(/^track_/);
+    expect(ownerTrack.id).not.toBe("attacker_chosen_id");
+
+    await expect(
+      roomService.registerTrack(snapshot.room.id, attacker.id, {
+        id: ownerTrack.id,
+        title: "Hijacked",
+        artist: "Evil",
+        album: null,
+        durationMs: 1000,
+        bitrate: null,
+        sizeBytes: 512,
+        codec: "mp3",
+        mimeType: "audio/mpeg",
+        fileHash: "e".repeat(64),
+        artworkUrl: null,
+        ownerSessionId: attacker.id,
+        ownerNickname: attacker.nickname,
+        sourceType: "local_upload",
+        sourceRef: null
+      })
+    ).rejects.toThrow("Only the track owner or room host can update this track.");
+
+    await expect(
+      roomService.registerTracks(snapshot.room.id, attacker.id, [
+        {
+          id: ownerTrack.id,
+          title: "Batch Hijacked",
+          artist: "Evil",
+          album: null,
+          durationMs: 1000,
+          bitrate: null,
+          sizeBytes: 512,
+          codec: "mp3",
+          mimeType: "audio/mpeg",
+          fileHash: "d".repeat(64),
+          artworkUrl: null,
+          ownerSessionId: attacker.id,
+          ownerNickname: attacker.nickname,
+          sourceType: "local_upload",
+          sourceRef: null
+        }
+      ])
+    ).rejects.toThrow("Only the track owner or room host can update this track.");
+
+    const updatedByOwner = await roomService.registerTrack(snapshot.room.id, owner.id, {
+      id: ownerTrack.id,
+      title: "Updated Song",
+      artist: "Original Artist",
+      album: null,
+      durationMs: 180_000,
+      bitrate: null,
+      sizeBytes: 1024,
+      codec: "mp3",
+      mimeType: "audio/mpeg",
+      fileHash: "f".repeat(64),
+      artworkUrl: null,
+      ownerSessionId: owner.id,
+      ownerNickname: owner.nickname,
+      sourceType: "local_upload",
+      sourceRef: null,
+      playbackAsset: createPlaybackAssetMock("asset_owner_1", 180_000, "f".repeat(64))
+    });
+    expect(updatedByOwner.id).toBe(ownerTrack.id);
+    expect(updatedByOwner.title).toBe("Updated Song");
+    expect(updatedByOwner.ownerSessionId).toBe(owner.id);
+  });
+
+  it("hides private rooms from non-members in listRoomDirectoryForSession", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const member = await authService.createGuestSession("Member");
+    const outsider = await authService.createGuestSession("Outsider");
+
+    const privateRoom = await roomService.createRoom(host.id, "private", {
+      name: "Secret Room",
+      roomType: "interactive"
+    });
+    await roomService.joinRoom(privateRoom.room.id, member.id);
+    const publicRoom = await roomService.createRoom(host.id, "public", {
+      name: "Open Room",
+      roomType: "interactive"
+    });
+
+    const outsiderDir = await roomService.listRoomDirectoryForSession(outsider.id);
+    expect(outsiderDir.map((item) => item.room.id)).toEqual([publicRoom.room.id]);
+
+    const memberDir = await roomService.listRoomDirectoryForSession(member.id);
+    expect(memberDir.map((item) => item.room.id).sort()).toEqual(
+      [privateRoom.room.id, publicRoom.room.id].sort()
+    );
+  });
+
+  it("blocks non-members from reading snapshot or syncing password-protected public rooms", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const member = await authService.createGuestSession("Member");
+    const outsider = await authService.createGuestSession("Outsider");
+
+    const protectedRoom = await roomService.createRoom(host.id, "public", {
+      name: "Locked Public Room",
+      password: "room-password",
+      roomType: "interactive"
+    });
+    await roomService.joinRoom(protectedRoom.room.id, member.id, "room-password");
+
+    await expect(
+      roomService.getAccessibleRoomSnapshot(protectedRoom.room.id, [], outsider.id)
+    ).rejects.toThrow("请输入房间密码。");
+    await expect(
+      roomService.syncRoom(protectedRoom.room.id, outsider.id, 0, [])
+    ).rejects.toThrow("请输入房间密码。");
+
+    const memberSnapshot = await roomService.getAccessibleRoomSnapshot(
+      protectedRoom.room.id,
+      [],
+      member.id
+    );
+    expect(memberSnapshot.room.id).toBe(protectedRoom.room.id);
+    const memberSync = await roomService.syncRoom(protectedRoom.room.id, member.id, 0, []);
+    expect(memberSync.snapshot?.room.id).toBe(protectedRoom.room.id);
+  });
+
+  it("enforces maxTracksPerRoom and maxQueueItemsPerRoom caps", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const snapshot = await roomService.createRoom(host.id, "public", {
+      roomType: "interactive"
+    });
+    const baseTrack = await roomService.registerTrack(snapshot.room.id, host.id, {
+      title: "Base",
+      artist: "Artist",
+      album: null,
+      durationMs: 120_000,
+      bitrate: null,
+      sizeBytes: 1024,
+      codec: "mp3",
+      mimeType: "audio/mpeg",
+      fileHash: "a".repeat(64),
+      artworkUrl: null,
+      ownerSessionId: host.id,
+      ownerNickname: host.nickname,
+      sourceType: "local_upload",
+      sourceRef: null,
+      playbackAsset: createPlaybackAssetMock("asset_base", 120_000, "a".repeat(64))
+    });
+
+    const record = await roomCore.roomRecordRepository.getRoomRecord(snapshot.room.id);
+    while (record.tracks.length < 2_000) {
+      record.tracks.push({
+        ...baseTrack,
+        id: `track_filler_${record.tracks.length}`,
+        fileHash: `${record.tracks.length}`.padStart(64, "0")
+      });
+    }
+    while (record.queue.length < 2_000) {
+      record.queue.push({
+        id: `queue_filler_${record.queue.length}`,
+        trackId: baseTrack.id,
+        createdAt: new Date().toISOString(),
+        requestedBy: host.nickname,
+        requestedById: host.id,
+        source: "manual",
+        sourceSeedTrackId: null,
+        position: record.queue.length
+      });
+    }
+    await roomCore.roomRecordRepository.persistRecord(record);
+
+    await expect(
+      roomService.registerTrack(snapshot.room.id, host.id, {
+        title: "Overflow",
+        artist: "Artist",
+        album: null,
+        durationMs: 120_000,
+        bitrate: null,
+        sizeBytes: 1024,
+        codec: "mp3",
+        mimeType: "audio/mpeg",
+        fileHash: "9".repeat(64),
+        artworkUrl: null,
+        ownerSessionId: host.id,
+        ownerNickname: host.nickname,
+        sourceType: "local_upload",
+        sourceRef: null
+      })
+    ).rejects.toThrow("房间曲库数量已达到上限。");
+
+    await expect(
+      roomService.addQueueItem(snapshot.room.id, host.id, baseTrack.id)
+    ).rejects.toThrow("播放队列数量已达到上限。");
+  });
 });

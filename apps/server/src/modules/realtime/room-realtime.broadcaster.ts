@@ -35,11 +35,22 @@ import {
 export class RoomRealtimeBroadcaster {
   readonly instanceId = randomUUID();
   private server: Server | null = null;
+  private evictionHandler: {
+    evictMember: (roomId: string, memberId: string) => void;
+    evictRoom: (roomId: string) => void;
+  } | null = null;
 
   constructor(private readonly redisService: RedisService) {}
 
   setServer(server: Server) {
     this.server = server;
+  }
+
+  setEvictionHandler(handler: {
+    evictMember: (roomId: string, memberId: string) => void;
+    evictRoom: (roomId: string) => void;
+  }) {
+    this.evictionHandler = handler;
   }
 
   emitRoomSnapshot(roomId: string, snapshot: RoomSnapshot) {
@@ -61,6 +72,7 @@ export class RoomRealtimeBroadcaster {
 
   emitRoomDeleted(roomId: string, trackIds: string[]) {
     this.server?.to(roomId).emit("room.deleted", { roomId, trackIds });
+    this.evictionHandler?.evictRoom(roomId);
     this.publish(roomDeletedChannel, {
       sourceId: this.instanceId,
       roomId,
@@ -191,10 +203,20 @@ export class RoomRealtimeBroadcaster {
   emitMemberRemoved(roomId: string, memberId: string) {
     const message: RoomMemberRemovedPayload = { roomId, memberId };
     this.server?.to(roomId).emit("room.member.removed", message);
+    this.evictionHandler?.evictMember(roomId, memberId);
     this.publish(roomMemberRemovedChannel, {
       sourceId: this.instanceId,
       roomId,
       payload: message
+    });
+  }
+
+  evictMemberSession(roomId: string, memberId: string) {
+    this.evictionHandler?.evictMember(roomId, memberId);
+    this.publish("soqaro:room-member-evicted", {
+      sourceId: this.instanceId,
+      roomId,
+      memberId
     });
   }
 

@@ -142,4 +142,25 @@ describe("PeerSignalRelayService", () => {
     await relay.emitToPeer("room-1", "peer-2", signal({ sequence: 2 }));
     expect(emit).not.toHaveBeenCalled();
   });
+
+  it("skips delivery when live socket metadata belongs to another room or peer", async () => {
+    const { emit, getSocket, sessionLease, relay } = createHarness();
+    sessionLease.socketOwnsLease.mockResolvedValue(true);
+    getSocket.mockReturnValue({
+      id: "socket-2",
+      data: { roomId: "other-room", peerId: "peer-2" }
+    });
+    relay.registerPeerSocket("room-1", "peer-2", "socket-2");
+    await settle();
+
+    await relay.emitToPeer("room-1", "peer-2", signal({ sequence: 10 }));
+    expect(emit).not.toHaveBeenCalled();
+
+    getSocket.mockReturnValue({
+      id: "socket-2",
+      data: { roomId: "room-1", peerId: "other-peer" }
+    });
+    await relay.emitToPeer("room-1", "peer-2", signal({ sequence: 11 }));
+    expect(emit).not.toHaveBeenCalled();
+  });
 });

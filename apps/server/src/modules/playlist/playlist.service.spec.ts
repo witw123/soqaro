@@ -1,9 +1,11 @@
+import { PlaylistController } from "./playlist.controller";
 import { PlaylistService } from "./playlist.service";
 
 function createPrismaMock() {
   return {
     isAvailable: jest.fn(() => false),
     playlist: {
+      count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
@@ -179,5 +181,66 @@ describe("PlaylistService", () => {
     // Verify in-memory state was NOT dirtied
     const cached = await service.getPlaylist(playlist.id);
     expect(cached.title).toBe("Original Title");
+  });
+
+  it("caps the number of playlists per room at 100", async () => {
+    const prisma = createPrismaMock();
+    const roomService = {
+      getTracks: jest.fn().mockResolvedValue([]),
+      getQueue: jest.fn().mockResolvedValue([])
+    };
+    const service = new PlaylistService(roomService as never, prisma as never);
+
+    for (let index = 0; index < 100; index += 1) {
+      await service.createPlaylist({
+        ownerId: `owner_${index}`,
+        roomId: "room_cap",
+        title: `Playlist ${index}`
+      });
+    }
+
+    await expect(
+      service.createPlaylist({
+        ownerId: "owner_100",
+        roomId: "room_cap",
+        title: "Playlist 100"
+      })
+    ).rejects.toThrow("房间播放列表数量已达到上限。");
+  });
+});
+
+describe("PlaylistController", () => {
+  it("requires library permission when creating a room playlist", async () => {
+    const playlistService = {
+      createPlaylist: jest.fn(),
+      listPlaylistsForRoom: jest.fn().mockResolvedValue([])
+    };
+    const roomService = {
+      assertRoomPermission: jest.fn().mockRejectedValue(new Error("Forbidden")),
+      touchRoomRevision: jest.fn()
+    };
+    const roomRealtimePublisher = {
+      emitSnapshot: jest.fn()
+    };
+    const authService = {
+      getAuthSessionByTokenOrThrow: jest.fn().mockResolvedValue({ userId: "guest_1" })
+    };
+    const controller = new PlaylistController(
+      playlistService as never,
+      roomService as never,
+      roomRealtimePublisher as never,
+      authService as never,
+      undefined as never
+    );
+
+    await expect(
+      controller.createPlaylist("token", {
+        title: "Room Mix",
+        roomId: "room_1"
+      })
+    ).rejects.toThrow("Forbidden");
+
+    expect(roomService.assertRoomPermission).toHaveBeenCalledWith("room_1", "guest_1", "library");
+    expect(playlistService.createPlaylist).not.toHaveBeenCalled();
   });
 });

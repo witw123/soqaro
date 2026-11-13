@@ -98,6 +98,13 @@ export class PeerSignalRelayService {
         this.unregisterPeerSocket(roomId, peerId, socketId);
         continue;
       }
+      if (
+        (socket.data?.roomId && socket.data.roomId !== roomId) ||
+        (socket.data?.peerId && socket.data.peerId !== peerId)
+      ) {
+        this.unregisterPeerSocket(roomId, peerId, socketId);
+        continue;
+      }
 
       let ownsLease = false;
       try {

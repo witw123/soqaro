@@ -18,12 +18,20 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const trustProxy = resolveTrustProxy();
   const corsOrigins = getCorsOrigins();
+  const expressApp = app.getHttpAdapter().getInstance() as {
+    set?: (setting: string, value: unknown) => void;
+    disable?: (setting: string) => void;
+  };
+  expressApp.disable?.("x-powered-by");
   if (trustProxy !== false) {
-    const expressApp = app.getHttpAdapter().getInstance() as {
-      set?: (setting: string, value: unknown) => void;
-    };
     expressApp.set?.("trust proxy", trustProxy);
   }
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("X-Frame-Options", "DENY");
+    response.setHeader("Referrer-Policy", "no-referrer");
+    next();
+  });
   app.use((request: Request, _response: Response, next: NextFunction) => {
     if (!request.headers["x-session-token"]) {
       const token = readUserSessionCookie(request.headers.cookie);
@@ -83,8 +91,17 @@ function resolveTrustProxy() {
       return false;
     }
     const numeric = Number(configured);
-    return Number.isInteger(numeric) && numeric >= 0 ? numeric : configured;
+    if (Number.isInteger(numeric) && numeric >= 0) {
+      return numeric;
+    }
+    const subnets = configured
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    return subnets.length === 1 ? subnets[0] : subnets;
   }
 
-  return process.env.NODE_ENV === "production" ? 1 : false;
+  return process.env.NODE_ENV === "production"
+    ? ["loopback", "linklocal", "uniquelocal"]
+    : false;
 }

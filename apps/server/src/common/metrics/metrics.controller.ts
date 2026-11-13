@@ -1,4 +1,5 @@
 import { Controller, Get, Header, UnauthorizedException, Headers } from "@nestjs/common";
+import { timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../../infra/prisma/prisma.service";
 import { RedisService } from "../../infra/redis/redis.service";
 import { MetricsService } from "./metrics.service";
@@ -18,9 +19,10 @@ export class MetricsController {
     if (process.env.NODE_ENV === "production" && !configuredToken) {
       throw new UnauthorizedException("Metrics authentication is not configured.");
     }
-    if (process.env.NODE_ENV === "production" && configuredToken) {
-      const expected = `Bearer ${configuredToken}`;
-      if (authorization !== expected) {
+    if (configuredToken) {
+      const expected = Buffer.from(`Bearer ${configuredToken}`);
+      const actual = Buffer.from(authorization ?? "");
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
         throw new UnauthorizedException("Metrics authentication required.");
       }
     }

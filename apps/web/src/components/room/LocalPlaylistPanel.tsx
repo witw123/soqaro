@@ -5,6 +5,7 @@ import type { Playlist, TrackMeta } from "@soqaro/shared";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/domain/soqaro-ui";
+import { toCssUrlValue } from "@/lib/domain/url-safety";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 import { CheckIcon } from "@/components/icons/DiscoverIcons";
 import { importTaskStore, useVisibleImportTasks } from "@/features/upload/import-task-store";
@@ -468,26 +469,28 @@ function PlaylistArtwork({
   size?: "sm" | "lg";
 }) {
   const artworkUrl = tracks.find((track) => track.artworkUrl)?.artworkUrl ?? null;
+  const safeBackgroundImage = toCssUrlValue(artworkUrl);
   const sizeClass = size === "lg" ? "h-20 w-20 text-2xl" : "h-10 w-10 text-base";
   return (
     <div
       aria-label={`${title} 封面`}
       className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-surface-border bg-surface font-bold text-foreground-muted ${sizeClass}`}
-      style={artworkUrl ? { backgroundImage: `url(${artworkUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
+      style={safeBackgroundImage ? { backgroundImage: safeBackgroundImage, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
     >
-      {!artworkUrl ? title.slice(0, 1).toUpperCase() : null}
+      {!safeBackgroundImage ? title.slice(0, 1).toUpperCase() : null}
     </div>
   );
 }
 
 function TrackArtwork({ artworkUrl, title }: { artworkUrl: string | null; title: string }) {
+  const safeBackgroundImage = toCssUrlValue(artworkUrl);
   return (
     <div
       aria-label={`${title} 封面`}
       className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-surface-border bg-surface text-base font-bold text-foreground-muted"
-      style={artworkUrl ? { backgroundImage: `url(${artworkUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
+      style={safeBackgroundImage ? { backgroundImage: safeBackgroundImage, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
     >
-      {!artworkUrl ? title.slice(0, 1).toUpperCase() : null}
+      {!safeBackgroundImage ? title.slice(0, 1).toUpperCase() : null}
     </div>
   );
 }

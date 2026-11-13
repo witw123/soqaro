@@ -203,9 +203,18 @@ export function resolveMime(contentType: string | null, url: string) {
   return type.includes("flac") ? "audio/flac" : type.includes("mp3") || type.includes("mpeg") ? "audio/mpeg" : null;
 }
 
+const SAFE_ARTWORK_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif"
+]);
+
 export function resolveArtworkMime(contentType: string | null) {
   const mimeType = contentType?.split(";", 1)[0]?.trim().toLowerCase();
-  return mimeType?.startsWith("image/") ? mimeType : null;
+  return mimeType && SAFE_ARTWORK_MIME_TYPES.has(mimeType) ? mimeType : null;
 }
 
 export function normalizeQqMusicArtworkUrl(value: string) {

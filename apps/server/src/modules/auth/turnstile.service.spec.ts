@@ -74,4 +74,22 @@ describe("TurnstileService", () => {
       ServiceUnavailableException
     );
   });
+
+  it("fails closed when APP_DOMAIN is malformed or lacks a hostname", async () => {
+    process.env.TURNSTILE_ENABLED = "true";
+    process.env.TURNSTILE_SECRET_KEY = "secret";
+    jest.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ success: true, action: "auth", hostname: "soqaro.example.com" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    for (const badDomain of ["https://", ":8080", "not a valid domain///"]) {
+      process.env.APP_DOMAIN = badDomain;
+      await expect(new TurnstileService().verify("token", "203.0.113.10")).rejects.toBeInstanceOf(
+        BadRequestException
+      );
+    }
+  });
 });

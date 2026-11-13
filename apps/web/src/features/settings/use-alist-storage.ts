@@ -5,19 +5,61 @@ import type { AlistConfig, AlistTestResponse } from "@soqaro/shared";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 
 export const alistStorageKey = "soqaro-alist-config-v1";
+export const alistSessionTokenKey = "soqaro-alist-token-v1";
 export const alistConfigChangeEvent = "soqaro-alist-config-changed";
+
+let memoryAlistToken: string | undefined;
+
+function readSessionToken(): string | undefined {
+  if (memoryAlistToken) {
+    return memoryAlistToken;
+  }
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.sessionStorage?.getItem(alistSessionTokenKey)?.trim();
+    if (raw) {
+      memoryAlistToken = raw;
+      return raw;
+    }
+  } catch {
+    // Ignore restricted sessionStorage access
+  }
+  return undefined;
+}
+
+function writeSessionToken(token: string | undefined): void {
+  const trimmed = token?.trim() || undefined;
+  memoryAlistToken = trimmed;
+  if (typeof window === "undefined") return;
+  try {
+    if (trimmed) {
+      window.sessionStorage?.setItem(alistSessionTokenKey, trimmed);
+    } else {
+      window.sessionStorage?.removeItem(alistSessionTokenKey);
+    }
+  } catch {
+    // Ignore restricted sessionStorage access
+  }
+}
 
 export function getStoredAlistConfig(): AlistConfig | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(alistStorageKey);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as AlistConfig;
+    const parsed = JSON.parse(raw) as Partial<AlistConfig>;
     if (parsed && typeof parsed.url === "string" && parsed.url.trim()) {
-      return {
+      const sanitized = {
         url: parsed.url.trim(),
-        mountPath: parsed.mountPath?.trim() || "/Music",
-        token: parsed.token?.trim() || undefined
+        mountPath: parsed.mountPath?.trim() || "/Music"
+      };
+      if (typeof parsed.token === "string" && parsed.token.trim()) {
+        // Strip any plaintext token previously stored in localStorage.
+        localStorage.setItem(alistStorageKey, JSON.stringify(sanitized));
+      }
+      return {
+        ...sanitized,
+        token: readSessionToken()
       };
     }
   } catch {
@@ -28,13 +70,23 @@ export function getStoredAlistConfig(): AlistConfig | null {
 
 export function saveStoredAlistConfig(config: AlistConfig): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(alistStorageKey, JSON.stringify(config));
-  window.dispatchEvent(new CustomEvent(alistConfigChangeEvent, { detail: config }));
+  const persistedConfig = {
+    url: config.url.trim(),
+    mountPath: config.mountPath?.trim() || "/Music"
+  };
+  localStorage.setItem(alistStorageKey, JSON.stringify(persistedConfig));
+  writeSessionToken(config.token);
+  const effectiveConfig: AlistConfig = {
+    ...persistedConfig,
+    token: config.token?.trim() || undefined
+  };
+  window.dispatchEvent(new CustomEvent(alistConfigChangeEvent, { detail: effectiveConfig }));
 }
 
 export function clearStoredAlistConfig(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(alistStorageKey);
+  writeSessionToken(undefined);
   window.dispatchEvent(new CustomEvent(alistConfigChangeEvent, { detail: null }));
 }
 

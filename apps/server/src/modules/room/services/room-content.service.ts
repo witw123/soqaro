@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type { PrepareTrackAssetRequest, QueueItem, RadioAutopilot, ReportTrackAssetUnavailableRequest, RoomTrackDeletion, TrackMeta } from "@soqaro/shared";
+import { createApiErrorResponse, errorCodes, type PrepareTrackAssetRequest, type QueueItem, type RadioAutopilot, type ReportTrackAssetUnavailableRequest, type RoomTrackDeletion, type TrackMeta } from "@soqaro/shared";
 import type { RoomRecord } from "../room.types";
 import {
   assertHost,
@@ -10,8 +10,10 @@ import {
   incrementQueueVersion,
   incrementRoomRevision,
   maxAssetUnits,
+  maxQueueItemsPerRoom,
   maxTrackDurationMs,
-  maxTrackSizeBytes
+  maxTrackSizeBytes,
+  maxTracksPerRoom
 } from "../room-mutation";
 import { getEffectivePlaybackPositionMs, pausePlaybackAt } from "./room-playback.helpers";
 import { AuthService } from "../../auth/auth.service";
@@ -37,66 +39,12 @@ export class RoomContentService {
     sessionId: string,
     input: Omit<TrackMeta, "id"> & { id?: string }
   ) {
-    await this.authService.getUserOrThrow(sessionId);
+    const user = await this.authService.getUserOrThrow(sessionId);
     const record = await this.roomRecordRepository.getRoomRecord(roomId);
     assertMember(record, sessionId);
     assertPermission(record, sessionId, "library");
-    this.assertTrackLimits(input);
 
-    const track: TrackMeta = {
-      ...input,
-      ownerSessionId: sessionId,
-      ownerNickname: (await this.authService.getUserOrThrow(sessionId)).nickname,
-      id: input.id ?? `track_${randomUUID()}`
-    };
-
-    const duplicateByFileHashIndex = record.tracks.findIndex(
-      (item) =>
-        item.fileHash === track.fileHash &&
-        item.ownerSessionId === track.ownerSessionId
-    );
-    const sourceRef = track.sourceType !== "local_upload" ? track.sourceRef : null;
-    const duplicateBySourceIndex = sourceRef
-      ? record.tracks.findIndex(
-          (item) =>
-            item.ownerSessionId === track.ownerSessionId &&
-            item.sourceType !== "local_upload" &&
-            item.sourceRef?.provider === sourceRef.provider &&
-            item.sourceRef?.trackId === sourceRef.trackId
-        )
-      : -1;
-    const existingIndex = record.tracks.findIndex((item) => item.id === track.id);
-
-    if (duplicateByFileHashIndex >= 0) {
-      const existingTrack = record.tracks[duplicateByFileHashIndex];
-      record.tracks[duplicateByFileHashIndex] = {
-        ...existingTrack,
-        ...track,
-        id: existingTrack.id
-      };
-      incrementRoomRevision(record.room);
-      await this.roomRecordRepository.persistRecord(record);
-      return record.tracks[duplicateByFileHashIndex];
-    }
-
-    if (duplicateBySourceIndex >= 0) {
-      const existingTrack = record.tracks[duplicateBySourceIndex];
-      record.tracks[duplicateBySourceIndex] = {
-        ...existingTrack,
-        ...track,
-        id: existingTrack.id
-      };
-      incrementRoomRevision(record.room);
-      await this.roomRecordRepository.persistRecord(record);
-      return record.tracks[duplicateBySourceIndex];
-    }
-
-    if (existingIndex >= 0) {
-      record.tracks[existingIndex] = track;
-    } else {
-      record.tracks.unshift(track);
-    }
-
+    const track = this.upsertRegisteredTrack(record, sessionId, user.nickname, input);
     incrementRoomRevision(record.room);
     await this.roomRecordRepository.persistRecord(record);
     return track;
@@ -117,38 +65,100 @@ export class RoomContentService {
     }
     const registered: TrackMeta[] = [];
     for (const input of inputs) {
-      this.assertTrackLimits(input);
-      const track: TrackMeta = {
-        ...input,
-        ownerSessionId: sessionId,
-        ownerNickname: user.nickname,
-        id: input.id ?? `track_${randomUUID()}`
-      };
-      const sourceRef = track.sourceType !== "local_upload" ? track.sourceRef : null;
-      const existingIndex = record.tracks.findIndex(
-        (item) =>
-          item.id === track.id ||
-          (item.ownerSessionId === sessionId && item.fileHash === track.fileHash) ||
-          (!!sourceRef &&
-            item.ownerSessionId === sessionId &&
-            item.sourceType !== "local_upload" &&
-            item.sourceRef?.provider === sourceRef.provider &&
-            item.sourceRef?.trackId === sourceRef.trackId)
-      );
-
-      if (existingIndex >= 0) {
-        const existingTrack = record.tracks[existingIndex];
-        record.tracks[existingIndex] = { ...existingTrack, ...track, id: existingTrack.id };
-        registered.push(record.tracks[existingIndex]);
-      } else {
-        record.tracks.unshift(track);
-        registered.push(track);
-      }
+      registered.push(this.upsertRegisteredTrack(record, sessionId, user.nickname, input));
     }
 
     incrementRoomRevision(record.room);
     await this.roomRecordRepository.persistRecord(record);
     return registered;
+  }
+
+  private upsertRegisteredTrack(
+    record: RoomRecord,
+    sessionId: string,
+    nickname: string,
+    input: Omit<TrackMeta, "id"> & { id?: string }
+  ): TrackMeta {
+    this.assertTrackLimits(input);
+
+    if (input.id) {
+      const existingByIdIndex = record.tracks.findIndex((item) => item.id === input.id);
+      if (existingByIdIndex >= 0) {
+        const existingTrack = record.tracks[existingByIdIndex];
+        if (existingTrack.ownerSessionId !== sessionId && record.room.hostId !== sessionId) {
+          throw new ForbiddenException(
+            createApiErrorResponse(
+              errorCodes.unauthorizedRoomAction,
+              "Only the track owner or room host can update this track."
+            )
+          );
+        }
+        const updated: TrackMeta = {
+          ...existingTrack,
+          ...input,
+          id: existingTrack.id,
+          ownerSessionId: existingTrack.ownerSessionId,
+          ownerNickname:
+            existingTrack.ownerSessionId === sessionId ? nickname : existingTrack.ownerNickname
+        };
+        record.tracks[existingByIdIndex] = updated;
+        return updated;
+      }
+    }
+
+    const sourceRef = input.sourceType !== "local_upload" ? input.sourceRef : null;
+    const duplicateByFileHashIndex = record.tracks.findIndex(
+      (item) =>
+        item.fileHash === input.fileHash &&
+        item.ownerSessionId === sessionId
+    );
+    if (duplicateByFileHashIndex >= 0) {
+      const existingTrack = record.tracks[duplicateByFileHashIndex];
+      const updated: TrackMeta = {
+        ...existingTrack,
+        ...input,
+        id: existingTrack.id,
+        ownerSessionId: sessionId,
+        ownerNickname: nickname
+      };
+      record.tracks[duplicateByFileHashIndex] = updated;
+      return updated;
+    }
+
+    const duplicateBySourceIndex = sourceRef
+      ? record.tracks.findIndex(
+          (item) =>
+            item.ownerSessionId === sessionId &&
+            item.sourceType !== "local_upload" &&
+            item.sourceRef?.provider === sourceRef.provider &&
+            item.sourceRef?.trackId === sourceRef.trackId
+        )
+      : -1;
+    if (duplicateBySourceIndex >= 0) {
+      const existingTrack = record.tracks[duplicateBySourceIndex];
+      const updated: TrackMeta = {
+        ...existingTrack,
+        ...input,
+        id: existingTrack.id,
+        ownerSessionId: sessionId,
+        ownerNickname: nickname
+      };
+      record.tracks[duplicateBySourceIndex] = updated;
+      return updated;
+    }
+
+    if (record.tracks.length >= maxTracksPerRoom) {
+      throw new BadRequestException("房间曲库数量已达到上限。");
+    }
+
+    const track: TrackMeta = {
+      ...input,
+      ownerSessionId: sessionId,
+      ownerNickname: nickname,
+      id: `track_${randomUUID()}`
+    };
+    record.tracks.unshift(track);
+    return track;
   }
 
   async prepareTrackAsset(
@@ -344,6 +354,9 @@ export class RoomContentService {
     if (!record.tracks.some((track) => track.id === trackId)) {
       throw new Error(`Track not found in room: ${trackId}`);
     }
+    if (record.queue.length >= maxQueueItemsPerRoom) {
+      throw new BadRequestException("播放队列数量已达到上限。");
+    }
 
     const queueItem: QueueItem = {
       id: `queue_${randomUUID()}`,
@@ -389,6 +402,9 @@ export class RoomContentService {
 
     if (validTrackIds.length === 0) {
       throw new Error("No tracks from this playlist are available in the current room.");
+    }
+    if (record.queue.length + validTrackIds.length > maxQueueItemsPerRoom) {
+      throw new BadRequestException("播放队列数量已达到上限。");
     }
 
     const nextItems = validTrackIds.map(

@@ -10,6 +10,7 @@ import { loginRequestSchema, registerRequestSchema } from "@soqaro/shared";
 import { Button } from "@/components/ui/button";
 import { useSessionIdentity } from "@/features/session/use-session-identity";
 import { buildAppEntryHref } from "@/lib/domain/client-shell";
+import { resolveSafeRedirectPath } from "@/lib/domain/url-safety";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 import { toUserFacingError } from "@/lib/domain/soqaro-ui";
 
@@ -66,7 +67,10 @@ function getAuthFormatError(
 export function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") ?? buildAppEntryHref();
+  const redirectTo = resolveSafeRedirectPath(
+    searchParams.get("redirectTo"),
+    buildAppEntryHref()
+  );
   const [mode, setMode] = useState<AuthMode>("login");
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -115,9 +119,7 @@ export function AuthPage() {
       return;
     }
 
-    router.replace(
-      (redirectTo.startsWith("/") ? redirectTo : buildAppEntryHref()) as Route
-    );
+    router.replace(redirectTo as Route);
   }, [activeSession, hydrated, redirectTo, router]);
 
   async function handleLogin() {
@@ -147,9 +149,7 @@ export function AuthPage() {
       );
       setActiveSession(session);
       setStatusMessage(`欢迎回来，${session.nickname}。`);
-      router.replace(
-        (redirectTo.startsWith("/") ? redirectTo : buildAppEntryHref()) as Route
-      );
+      router.replace(redirectTo as Route);
     } catch (error) {
       setStatusMessage(toUserFacingError(error));
       resetTurnstile();
@@ -185,9 +185,7 @@ export function AuthPage() {
       );
       setActiveSession(session);
       setStatusMessage(`账号已创建，欢迎你，${session.nickname}。`);
-      router.replace(
-        (redirectTo.startsWith("/") ? redirectTo : buildAppEntryHref()) as Route
-      );
+      router.replace(redirectTo as Route);
     } catch (error) {
       setStatusMessage(toUserFacingError(error));
       resetTurnstile();

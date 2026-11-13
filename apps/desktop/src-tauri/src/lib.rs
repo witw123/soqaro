@@ -1,6 +1,7 @@
 mod system_media;
 mod local_storage;
 mod native_downloader;
+mod url_guard;
 
 use tauri::{
     command,
@@ -67,7 +68,9 @@ async fn system_media_clear(app: AppHandle) -> Result<(), String> {
 }
 
 #[command]
-async fn toggle_desktop_lyrics(app: AppHandle) -> Result<bool, String> {
+async fn toggle_desktop_lyrics(app: AppHandle, caller: tauri::WebviewWindow) -> Result<bool, String> {
+    url_guard::validate_trusted_caller(&caller)?;
+
     if let Some(window) = app.get_webview_window(LYRICS_LABEL) {
         if window.is_visible().unwrap_or(false) {
             window.hide().map_err(|error| error.to_string())?;
@@ -77,7 +80,11 @@ async fn toggle_desktop_lyrics(app: AppHandle) -> Result<bool, String> {
         return Ok(true);
     }
 
-    let mut url = match app.get_webview_window("main").and_then(|main| main.url().ok()) {
+    let mut url = match app
+        .get_webview_window("main")
+        .and_then(|main| main.url().ok())
+        .filter(url_guard::is_trusted_window_url)
+    {
         Some(url) => url,
         None => {
             #[cfg(debug_assertions)]
@@ -184,9 +191,17 @@ async fn focus_main_window(app: AppHandle) -> Result<(), String> {
 
 #[command]
 #[allow(deprecated)]
-async fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+async fn open_external_url(
+    app: AppHandle,
+    caller: tauri::WebviewWindow,
+    url: String,
+) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
-    app.shell().open(&url, None).map_err(|error| error.to_string())
+    url_guard::validate_trusted_caller(&caller)?;
+    let parsed = url_guard::validate_external_url(&url)?;
+    app.shell()
+        .open(parsed.as_str(), None)
+        .map_err(|error| error.to_string())
 }
 
 fn position_lyrics_window(window: &tauri::WebviewWindow) {
@@ -212,10 +227,12 @@ fn position_lyrics_window(window: &tauri::WebviewWindow) {
 
 #[command]
 async fn download_direct_native(
+    caller: tauri::WebviewWindow,
     url: String,
     headers: Option<std::collections::HashMap<String, String>>,
     concurrent_parts: Option<usize>,
 ) -> Result<native_downloader::NativeDownloadResponse, String> {
+    url_guard::validate_trusted_caller(&caller)?;
     native_downloader::download_direct_native(url, headers, concurrent_parts).await
 }
 

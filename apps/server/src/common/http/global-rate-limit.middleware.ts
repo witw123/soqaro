@@ -16,9 +16,11 @@ const WINDOW_MS = 60_000;
 export function createGlobalRateLimitMiddleware(
   options: { limitPerMinute?: number; enabled?: boolean } = {}
 ) {
+  const rawEnvLimit = process.env.GLOBAL_RATE_LIMIT_PER_MINUTE?.trim();
+  const parsedEnvLimit = rawEnvLimit !== undefined && rawEnvLimit !== "" ? Number(rawEnvLimit) : NaN;
   const limit =
     options.limitPerMinute ??
-    (Number(process.env.GLOBAL_RATE_LIMIT_PER_MINUTE ?? "") || DEFAULT_LIMIT_PER_MINUTE);
+    (Number.isFinite(parsedEnvLimit) && parsedEnvLimit >= 0 ? parsedEnvLimit : DEFAULT_LIMIT_PER_MINUTE);
   const enabled = options.enabled ?? process.env.NODE_ENV !== "test";
   const buckets = new Map<string, Bucket>();
 
@@ -36,9 +38,14 @@ export function createGlobalRateLimitMiddleware(
     const now = Date.now();
     const bucket = buckets.get(ip);
     if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
-      if (buckets.size > MAX_TRACKED_IPS) {
+      if (buckets.size >= MAX_TRACKED_IPS) {
         for (const [key, entry] of buckets) {
           if (now - entry.windowStart >= WINDOW_MS) buckets.delete(key);
+        }
+        while (buckets.size >= MAX_TRACKED_IPS) {
+          const oldestKey = buckets.keys().next().value;
+          if (oldestKey === undefined) break;
+          buckets.delete(oldestKey);
         }
       }
       buckets.set(ip, { windowStart: now, count: 1 });

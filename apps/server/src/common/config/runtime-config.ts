@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 const insecureJwtSecrets = new Set([
   "",
   "replace-this-with-a-long-random-secret",
@@ -21,6 +23,9 @@ const insecureTurnstileValues = new Set([
   "your-turnstile-secret-key"
 ]);
 
+const minProductionSecretLength = 16;
+const allowedTrustProxySubnets = new Set(["loopback", "linklocal", "uniquelocal"]);
+
 // A ten-member room can use 90 data-side and 18 media-side TURN allocations
 // when every endpoint needs relay, plus probes and short-lived recovery
 // overlap. Keep enough relay ports for that peak instead of failing halfway
@@ -38,16 +43,26 @@ export function validateRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("AUTH_FAKE_PERSISTENCE must be false in production startup.");
   }
 
+  if (env.RATE_LIMIT_DISABLED?.trim().toLowerCase() === "true") {
+    throw new Error("RATE_LIMIT_DISABLED must be false in production startup.");
+  }
+
   if (trustProxy === "true") {
     throw new Error("TRUST_PROXY=true is not allowed in production startup.");
   }
 
-  if (trustProxy === "loopback") {
-    throw new Error("TRUST_PROXY=loopback is not valid behind the production reverse proxy.");
+  if (trustProxy && trustProxy !== "false" && !isValidProductionTrustProxy(trustProxy)) {
+    throw new Error(
+      "Production TRUST_PROXY must be false, a non-negative proxy hop count, or a trusted proxy IP/CIDR/subnet list."
+    );
   }
 
-  if (trustProxy && trustProxy !== "false" && !/^\d+$/.test(trustProxy)) {
-    throw new Error("Production TRUST_PROXY must be false or a non-negative proxy hop count.");
+  const corsOrigins = (env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (corsOrigins.length === 0) {
+    throw new Error("CORS_ORIGINS must be configured in production startup.");
   }
 
   if (env.NETEASE_ENABLED === "true" && !isValidNeteaseEncryptionKey(env.NETEASE_COOKIE_ENCRYPTION_KEY)) {
@@ -63,8 +78,13 @@ export function validateRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   }
 
   const jwtSecret = env.JWT_SECRET?.trim() ?? "";
-  if (insecureJwtSecrets.has(jwtSecret.toLowerCase())) {
+  if (insecureJwtSecrets.has(jwtSecret.toLowerCase()) || jwtSecret.length < minProductionSecretLength) {
     throw new Error("Invalid JWT_SECRET for production startup.");
+  }
+
+  const auditHashSecret = env.AUDIT_HASH_SECRET?.trim() ?? "";
+  if (auditHashSecret.length < minProductionSecretLength) {
+    throw new Error("AUDIT_HASH_SECRET must be at least 16 characters in production startup.");
   }
 
   if (env.TURNSTILE_ENABLED?.trim().toLowerCase() !== "true") {
@@ -81,7 +101,16 @@ export function validateRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("Invalid TURNSTILE_SECRET_KEY for production startup.");
   }
 
+  validateTurnConfig(env);
 
+  // Without APP_DOMAIN the Turnstile verification skips hostname binding
+  // (turnstile.service), so a token solved for another domain could be accepted.
+  if (!env.APP_DOMAIN?.trim()) {
+    throw new Error("APP_DOMAIN must be configured in production startup to bind Turnstile tokens.");
+  }
+}
+
+function validateTurnConfig(env: NodeJS.ProcessEnv) {
   const turnEnabled = env.TURN_ENABLED !== "false";
   const turnProtocols = (env.TURN_PROTOCOLS ?? "udp,tcp,tls")
     .split(",")
@@ -123,7 +152,7 @@ export function validateRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   }
   const hasEphemeralTurnConfig = hasTurnHostSource && !!turnSecret;
   if (hasEphemeralTurnConfig) {
-    if (insecureTurnSecrets.has(turnSecret.toLowerCase())) {
+    if (insecureTurnSecrets.has(turnSecret.toLowerCase()) || turnSecret.length < minProductionSecretLength) {
       throw new Error("Invalid TURN_SHARED_SECRET for production startup.");
     }
     validateTurnRelayPortRange(env);
@@ -138,15 +167,42 @@ export function validateRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("TURN requires TURN_PUBLIC_HOST or APP_DOMAIN in production startup.");
   }
 
-  // Without APP_DOMAIN the Turnstile verification skips the hostname binding
-  // (turnstile.service), so a token solved for any domain is accepted here.
-  // Kept after the TURN host validation so TURN misconfigurations surface the
-  // more specific TURN error first.
-  if (!env.APP_DOMAIN?.trim()) {
-    throw new Error("APP_DOMAIN must be configured in production startup to bind Turnstile tokens.");
-  }
-
   throw new Error("TURN requires TURN_SHARED_SECRET in production startup.");
+}
+
+function isValidProductionTrustProxy(value: string) {
+  if (/^\d+$/.test(value)) {
+    return true;
+  }
+  const entries = value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return entries.length > 0 && entries.every(isValidTrustProxySubnetEntry);
+}
+
+function isValidTrustProxySubnetEntry(entry: string) {
+  if (allowedTrustProxySubnets.has(entry)) {
+    return true;
+  }
+  const slashIndex = entry.indexOf("/");
+  if (slashIndex === -1) {
+    return isIP(entry) !== 0;
+  }
+  const ip = entry.slice(0, slashIndex);
+  const prefixRaw = entry.slice(slashIndex + 1);
+  if (!/^\d+$/.test(prefixRaw)) {
+    return false;
+  }
+  const version = isIP(ip);
+  const prefix = Number.parseInt(prefixRaw, 10);
+  if (version === 4) {
+    return prefix >= 0 && prefix <= 32;
+  }
+  if (version === 6) {
+    return prefix >= 0 && prefix <= 128;
+  }
+  return false;
 }
 
 function validateTurnRelayPortRange(env: NodeJS.ProcessEnv) {

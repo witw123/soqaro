@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeHttpUrlSchema } from "../contracts/url";
 import { neteaseTrackCandidateSchema } from "./netease";
 import { qqMusicTrackCandidateSchema } from "./qqmusic";
 import { bilibiliTrackCandidateSchema } from "./bilibili";
@@ -24,7 +25,7 @@ export const providerAudioResolveResponseSchema = z
   .object({
     provider: providerSchema,
     providerTrackId: z.string().trim().min(1),
-    url: z.string().url(),
+    url: safeHttpUrlSchema(),
     mimeType: z.enum(["audio/mpeg", "audio/flac"]).nullable(),
     fileType: z.enum(["mp3", "flac"])
   })
@@ -46,7 +47,7 @@ export const providerArtistSummarySchema = z
     provider: providerSchema,
     providerArtistId: z.string().trim().min(1),
     name: z.string().trim().min(1),
-    artworkUrl: z.string().url().nullable(),
+    artworkUrl: safeHttpUrlSchema().nullable(),
     description: z.string().nullable()
   })
   .strict();
@@ -58,7 +59,7 @@ export const providerPlaylistSummarySchema = z
     title: z.string(),
     description: z.string().nullable(),
     tags: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
-    artworkUrl: z.string().url().nullable(),
+    artworkUrl: safeHttpUrlSchema().nullable(),
     creatorName: z.string().nullable(),
     trackCount: z.number().int().nonnegative()
   })
@@ -81,7 +82,7 @@ export const providerAlbumSummarySchema = z
     title: z.string(),
     artist: z.string(),
     description: z.string().nullable(),
-    artworkUrl: z.string().url().nullable(),
+    artworkUrl: safeHttpUrlSchema().nullable(),
     releaseTime: z.string().nullable(),
     trackCount: z.number().int().nonnegative(),
   })

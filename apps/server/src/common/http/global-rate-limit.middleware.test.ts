@@ -64,4 +64,46 @@ describe("createGlobalRateLimitMiddleware", () => {
       expect(status).not.toHaveBeenCalled();
     }
   });
+
+  it("disables global rate limiting when GLOBAL_RATE_LIMIT_PER_MINUTE is 0", () => {
+    const original = process.env.GLOBAL_RATE_LIMIT_PER_MINUTE;
+    process.env.GLOBAL_RATE_LIMIT_PER_MINUTE = "0";
+    try {
+      const middleware = createGlobalRateLimitMiddleware();
+      for (let index = 0; index < 150; index += 1) {
+        const { next, status } = call(middleware, "/v1/a");
+        expect(next).toHaveBeenCalled();
+        expect(status).not.toHaveBeenCalled();
+      }
+    } finally {
+      if (original === undefined) {
+        delete process.env.GLOBAL_RATE_LIMIT_PER_MINUTE;
+      } else {
+        process.env.GLOBAL_RATE_LIMIT_PER_MINUTE = original;
+      }
+    }
+  });
+
+  it("evicts oldest IP buckets when distinct IPs exceed cap within a single window", () => {
+    const middleware = createGlobalRateLimitMiddleware({ limitPerMinute: 1, enabled: true });
+    for (let index = 0; index < 10_050; index += 1) {
+      const next = jest.fn();
+      const response = responseOf();
+      (middleware as (r: never, res: never, n: () => void) => void)(
+        requestOf("/v1/rooms/room_1", `198.51.100.${index}`),
+        response,
+        next
+      );
+      expect(next).toHaveBeenCalled();
+    }
+    // First IP was evicted from the bounded 10,000-entry map so it is tracked cleanly again
+    const next = jest.fn();
+    const response = responseOf();
+    (middleware as (r: never, res: never, n: () => void) => void)(
+      requestOf("/v1/rooms/room_1", "198.51.100.0"),
+      response,
+      next
+    );
+    expect(next).toHaveBeenCalled();
+  });
 });

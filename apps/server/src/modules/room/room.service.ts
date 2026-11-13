@@ -1,13 +1,16 @@
-﻿import { BadRequestException, Injectable } from "@nestjs/common";
+﻿import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type {
-  PlaybackSnapshot,
-  Playlist,
-  RoomDirectoryItem,
-  RoomMember,
-  RoomSnapshot,
-  RoomSyncResponse
-  ,RoomRequest
+import {
+  createApiErrorResponse,
+  errorCodes,
+  type PlaybackSnapshot,
+  type Playlist,
+  type RoomDirectoryItem,
+  type RoomMember,
+  type RoomMemberPermissions,
+  type RoomSnapshot,
+  type RoomSyncResponse,
+  type RoomRequest
 } from "@soqaro/shared";
 import { PrismaService } from "../../infra/prisma/prisma.service";
 import { RedisService } from "../../infra/redis/redis.service";
@@ -169,12 +172,7 @@ export class RoomService {
     return request;
   }
 
-  async getAccessibleRoomSnapshot(
-    roomId: string,
-    playlists: Playlist[],
-    sessionId?: string
-  ): Promise<RoomSnapshot> {
-    const record = await this.roomRecordRepository.getRoomRecord(roomId);
+  private assertCanReadRoomSnapshot(record: RoomRecord, sessionId?: string) {
     const isMember =
       !!sessionId &&
       (record.room.hostId === sessionId ||
@@ -183,6 +181,23 @@ export class RoomService {
     if (!isMember && record.room.visibility !== "public") {
       throw new Error("Room not found.");
     }
+
+    if (!isMember && Boolean(record.passwordHash)) {
+      throw new ForbiddenException(
+        createApiErrorResponse(errorCodes.unauthorizedRoomAction, "请输入房间密码。")
+      );
+    }
+
+    return isMember;
+  }
+
+  async getAccessibleRoomSnapshot(
+    roomId: string,
+    playlists: Playlist[],
+    sessionId?: string
+  ): Promise<RoomSnapshot> {
+    const record = await this.roomRecordRepository.getRoomRecord(roomId);
+    const isMember = this.assertCanReadRoomSnapshot(record, sessionId);
 
     if (isMember && sessionId) {
       await this.roomRecordRepository.setRecentRoomForSession(sessionId, roomId);
@@ -218,12 +233,7 @@ export class RoomService {
     }
 
     const record = await this.roomRecordRepository.getRoomRecord(roomId);
-    const isMember =
-      record.room.hostId === sessionId ||
-      record.room.members.some((member) => member.id === sessionId);
-    if (!isMember && record.room.visibility !== "public") {
-      throw new Error("Room not found.");
-    }
+    this.assertCanReadRoomSnapshot(record, sessionId);
 
     // 未变化短路:客户端 revision 未落后时跳过全量快照构建与序列化。
     // 房间任何内容变更(含曲库删除)都会推进 roomRevision,因此 revision
@@ -326,7 +336,13 @@ export class RoomService {
 
   async listRoomDirectoryForSession(sessionId: string): Promise<RoomDirectoryItem[]> {
     const records = await this.roomRecordRepository.listRecoverableRecords();
-    const accessible = records.slice(0, 100);
+    const visible = records.filter(
+      (record) =>
+        record.room.visibility === "public" ||
+        record.room.hostId === sessionId ||
+        record.room.members.some((member) => member.id === sessionId)
+    );
+    const accessible = visible.slice(0, 100);
 
     return Promise.all(accessible.map(async (record) => {
       // 目录场景只需要 presence 计数与播放状态,跳过完整快照构建
@@ -467,6 +483,15 @@ export class RoomService {
   async assertRoomMember(roomId: string, sessionId: string) {
     const record = await this.roomRecordRepository.getRoomRecord(roomId);
     assertMember(record, sessionId);
+  }
+
+  async assertRoomPermission(
+    roomId: string,
+    sessionId: string,
+    permission: keyof RoomMemberPermissions
+  ) {
+    const record = await this.roomRecordRepository.getRoomRecord(roomId);
+    assertPermission(record, sessionId, permission);
   }
 
   async updatePlayback(

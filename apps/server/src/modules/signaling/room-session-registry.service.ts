@@ -86,6 +86,19 @@ export class RoomSessionRegistryService {
     return this.activeSessionsByRoom.get(roomId)?.get(sessionId)?.socketId === socketId;
   }
 
+  findSessionByPeerId(roomId: string, peerId: string): string | null {
+    const roomSessions = this.activeSessionsByRoom.get(roomId);
+    if (!roomSessions) {
+      return null;
+    }
+    for (const [sessionId, entry] of roomSessions) {
+      if (entry.peerId === peerId) {
+        return sessionId;
+      }
+    }
+    return null;
+  }
+
   async replaceExistingRoomSession(
     roomId: string,
     sessionId: string,
@@ -178,6 +191,7 @@ export class RoomSessionRegistryService {
     if (!deleted) {
       return;
     }
+    await this.sessionLease.releasePeerId?.(roomId, sessionId, peerId);
 
     this.readiness.clearForSession(roomId, sessionId, peerId);
     if (peerId) {
@@ -240,6 +254,83 @@ export class RoomSessionRegistryService {
     this.activeSessionsByRoom.delete(roomId);
     this.metrics.clearRoom(roomId);
     this.readiness.clearRoomState(roomId);
+  }
+
+  async evictMemberSockets(roomId: string, sessionId: string) {
+    this.cancelPendingDisconnectCleanup(roomId, sessionId);
+
+    const matchingSockets: Socket[] = [];
+    if (this.server) {
+      for (const socket of this.server.sockets.sockets.values()) {
+        if (socket.data?.roomId === roomId && socket.data?.sessionId === sessionId) {
+          matchingSockets.push(socket);
+        }
+      }
+    }
+
+    const activeEntry = this.activeSessionsByRoom.get(roomId)?.get(sessionId);
+    let knownPeerId = activeEntry?.peerId;
+
+    for (const socket of matchingSockets) {
+      const peerId = socket.data?.peerId as string | undefined;
+      knownPeerId = knownPeerId ?? peerId;
+      this.sessionLease.invalidateSocket(socket.id);
+      this.peerSignals.unregisterPeerSocket(roomId, peerId, socket.id);
+      this.unregisterSessionSocket(roomId, sessionId, socket.id);
+      this.metrics.unbindRealtimeSocket(socket.id);
+      this.readiness.clearForSession(roomId, sessionId, peerId);
+      if (peerId) {
+        this.peerSignals.clearPendingPeerSignals(roomId, peerId);
+      }
+      this.peerSignals.clearRecoveryGeneration(roomId, sessionId, peerId);
+      await this.sessionLease.release(socket);
+      socket.leave(roomId);
+      socket.data.roomId = undefined;
+      socket.data.sessionId = undefined;
+      socket.data.peerId = undefined;
+      socket.data.sessionFenceToken = undefined;
+      socket.data.isRealtimeAuthenticated = false;
+    }
+
+    if (activeEntry) {
+      this.peerSignals.unregisterPeerSocket(roomId, activeEntry.peerId, activeEntry.socketId);
+      this.unregisterSessionSocket(roomId, sessionId, activeEntry.socketId);
+      this.metrics.unbindRealtimeSocket(activeEntry.socketId);
+    }
+
+    await this.sessionLease.forceDelete?.(roomId, sessionId, knownPeerId);
+  }
+
+  async evictRoomSockets(roomId: string) {
+    const memberSessions = new Map<string, string | undefined>();
+    const activeSessions = this.activeSessionsByRoom.get(roomId);
+    if (activeSessions) {
+      for (const [sessionId, entry] of activeSessions) {
+        memberSessions.set(sessionId, entry.peerId);
+      }
+    }
+    if (this.server) {
+      for (const socket of this.server.sockets.sockets.values()) {
+        if (socket.data?.roomId === roomId) {
+          const sessionId = socket.data?.sessionId as string | undefined;
+          const peerId = socket.data?.peerId as string | undefined;
+          if (sessionId && !memberSessions.has(sessionId)) {
+            memberSessions.set(sessionId, peerId);
+          } else if (!sessionId) {
+            this.sessionLease.invalidateSocket(socket.id);
+            this.metrics.unbindRealtimeSocket(socket.id);
+            socket.leave(roomId);
+            socket.data.roomId = undefined;
+            socket.data.isRealtimeAuthenticated = false;
+          }
+        }
+      }
+    }
+
+    for (const [sessionId] of memberSessions) {
+      await this.evictMemberSockets(roomId, sessionId);
+    }
+    this.clearRoomState(roomId);
   }
 
   dispose() {

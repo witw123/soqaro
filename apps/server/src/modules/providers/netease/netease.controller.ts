@@ -14,7 +14,9 @@
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { createApiErrorResponse, errorCodes } from "@soqaro/shared";
+import { resolveClientIp } from "../../../common/security/client-ip";
 import { AuthService } from "../../auth/auth.service";
 import { parseRequestBody } from "../../../common/validation/zod-validation";
 import {
@@ -28,6 +30,8 @@ import {
 } from "./netease.schemas";
 import { pipeWebStreamToResponse } from "../provider-stream";
 import { NeteaseService } from "./netease.service";
+
+const attemptIdSchema = z.string().uuid();
 
 @Controller("v1/providers/netease")
 export class NeteaseController {
@@ -51,7 +55,15 @@ export class NeteaseController {
     @Param("attemptId") attemptId: string,
     @Headers("x-session-token") sessionToken: string | undefined
   ) {
-    return this.service.checkQrLogin(await this.getCurrentUserId(sessionToken), attemptId);
+    const userId = await this.getCurrentUserId(sessionToken);
+    const parsedAttemptId = attemptIdSchema.safeParse(attemptId);
+    if (!parsedAttemptId.success) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.validationFailed, "Invalid NetEase QR attempt id."),
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return this.service.checkQrLogin(userId, parsedAttemptId.data);
   }
 
   @Delete("account")
@@ -62,27 +74,36 @@ export class NeteaseController {
   @Get("search")
   async search(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") sessionToken: string | undefined
+    @Headers("x-session-token") sessionToken: string | undefined,
+    @Req() request: Request
   ) {
     const userId = await this.getOptionalUserId(sessionToken);
     const payload = parseRequestBody(neteaseSearchQuerySchema, query);
-    return this.service.searchTracks(userId, payload);
+    return this.service.searchTracks(userId, payload, resolveClientIp(request));
   }
 
   @Get("search/suggest")
   async searchSuggest(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") sessionToken: string | undefined
+    @Headers("x-session-token") sessionToken: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchSuggestions(
       await this.getOptionalUserId(sessionToken),
-      parseRequestBody(neteaseSearchSuggestQuerySchema, query)
+      parseRequestBody(neteaseSearchSuggestQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
   @Get("search/hot")
-  async searchHot(@Headers("x-session-token") sessionToken: string | undefined) {
-    return this.service.getSearchHot(await this.getOptionalUserId(sessionToken));
+  async searchHot(
+    @Headers("x-session-token") sessionToken: string | undefined,
+    @Req() request: Request
+  ) {
+    return this.service.getSearchHot(
+      await this.getOptionalUserId(sessionToken),
+      resolveClientIp(request)
+    );
   }
 
   @Get("tracks/:trackId")
@@ -97,22 +118,26 @@ export class NeteaseController {
   @Get("search/playlists")
   async searchPlaylists(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") sessionToken: string | undefined
+    @Headers("x-session-token") sessionToken: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchPlaylists(
       await this.getOptionalUserId(sessionToken),
-      parseRequestBody(neteaseSearchQuerySchema, query)
+      parseRequestBody(neteaseSearchQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
   @Get("search/albums")
   async searchAlbums(
     @Query() query: Record<string, unknown>,
-    @Headers("x-session-token") sessionToken: string | undefined
+    @Headers("x-session-token") sessionToken: string | undefined,
+    @Req() request: Request
   ) {
     return this.service.searchAlbums(
       await this.getOptionalUserId(sessionToken),
-      parseRequestBody(neteaseSearchQuerySchema, query)
+      parseRequestBody(neteaseSearchQuerySchema, query),
+      resolveClientIp(request)
     );
   }
 
@@ -126,7 +151,15 @@ export class NeteaseController {
     @Param("trackId") trackId: string,
     @Headers("x-session-token") sessionToken: string | undefined
   ) {
-    return this.service.getRelatedPlaylists(await this.getCurrentUserId(sessionToken), trackId);
+    const userId = await this.getCurrentUserId(sessionToken);
+    const parsedTrackId = neteaseTrackIdSchema.safeParse(trackId);
+    if (!parsedTrackId.success) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.validationFailed, "Invalid NetEase track id."),
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return this.service.getRelatedPlaylists(userId, parsedTrackId.data);
   }
 
   @Get("tracks/:trackId/audio-url")

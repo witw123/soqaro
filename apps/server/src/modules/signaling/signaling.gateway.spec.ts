@@ -1,3 +1,4 @@
+import { RoomSessionRegistryService } from "./room-session-registry.service";
 import { SignalingGateway } from "./signaling.gateway";
 
 type TestClient = {
@@ -317,6 +318,329 @@ describe("SignalingGateway chat", () => {
       );
 
       expect(result).toEqual({ ok: false, reason: "lease-missing" });
+    });
+  });
+
+  describe("SignalingGateway security enforcement", () => {
+    function createSubscribeGatewayHarness() {
+      const registry = {
+        findSessionByPeerId: jest.fn().mockReturnValue(null),
+        isActiveSessionSocket: jest.fn().mockReturnValue(true),
+        cancelPendingDisconnectCleanup: jest.fn(),
+        unregisterSessionSocket: jest.fn(),
+        registerSessionSocket: jest.fn(),
+        updatePeerPresence: jest.fn().mockResolvedValue(true),
+        rememberRecentRoom: jest.fn().mockResolvedValue(undefined),
+        evictMemberSockets: jest.fn().mockResolvedValue(undefined),
+        evictRoomSockets: jest.fn().mockResolvedValue(undefined)
+      };
+      const sessionLease = {
+        claimPeerId: jest.fn().mockResolvedValue(undefined),
+        releasePeerId: jest.fn().mockResolvedValue(undefined),
+        claim: jest.fn().mockResolvedValue(null),
+        rollback: jest.fn().mockResolvedValue(undefined),
+        belongsTo: jest.fn().mockResolvedValue(true),
+        assert: jest.fn().mockResolvedValue(undefined)
+      };
+      const peerSignals = {
+        unregisterPeerSocket: jest.fn(),
+        registerPeerSocket: jest.fn(),
+        registerRecoveryGeneration: jest.fn().mockReturnValue(1),
+        clearPendingPeerSignals: jest.fn(),
+        clearRecoveryGeneration: jest.fn(),
+        nextSequence: jest.fn().mockReturnValue(1),
+        resolvePeerRecoveryGeneration: jest.fn().mockReturnValue(1),
+        emitToPeer: jest.fn().mockResolvedValue(undefined)
+      };
+      const readiness = { clearForSession: jest.fn() };
+      const metrics = {
+        bindRealtimeSocket: jest.fn(),
+        unbindRealtimeSocket: jest.fn(),
+        incrementDiagnosticsReport: jest.fn()
+      };
+      const roomService = {
+        getAccessibleRoomSnapshot: jest.fn(),
+        assertRoomMember: jest.fn().mockResolvedValue(undefined)
+      };
+      const authService = {
+        assertSessionToken: jest.fn().mockResolvedValue(undefined),
+        getUserOrThrow: jest.fn().mockResolvedValue({
+          id: "user_1",
+          nickname: "User 1",
+          status: "ACTIVE"
+        })
+      };
+      const gateway = Object.assign(Object.create(SignalingGateway.prototype), {
+        realtimeRateLimits: new Map(),
+        unauthenticatedConnectionTimers: new Map(),
+        telemetryLastReportAt: new Map(),
+        telemetryReportRetentionMs: 600_000,
+        redisService: { isAvailable: jest.fn().mockReturnValue(false) },
+        roomService,
+        roomRealtimePublisher: { emitTopologySnapshot: jest.fn() },
+        roomRealtimeBroadcaster: {
+          instanceId: "inst-1",
+          setServer: jest.fn(),
+          setEvictionHandler: jest.fn()
+        },
+        authService,
+        metrics,
+        sessionLease,
+        peerSignals,
+        readiness,
+        registry,
+        playlistService: { listPlaylistsForRoom: jest.fn().mockResolvedValue([]) },
+        roomChatService: { append: jest.fn() },
+        server: { to: jest.fn(() => ({ emit: jest.fn() })) }
+      }) as Record<string, (...args: unknown[]) => Promise<unknown>>;
+
+      return {
+        gateway,
+        registry,
+        sessionLease,
+        peerSignals,
+        roomService,
+        authService
+      };
+    }
+
+    it("rejects non-members in room.subscribe before joining or registering sockets", async () => {
+      const { gateway, registry, peerSignals, roomService } = createSubscribeGatewayHarness();
+      roomService.getAccessibleRoomSnapshot.mockResolvedValue({
+        room: {
+          id: "room_1",
+          hostId: "host_1",
+          members: [{ id: "host_1", peerId: "peer_host", presenceState: "online" }]
+        }
+      });
+      const client = {
+        id: "socket_1",
+        handshake: { headers: { "x-session-token": "tok_1" }, auth: {} },
+        data: {},
+        join: jest.fn(),
+        emit: jest.fn(),
+        leave: jest.fn()
+      };
+
+      const result = await gateway.handleRoomSubscribe(client, {
+        roomId: "room_1",
+        sessionId: "outsider_1",
+        peerId: "peer_outsider",
+        protocolVersion: 4,
+        capabilities: ["webrtc-opus-v1"]
+      });
+
+      expect(result).toEqual({ ok: false });
+      expect(client.emit).toHaveBeenCalledWith("room.snapshot.missing", { roomId: "room_1" });
+      expect(client.join).not.toHaveBeenCalled();
+      expect(peerSignals.registerPeerSocket).not.toHaveBeenCalled();
+      expect(registry.registerSessionSocket).not.toHaveBeenCalled();
+    });
+
+    it("rejects duplicate peerId held by another session on room.subscribe", async () => {
+      const { gateway, registry, sessionLease, roomService } = createSubscribeGatewayHarness();
+      roomService.getAccessibleRoomSnapshot.mockResolvedValue({
+        room: {
+          id: "room_1",
+          hostId: "host_1",
+          members: [
+            { id: "host_1", peerId: "shared_peer", presenceState: "online" },
+            { id: "user_2", peerId: null, presenceState: "offline" }
+          ]
+        }
+      });
+      registry.findSessionByPeerId.mockReturnValue("host_1");
+      const client = {
+        id: "socket_2",
+        handshake: { headers: { "x-session-token": "tok_2" }, auth: {} },
+        data: {},
+        join: jest.fn(),
+        emit: jest.fn(),
+        leave: jest.fn()
+      };
+
+      await expect(
+        gateway.handleRoomSubscribe(client, {
+          roomId: "room_1",
+          sessionId: "user_2",
+          peerId: "shared_peer",
+          protocolVersion: 4,
+          capabilities: ["webrtc-opus-v1"]
+        })
+      ).rejects.toThrow("Peer ID is already in use.");
+      expect(client.join).not.toHaveBeenCalled();
+
+      registry.findSessionByPeerId.mockReturnValue(null);
+      roomService.getAccessibleRoomSnapshot.mockResolvedValue({
+        room: {
+          id: "room_1",
+          hostId: "host_1",
+          members: [{ id: "user_2", peerId: null, presenceState: "offline" }]
+        }
+      });
+      sessionLease.claimPeerId.mockRejectedValue(new Error("Peer ID is already in use."));
+
+      await expect(
+        gateway.handleRoomSubscribe(client, {
+          roomId: "room_1",
+          sessionId: "user_2",
+          peerId: "shared_peer",
+          protocolVersion: 4,
+          capabilities: ["webrtc-opus-v1"]
+        })
+      ).rejects.toThrow("Peer ID is already in use.");
+      expect(client.join).not.toHaveBeenCalled();
+    });
+
+    it("enforces room membership on peer.signal and diagnostics.report", async () => {
+      const { gateway, roomService } = createSubscribeGatewayHarness();
+      roomService.assertRoomMember.mockRejectedValue(new Error("User is not a member of this room."));
+      const client = {
+        id: "socket_1",
+        data: {
+          isRealtimeAuthenticated: true,
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        }
+      };
+
+      await expect(
+        gateway.handleSignal(client, {
+          protocolVersion: 4,
+          capability: "webrtc-opus-v1",
+          roomId: "room_1",
+          fromPeerId: "peer_1",
+          toPeerId: "peer_2",
+          channelKind: "data",
+          type: "candidate",
+          payload: { candidate: "candidate:1 1 UDP 1 127.0.0.1 9 typ host" }
+        })
+      ).rejects.toThrow("User is not a member of this room.");
+
+      await expect(
+        gateway.handleDiagnosticsReport(client, {
+          protocolVersion: 1,
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1",
+          reportedAt: new Date().toISOString(),
+          peers: []
+        })
+      ).rejects.toThrow("User is not a member of this room.");
+    });
+
+    it("rejects DISABLED users on room.chat, room.reaction, room.clock, and peer.signal", async () => {
+      const { gateway, authService } = createSubscribeGatewayHarness();
+      authService.getUserOrThrow.mockResolvedValue({
+        id: "user_1",
+        nickname: "User 1",
+        status: "DISABLED"
+      });
+      const client = {
+        id: "socket_1",
+        data: {
+          isRealtimeAuthenticated: true,
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        }
+      };
+
+      await expect(
+        gateway.handleRoomChat(client, { roomId: "room_1", content: "hello" })
+      ).rejects.toThrow("Account is disabled.");
+      await expect(
+        gateway.handleRoomReaction(client, { roomId: "room_1", reaction: "like" })
+      ).rejects.toThrow("Account is disabled.");
+      await expect(
+        gateway.handleRoomClock(client, { roomId: "room_1" })
+      ).rejects.toThrow("Account is disabled.");
+      await expect(
+        gateway.handleSignal(client, {
+          protocolVersion: 4,
+          capability: "webrtc-opus-v1",
+          roomId: "room_1",
+          fromPeerId: "peer_1",
+          toPeerId: "peer_2",
+          channelKind: "data",
+          type: "candidate",
+          payload: { candidate: "candidate:1 1 UDP 1 127.0.0.1 9 typ host" }
+        })
+      ).rejects.toThrow("Account is disabled.");
+    });
+
+    it("evicts member and room sockets and releases leases in RoomSessionRegistryService", async () => {
+      const sessionLease = {
+        invalidateSocket: jest.fn(),
+        release: jest.fn().mockResolvedValue(undefined),
+        forceDelete: jest.fn().mockResolvedValue(undefined)
+      };
+      const peerSignals = {
+        unregisterPeerSocket: jest.fn(),
+        clearPendingPeerSignals: jest.fn(),
+        clearRecoveryGeneration: jest.fn(),
+        clearRoomState: jest.fn()
+      };
+      const readiness = {
+        clearForSession: jest.fn(),
+        clearRoomState: jest.fn()
+      };
+      const metrics = {
+        unbindRealtimeSocket: jest.fn(),
+        clearRoom: jest.fn()
+      };
+      const registry = new RoomSessionRegistryService(
+        sessionLease as never,
+        peerSignals as never,
+        readiness as never,
+        {} as never,
+        {} as never,
+        metrics as never
+      );
+
+      const socket1 = {
+        id: "sock_1",
+        data: {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1",
+          sessionFenceToken: "fence_1",
+          isRealtimeAuthenticated: true
+        },
+        leave: jest.fn()
+      };
+      const socket2 = {
+        id: "sock_2",
+        data: {
+          roomId: "room_1",
+          sessionId: "user_2",
+          peerId: "peer_2",
+          sessionFenceToken: "fence_2",
+          isRealtimeAuthenticated: true
+        },
+        leave: jest.fn()
+      };
+      const socketsMap = new Map([
+        ["sock_1", socket1],
+        ["sock_2", socket2]
+      ]);
+      registry.setServer({ sockets: { sockets: socketsMap } } as never);
+      registry.registerSessionSocket("room_1", "user_1", "peer_1", "sock_1", "fence_1");
+      registry.registerSessionSocket("room_1", "user_2", "peer_2", "sock_2", "fence_2");
+
+      await registry.evictMemberSockets("room_1", "user_1");
+      expect(socket1.leave).toHaveBeenCalledWith("room_1");
+      expect(socket1.data.isRealtimeAuthenticated).toBe(false);
+      expect(socket1.data.roomId).toBeUndefined();
+      expect(sessionLease.forceDelete).toHaveBeenCalledWith("room_1", "user_1", "peer_1");
+      expect(socket2.leave).not.toHaveBeenCalled();
+
+      await registry.evictRoomSockets("room_1");
+      expect(socket2.leave).toHaveBeenCalledWith("room_1");
+      expect(socket2.data.isRealtimeAuthenticated).toBe(false);
+      expect(sessionLease.forceDelete).toHaveBeenCalledWith("room_1", "user_2", "peer_2");
+      expect(peerSignals.clearRoomState).toHaveBeenCalledWith("room_1");
     });
   });
 });

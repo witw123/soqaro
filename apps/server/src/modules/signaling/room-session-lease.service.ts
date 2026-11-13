@@ -49,6 +49,79 @@ export class RoomSessionLeaseService {
     return `soqaro:realtime-session:${roomId}:${sessionId}`;
   }
 
+  peerKey(roomId: string, peerId: string) {
+    return `soqaro:realtime-peer:${roomId}:${peerId}`;
+  }
+
+  async claimPeerId(roomId: string, sessionId: string, peerId: string) {
+    return this.withRoomLock(roomId, async () => {
+      try {
+        const existing = await this.redisService.getJson<{ sessionId?: string }>(
+          this.peerKey(roomId, peerId)
+        );
+        if (existing?.sessionId && existing.sessionId !== sessionId) {
+          const otherLease = await this.redisService.getJson<{ peerId?: string }>(
+            this.key(roomId, existing.sessionId)
+          );
+          if (otherLease?.peerId === peerId) {
+            throw new WsException("Peer ID is already in use.");
+          }
+        }
+        const redisWithSet = this.redisService as RedisService & {
+          setJson?: (key: string, value: unknown, ttlSeconds?: number) => Promise<void>;
+        };
+        if (typeof redisWithSet.setJson === "function") {
+          await redisWithSet.setJson(
+            this.peerKey(roomId, peerId),
+            { sessionId },
+            Math.ceil(this.sessionLeaseTtlMs / 1000)
+          );
+        }
+      } catch (error) {
+        if (error instanceof WsException) {
+          throw error;
+        }
+        if (isStrictRealtimeCoordination()) {
+          throw error;
+        }
+      }
+    });
+  }
+
+  async releasePeerId(roomId?: string, sessionId?: string, peerId?: string) {
+    if (!roomId || !sessionId || !peerId) {
+      return;
+    }
+    try {
+      await this.redisService.deleteJsonIfValue(this.peerKey(roomId, peerId), { sessionId });
+    } catch {
+      // Peer key expiry is the fallback cleanup path.
+    }
+  }
+
+  async forceDelete(roomId: string, sessionId: string, peerId?: string) {
+    try {
+      const redisWithDelete = this.redisService as RedisService & {
+        delete?: (key: string) => Promise<void>;
+      };
+      let resolvedPeerId = peerId;
+      if (!resolvedPeerId) {
+        const existing = await this.redisService.getJson<{ peerId?: string }>(
+          this.key(roomId, sessionId)
+        );
+        resolvedPeerId = existing?.peerId;
+      }
+      if (typeof redisWithDelete.delete === "function") {
+        await redisWithDelete.delete(this.key(roomId, sessionId));
+      }
+      if (resolvedPeerId) {
+        await this.releasePeerId(roomId, sessionId, resolvedPeerId);
+      }
+    } catch {
+      // Lease expiry is the fallback cleanup path.
+    }
+  }
+
   async claim(
     roomId: string,
     sessionId: string,
@@ -126,6 +199,16 @@ export class RoomSessionLeaseService {
       );
       if (renewed) {
         this.rememberSocketLease(roomId, sessionId, client.id, fenceToken);
+        const redisWithSet = this.redisService as RedisService & {
+          setJson?: (key: string, value: unknown, ttlSeconds?: number) => Promise<void>;
+        };
+        if (peerId && typeof redisWithSet.setJson === "function") {
+          await redisWithSet.setJson(
+            this.peerKey(roomId, peerId),
+            { sessionId },
+            Math.ceil(this.sessionLeaseTtlMs / 1000)
+          );
+        }
       } else {
         this.invalidateSocket(client.id);
       }

@@ -13,6 +13,8 @@ import type { RoomRecord } from "./room.types";
 // sender per listener. Keep the product boundary aligned with the capacity we
 // can make stable without a server-side media relay.
 export const maxRoomMembers = 10;
+export const maxTracksPerRoom = 2_000;
+export const maxQueueItemsPerRoom = 2_000;
 export const maxTrackDurationMs = 3 * 60 * 60 * 1000;
 export const maxTrackSizeBytes = 1024 * 1024 * 1024;
 export const maxAssetUnits = 10_000;

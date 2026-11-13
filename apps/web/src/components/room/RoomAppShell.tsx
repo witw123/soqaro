@@ -43,7 +43,6 @@ type RoomAppShellProps = {
   playbackBarrier?: RoomPlaybackBarrierClock | null;
   isRoomAway: boolean;
   awayRoomId: string | null;
-  onResumeRoom: () => void;
   onAwayRoom: () => void;
   socket: RoomSocket | null;
   statusMessage: string;
@@ -72,7 +71,6 @@ export function RoomAppShell({
   playbackBarrier,
   isRoomAway,
   awayRoomId,
-  onResumeRoom,
   onAwayRoom,
   socket,
   statusMessage,

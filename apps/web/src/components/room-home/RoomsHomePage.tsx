@@ -388,10 +388,11 @@ export function RoomsHomePage({
   }, [hydrated, roomsLoaded]);
 
   useEffect(() => {
+    const container = mainContainerRef.current;
     return () => {
-      if (mainContainerRef.current) {
+      if (container) {
         persistedHomeScroll = {
-          containerTop: mainContainerRef.current.scrollTop,
+          containerTop: container.scrollTop,
           windowY: typeof window !== "undefined" ? window.scrollY : 0
         };
       }

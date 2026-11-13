@@ -119,7 +119,6 @@ type UseRoomRuntimeInput = {
   resetPlayerSurface: () => void;
   setStatusMessage: (value: string) => void;
   statusMessage: string;
-  refreshAvailableRooms: () => Promise<void>;
   refreshPlaylists: () => Promise<void>;
 };
 
@@ -204,7 +203,6 @@ export function useRoomRuntime({
   resetPlayerSurface,
   setStatusMessage,
   statusMessage,
-  refreshAvailableRooms,
   refreshPlaylists
 }: UseRoomRuntimeInput): UseRoomRuntimeResult {
   const roomPlayback = roomSnapshot?.room.playback ?? null;
@@ -531,7 +529,6 @@ export function useRoomRuntime({
     deleteRoomTrackArtifacts,
     recordPeerDiagnostic,
     refreshSession,
-    refreshAvailableRooms,
     refreshPlaylists,
     setStatusMessage
   });

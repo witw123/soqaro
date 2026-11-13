@@ -28,7 +28,6 @@ import {
   clearAwayRoomId,
   readAwayRoomId,
   readAwayRoomResumeId,
-  requestAwayRoomResume,
   shouldCommitAwayRoomResume,
   storeAwayRoomId
 } from "@/lib/domain/away-room";
@@ -126,32 +125,6 @@ export function SoqaroApp({
         storeAwayRoomId(targetRoomId);
         setStatusMessage("");
         router.push("/app" as Route);
-      },
-      { roomId: targetRoomId }
-    );
-  }
-
-  function handleResumeRoom() {
-    const targetRoomId = roomSnapshot?.room.id ?? initialRoomId;
-    if (backgroundOnly && targetRoomId) {
-      pendingRoomResumeRef.current = targetRoomId;
-      requestAwayRoomResume(targetRoomId);
-      runRoomViewTransition(
-        "room-enter",
-        () => {
-          router.push(`/room/${targetRoomId}` as Route);
-        },
-        { roomId: targetRoomId }
-      );
-      return;
-    }
-
-    runRoomViewTransition(
-      "room-enter",
-      () => {
-        clearAwayRoomId();
-        setAwayRoomId(null);
-        setStatusMessage("已返回房间。");
       },
       { roomId: targetRoomId }
     );
@@ -348,7 +321,6 @@ export function SoqaroApp({
     resetPlayerSurface: roomActions.resetPlayerSurface,
     setStatusMessage,
     statusMessage,
-    refreshAvailableRooms: roomActions.refreshAvailableRooms,
     refreshPlaylists: roomActions.refreshPlaylists
   });
   const segmentedPlayback = useRoomSegmentedPlaybackRuntime({
@@ -454,7 +426,6 @@ export function SoqaroApp({
       socket={appRefs.socketRef.current}
       isRoomAway={isRoomAway}
       awayRoomId={isRoomAway ? currentRoomId : null}
-      onResumeRoom={handleResumeRoom}
       onAwayRoom={handleAwayRoom}
       statusMessage={statusMessage}
       uploads={uploads}

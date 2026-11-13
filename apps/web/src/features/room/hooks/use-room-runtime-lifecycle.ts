@@ -95,7 +95,6 @@ export function useRoomRuntimeLifecycle(input: {
   deleteRoomTrackArtifacts: (trackIds: string[], roomId?: string, deleteRoomSnapshot?: boolean) => Promise<void> | void;
   recordPeerDiagnostic: PeerDiagnosticRecorder;
   refreshSession: () => Promise<unknown>;
-  refreshAvailableRooms: () => Promise<void>;
   refreshPlaylists: () => Promise<void>;
   setStatusMessage: (value: string) => void;
 }) {
@@ -118,7 +117,6 @@ export function useRoomRuntimeLifecycle(input: {
     previousInitialRoomIdRef,
     recordPeerDiagnostic,
     resubscribeRoomRef,
-    refreshAvailableRooms,
     refreshPlaylists,
     refreshSession,
     requestRoomSnapshotResync,

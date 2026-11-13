@@ -21,9 +21,17 @@
     "migrate:p2p-v4": "pnpm --filter @soqaro/server migrate:p2p-v4"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-ggr8-5vv4-36mx",
+        "GHSA-mrhx-c7xc-m3w5"
+      ]
+    },
     "overrides": {
       "axios": "1.20.0",
       "basic-ftp": "6.2.1",
+      "body-parser@<2": "1.20.9",
+      "body-parser@>=2": "2.4.0",
       "brace-expansion@<2": "1.1.20",
       "brace-expansion@>=4": "5.0.11",
       "browserslist": "4.28.7",
@@ -31,14 +39,15 @@
       "effect": "3.22.0",
       "engine.io": "6.6.11",
       "fast-uri": "3.1.7",
-      "follow-redirects": "1.16.1",
+      "follow-redirects": "1.16.3",
       "handlebars": "4.7.10",
       "ip-address": "10.3.1",
       "js-yaml": "4.3.2",
       "lodash": "4.18.1",
-      "multer": "2.4.0",
+      "multer": "2.5.0",
       "nanoid": "3.3.18",
       "next": "15.5.28",
+      "node-forge": "1.4.3",
       "path-to-regexp": "8.4.2",
       "picomatch": "4.0.4",
       "postcss": "8.5.19",

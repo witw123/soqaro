@@ -2,14 +2,17 @@
 import path from "node:path";
 import packageJson from "./package.json";
 
+const isNonProd = process.env.NODE_ENV !== "production";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isNonProd ? " 'unsafe-eval'" : ""} https://challenges.cloudflare.com`,
   "style-src 'self' 'unsafe-inline'",
+  "worker-src 'self' blob:",
   "img-src 'self' https: blob: data:",
   "media-src 'self' https: blob: data:",
   "font-src 'self' https: data:",
-  "connect-src 'self' https: wss: http://localhost:* ws://localhost:*",
+  "connect-src 'self' https: wss: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*",
   "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",

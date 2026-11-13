@@ -200,7 +200,7 @@ const SlidingRoomFilterTabs = memo(function SlidingRoomFilterTabs({
   return (
     <div
       aria-label="房间类型筛选"
-      className={`relative items-center gap-1 rounded-xl bg-surface p-1 ${
+      className={`room-filter-tabs-bar relative items-center gap-1 bg-surface p-1 ${
         fullWidth ? "flex w-full" : "inline-flex"
       }`}
       ref={containerRef}
@@ -209,7 +209,7 @@ const SlidingRoomFilterTabs = memo(function SlidingRoomFilterTabs({
       {indicator.ready ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg bg-surface-elevated shadow-xs transition-[transform,width] duration-[250ms] ease-out motion-reduce:transition-none"
+          className="room-filter-tabs-indicator pointer-events-none absolute top-1 bottom-1 left-0 bg-surface-elevated shadow-xs transition-[transform,width] duration-[250ms] ease-out motion-reduce:transition-none"
           style={{
             width: `${indicator.width}px`,
             transform: `translate3d(${indicator.x}px, 0, 0)`

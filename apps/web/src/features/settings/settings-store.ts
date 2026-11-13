@@ -532,16 +532,16 @@ export function applyAppTheme(preference: ThemePreference): ResolvedTheme {
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
 
     const metaThemeColors: Record<ResolvedTheme, string> = {
-      dark: "#0d0f12",
-      light: "#f6f7f8",
-      "sage-dark": "#141716",
-      "sage-light": "#f2f5f3",
-      obsidian: "#090a0c",
-      "midnight-dark": "#0a0f18",
-      "midnight-light": "#eef3f9",
-      paper: "#f5f2eb"
+      dark: "#111113",
+      light: "#fcfcfd",
+      "sage-dark": "#0f1412",
+      "sage-light": "#eff5f2",
+      obsidian: "#070708",
+      "midnight-dark": "#08101d",
+      "midnight-light": "#eaf2fc",
+      paper: "#f5efe3"
     };
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", metaThemeColors[resolved] ?? "#0d0f12");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", metaThemeColors[resolved] ?? "#111113");
   }
   return resolved;
 }

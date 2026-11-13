@@ -446,7 +446,7 @@ export function RoomsHomePage({
 
         {/* Framed Bento Mosaic Canvas Tray (Zero-Gap Flush Shared Borders) */}
         <div
-          className="room-mosaic-canvas-tray relative min-h-[240px] overflow-hidden rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-0"
+          className="room-mosaic-canvas-tray relative min-h-[240px] overflow-hidden border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-0"
           data-channel={roomTypeFilter}
           data-testid="room-mosaic-canvas-tray"
         >

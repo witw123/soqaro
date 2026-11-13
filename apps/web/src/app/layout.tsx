@@ -23,16 +23,16 @@ const themeInitScript = `(() => {
     document.documentElement.style.colorScheme = themeMode;
 
     const metaColors = {
-      dark: "#0d0f12",
-      light: "#f6f7f8",
-      "sage-dark": "#141716",
-      "sage-light": "#f2f5f3",
-      obsidian: "#090a0c",
-      "midnight-dark": "#0a0f18",
-      "midnight-light": "#eef3f9",
-      paper: "#f5f2eb"
+      dark: "#111113",
+      light: "#fcfcfd",
+      "sage-dark": "#0f1412",
+      "sage-light": "#eff5f2",
+      obsidian: "#070708",
+      "midnight-dark": "#08101d",
+      "midnight-light": "#eaf2fc",
+      paper: "#f5efe3"
     };
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", metaColors[resolved] || (isDark ? "#0d0f12" : "#f6f7f8"));
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", metaColors[resolved] || (isDark ? "#111113" : "#fcfcfd"));
 
     const isLyricsWindow = Boolean(typeof window !== "undefined" && window.location && (window.location.pathname === "/desktop-lyrics" || (window.location.search && window.location.search.indexOf("window=desktop-lyrics") !== -1)));
     if (isLyricsWindow) {

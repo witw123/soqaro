@@ -21,12 +21,13 @@ export function InteractiveStarfieldScene({ className = "" }: { className?: stri
   return (
     <div
       aria-hidden="true"
-      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0b0e14] select-none ${className}`}
+      className={`room-card-stage-backdrop relative w-full h-full overflow-hidden select-none ${className}`}
     >
       {/* Crisp Geometric Soundwaves */}
       <svg
-        className="absolute inset-0 w-full h-full text-blue-600/30 dark:text-blue-400/25 pointer-events-none"
+        className="absolute inset-0 w-full h-full pointer-events-none"
         preserveAspectRatio="none"
+        style={{ color: "color-mix(in srgb, var(--blue-9) 32%, transparent)" }}
         viewBox="0 0 320 140"
         xmlns="http://www.w3.org/2000/svg"
       >
@@ -54,7 +55,7 @@ export function InteractiveStarfieldScene({ className = "" }: { className?: stri
       </svg>
 
       {/* Understated Minimal Horizon Grid */}
-      <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-slate-200/50 to-transparent dark:from-[#07090e] dark:to-transparent pointer-events-none" />
+      <div className="room-card-stage-vignette absolute inset-x-0 bottom-0 h-1/2 pointer-events-none" />
     </div>
   );
 }
@@ -70,7 +71,7 @@ export function RequestNebulaVinylScene({ className = "" }: { className?: string
   return (
     <div
       aria-hidden="true"
-      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#0e0c13] select-none ${className}`}
+      className={`room-card-stage-backdrop relative w-full h-full overflow-hidden select-none ${className}`}
     >
       {/* Vinyl Record */}
       <div className="absolute -right-4 -bottom-8 w-40 h-40 sm:w-44 sm:h-44 rounded-full shadow-sm transition-transform duration-500 ease-out group-hover:scale-105">
@@ -110,7 +111,7 @@ export function RequestNebulaVinylScene({ className = "" }: { className?: string
       </div>
 
       {/* Bottom Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-200/50 via-transparent to-transparent dark:from-[#0a080f]/80 pointer-events-none" />
+      <div className="room-card-stage-vignette absolute inset-0 pointer-events-none" />
     </div>
   );
 }
@@ -122,12 +123,13 @@ export function RadioAuroraPulseScene({ className = "" }: { className?: string }
   return (
     <div
       aria-hidden="true"
-      className={`relative w-full h-full overflow-hidden bg-slate-100 dark:bg-[#071113] select-none ${className}`}
+      className={`room-card-stage-backdrop relative w-full h-full overflow-hidden select-none ${className}`}
     >
       {/* Concentric Radial Broadcast Waves */}
       <svg
-        className="absolute inset-0 w-full h-full pointer-events-none text-teal-600/35 dark:text-teal-400/25"
+        className="absolute inset-0 w-full h-full pointer-events-none"
         preserveAspectRatio="none"
+        style={{ color: "color-mix(in srgb, #00a2c7 30%, transparent)" }}
         viewBox="0 0 320 140"
         xmlns="http://www.w3.org/2000/svg"
       >
@@ -163,13 +165,19 @@ export function RadioAuroraPulseScene({ className = "" }: { className?: string }
 
       {/* Subtle Radio Tower Dot */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none">
-        <div className="w-6 h-6 rounded-full border border-teal-500/30 bg-teal-500/10 flex items-center justify-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-teal-600 dark:bg-teal-400" />
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center"
+          style={{
+            border: "0.5px solid color-mix(in srgb, #00a2c7 35%, transparent)",
+            backgroundColor: "color-mix(in srgb, #00a2c7 12%, transparent)"
+          }}
+        >
+          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#00a2c7" }} />
         </div>
       </div>
 
       {/* Bottom Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-200/50 via-transparent to-transparent dark:from-[#050b0c]/80 pointer-events-none" />
+      <div className="room-card-stage-vignette absolute inset-0 pointer-events-none" />
     </div>
   );
 }

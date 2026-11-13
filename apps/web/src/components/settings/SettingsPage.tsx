@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import type { PersonalizationExclusion, PlaybackMode } from "@soqaro/shared";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Globe,
@@ -78,26 +79,130 @@ const playbackModeLabels: Record<PlaybackMode, string> = {
 
 const themeLabels: Record<ThemePreference, string> = {
   system: "跟随系统",
-  dark: "深色",
-  light: "浅色",
+  dark: "深空灰",
+  light: "日间白",
   "sage-dark": "灰绿深色",
   "sage-light": "灰绿浅色",
-  obsidian: "石墨黑",
-  "midnight-dark": "深蓝",
-  "midnight-light": "浅蓝",
-  paper: "暖白"
+  obsidian: "黑曜红",
+  "midnight-dark": "午夜深蓝",
+  "midnight-light": "晴空浅蓝",
+  paper: "暖白素笺"
 };
 
-const themePreviewColors: Record<ThemePreference, { bg: string; accent: string; border: string }> = {
-  system: { bg: "#1f2428", accent: "#007aff", border: "#3b424a" },
-  dark: { bg: "#0d0f12", accent: "#007aff", border: "#252b36" },
-  light: { bg: "#f6f7f8", accent: "#006ee6", border: "#d5dbe3" },
-  "sage-dark": { bg: "#141716", accent: "#528570", border: "#2a332f" },
-  "sage-light": { bg: "#f2f5f3", accent: "#3d6d5a", border: "#d5ddd7" },
-  obsidian: { bg: "#090a0c", accent: "#fa233b", border: "#282c37" },
-  "midnight-dark": { bg: "#0a0f18", accent: "#38bdf8", border: "#1f3047" },
-  "midnight-light": { bg: "#eef3f9", accent: "#0284c7", border: "#d1deed" },
-  paper: { bg: "#f5f2eb", accent: "#b45309", border: "#e4ddd3" }
+interface ThemePreviewSpec {
+  bg: string;
+  card: string;
+  stage: string;
+  border: string;
+  fg: string;
+  muted: string;
+  accent: string;
+  frameRadius: string;
+  badgeRadius: string;
+  splitSystem?: boolean;
+}
+
+const themePreviewColors: Record<ThemePreference, ThemePreviewSpec> = {
+  system: {
+    bg: "#111113",
+    card: "#18191b",
+    stage: "#212225",
+    border: "#363a3f",
+    fg: "#ecedee",
+    muted: "#9ba1a6",
+    accent: "#0090ff",
+    frameRadius: "5px",
+    badgeRadius: "3px",
+    splitSystem: true
+  },
+  dark: {
+    bg: "#111113",
+    card: "#18191b",
+    stage: "#212225",
+    border: "#363a3f",
+    fg: "#ecedee",
+    muted: "#9ba1a6",
+    accent: "#0090ff",
+    frameRadius: "5px",
+    badgeRadius: "3px"
+  },
+  light: {
+    bg: "#fcfcfd",
+    card: "#f9f9fb",
+    stage: "#f0f0f3",
+    border: "#d9d9e0",
+    fg: "#1c2024",
+    muted: "#60646c",
+    accent: "#0090ff",
+    frameRadius: "5px",
+    badgeRadius: "3px"
+  },
+  "sage-dark": {
+    bg: "#0f1412",
+    card: "#161c19",
+    stage: "#1e2622",
+    border: "#37453e",
+    fg: "#eaf0ec",
+    muted: "#a4b5ac",
+    accent: "#29a383",
+    frameRadius: "6px",
+    badgeRadius: "9999px"
+  },
+  "sage-light": {
+    bg: "#eff5f2",
+    card: "#f8fbf9",
+    stage: "#e7efeb",
+    border: "#c4d3cb",
+    fg: "#17221d",
+    muted: "#475950",
+    accent: "#29a383",
+    frameRadius: "6px",
+    badgeRadius: "9999px"
+  },
+  obsidian: {
+    bg: "#070708",
+    card: "#0f0f12",
+    stage: "#17171c",
+    border: "#32323d",
+    fg: "#fafafa",
+    muted: "#a7a7b5",
+    accent: "#e54666",
+    frameRadius: "3px",
+    badgeRadius: "2px"
+  },
+  "midnight-dark": {
+    bg: "#08101d",
+    card: "#0e182a",
+    stage: "#14233b",
+    border: "#2d4772",
+    fg: "#ecf3fe",
+    muted: "#9eb7dc",
+    accent: "#00a2c7",
+    frameRadius: "5px",
+    badgeRadius: "3px"
+  },
+  "midnight-light": {
+    bg: "#eaf2fc",
+    card: "#f6f9fe",
+    stage: "#e1ecfa",
+    border: "#b6cde9",
+    fg: "#0e1d34",
+    muted: "#39547b",
+    accent: "#3e63dd",
+    frameRadius: "5px",
+    badgeRadius: "3px"
+  },
+  paper: {
+    bg: "#f5efe3",
+    card: "#fbf8f1",
+    stage: "#ede5d6",
+    border: "#cfc2ac",
+    fg: "#221b14",
+    muted: "#544739",
+    accent: "#d95308",
+    frameRadius: "6px",
+    badgeRadius: "3px"
+  }
 };
 
 const playerStyleLabels: Record<PlayerStyle, string> = {
@@ -296,11 +401,11 @@ export function SettingsPage() {
       categoryId: "appearance",
       sectionTitle: "主题与色彩风格",
       label: "主题风格",
-      description: "选择应用的外观配色方案，包含高对比度护眼色彩与声学调色预设。",
-      keywords: ["主题", "颜色", "色彩", "深色", "浅色", "系统", "灰绿", "石墨", "深蓝", "浅蓝", "暖白", "theme", "dark", "light", "sage", "obsidian", "midnight", "paper"],
+      description: "选择应用的外观配色方案与界面质感预设。",
+      keywords: ["主题", "颜色", "色彩", "深色", "深空灰", "浅色", "日间白", "系统", "灰绿", "石墨", "黑曜", "深蓝", "午夜", "浅蓝", "晴空", "暖白", "素笺", "theme", "dark", "light", "sage", "obsidian", "midnight", "paper"],
       render: () => (
-        <SettingRow key="theme" label="主题风格" description="选择应用的外观配色方案，包含高对比度护眼色彩与声学调色预设。" stacked>
-          <div aria-label="主题预设" className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full" role="group">
+        <SettingRow key="theme" label="主题风格" description="选择应用的外观配色方案与界面质感预设。" stacked>
+          <div aria-label="主题预设" className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full" role="group">
             {(Object.entries(themeLabels) as Array<[ThemePreference, string]>).map(([themeKey, label]) => {
               const isSelected = settings.theme === themeKey;
               const preview = themePreviewColors[themeKey];
@@ -310,19 +415,108 @@ export function SettingsPage() {
                   type="button"
                   aria-pressed={isSelected}
                   onClick={() => patchSettings({ theme: themeKey })}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150 border cursor-pointer ${
+                  className={`group flex flex-col rounded-lg p-2 text-left transition-colors duration-[250ms] ease-out border-[0.5px] cursor-pointer ${
                     isSelected
-                      ? "border-accent bg-surface-elevated text-foreground shadow-xs font-semibold"
-                      : "border-surface-border/80 bg-surface/40 text-foreground-muted hover:border-surface-border hover:bg-surface-hover/40 hover:text-foreground"
+                      ? "border-accent bg-surface-elevated text-foreground ring-1 ring-accent"
+                      : "border-surface-border bg-surface text-foreground-muted hover:bg-surface-hover hover:text-foreground"
                   }`}
                 >
-                  <span
-                    className="w-3.5 h-3.5 rounded-full shrink-0 border flex items-center justify-center"
-                    style={{ backgroundColor: preview.bg, borderColor: preview.border }}
+                  <div
+                    aria-hidden="true"
+                    className="relative h-14 w-full overflow-hidden rounded-[5px] p-1.5 flex flex-col justify-between"
+                    style={{
+                      background: preview.splitSystem
+                        ? "linear-gradient(135deg, #fcfcfd 49.5%, #111113 50.5%)"
+                        : preview.bg,
+                      border: `0.5px solid ${preview.border}`
+                    }}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: preview.accent }} />
-                  </span>
-                  <span className="truncate">{label}</span>
+                    <div className="flex items-center justify-between gap-1">
+                      <span
+                        className="h-1.5 w-7"
+                        style={{
+                          borderRadius: preview.badgeRadius,
+                          backgroundColor: preview.splitSystem ? "#d9d9e0" : preview.stage
+                        }}
+                      />
+                      <span
+                        className="h-1.5 w-3.5"
+                        style={{
+                          borderRadius: preview.badgeRadius,
+                          backgroundColor: preview.accent
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <div
+                        className="p-1 space-y-1"
+                        style={{
+                          borderRadius: preview.frameRadius,
+                          backgroundColor: preview.splitSystem ? "#f9f9fb" : preview.card,
+                          border: `0.5px solid ${preview.splitSystem ? "#d9d9e0" : preview.border}`
+                        }}
+                      >
+                        <div
+                          className="h-2.5 w-full"
+                          style={{
+                            borderRadius: preview.badgeRadius,
+                            backgroundColor: preview.splitSystem ? "#e8e8ec" : preview.stage
+                          }}
+                        />
+                        <div
+                          className="h-1 w-4/5 rounded-full"
+                          style={{
+                            backgroundColor: preview.splitSystem ? "#1c2024" : preview.fg,
+                            opacity: 0.72
+                          }}
+                        />
+                      </div>
+                      <div
+                        className="p-1 space-y-1"
+                        style={{
+                          borderRadius: preview.frameRadius,
+                          backgroundColor: preview.card,
+                          border: `0.5px solid ${preview.border}`
+                        }}
+                      >
+                        <div
+                          className="h-2.5 w-full flex items-start justify-between p-0.5"
+                          style={{
+                            borderRadius: preview.badgeRadius,
+                            backgroundColor: preview.stage
+                          }}
+                        >
+                          <span
+                            className="h-1 w-2"
+                            style={{
+                              borderRadius: preview.badgeRadius,
+                              backgroundColor: preview.muted,
+                              opacity: 0.65
+                            }}
+                          />
+                          <span
+                            className="h-1 w-1 rounded-full"
+                            style={{ backgroundColor: "var(--green-9)" }}
+                          />
+                        </div>
+                        <div
+                          className="h-1 w-3/4 rounded-full"
+                          style={{
+                            backgroundColor: preview.fg,
+                            opacity: 0.72
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex w-full items-center justify-between gap-1.5 px-0.5">
+                    <span className={`truncate text-xs ${isSelected ? "font-semibold text-foreground" : "font-medium"}`}>
+                      {label}
+                    </span>
+                    {isSelected ? (
+                      <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-accent" />
+                    ) : null}
+                  </div>
                 </button>
               );
             })}

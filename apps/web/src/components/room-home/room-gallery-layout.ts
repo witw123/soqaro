@@ -18,28 +18,30 @@ export type RoomChannelSignalTheme = {
 
 export const ROOM_CHANNEL_THEMES: Record<RoomFilterValue, RoomChannelSignalTheme> = {
   all: {
-    accent: "var(--blue-9)",
-    softBg: "rgba(0, 112, 243, 0.14)",
-    border: "rgba(0, 112, 243, 0.42)",
-    topLine: "linear-gradient(90deg, transparent 0%, rgba(0, 112, 243, 0.65) 25%, rgba(0, 169, 214, 0.55) 75%, transparent 100%)"
+    accent: "var(--accent)",
+    softBg: "color-mix(in srgb, var(--accent) 14%, transparent)",
+    border: "color-mix(in srgb, var(--accent) 42%, transparent)",
+    topLine:
+      "linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--accent) 65%, transparent) 30%, color-mix(in srgb, var(--accent-hover) 55%, transparent) 70%, transparent 100%)"
   },
   interactive: {
-    accent: "#0070f3",
-    softBg: "rgba(0, 112, 243, 0.14)",
-    border: "rgba(0, 112, 243, 0.45)",
-    topLine: "linear-gradient(90deg, transparent 0%, rgba(0, 112, 243, 0.75) 50%, transparent 100%)"
+    accent: "var(--blue-9)",
+    softBg: "color-mix(in srgb, var(--blue-9) 14%, transparent)",
+    border: "color-mix(in srgb, var(--blue-9) 45%, transparent)",
+    topLine:
+      "linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--blue-9) 75%, transparent) 50%, transparent 100%)"
   },
   request: {
-    accent: "#c026d3",
-    softBg: "rgba(192, 38, 211, 0.14)",
-    border: "rgba(192, 38, 211, 0.45)",
-    topLine: "linear-gradient(90deg, transparent 0%, rgba(192, 38, 211, 0.75) 50%, transparent 100%)"
+    accent: "#ab4aba",
+    softBg: "rgba(171, 74, 186, 0.14)",
+    border: "rgba(171, 74, 186, 0.45)",
+    topLine: "linear-gradient(90deg, transparent 0%, rgba(171, 74, 186, 0.75) 50%, transparent 100%)"
   },
   radio: {
-    accent: "#00a9d6",
-    softBg: "rgba(0, 169, 214, 0.14)",
-    border: "rgba(0, 169, 214, 0.45)",
-    topLine: "linear-gradient(90deg, transparent 0%, rgba(0, 169, 214, 0.75) 50%, transparent 100%)"
+    accent: "#00a2c7",
+    softBg: "rgba(0, 162, 199, 0.14)",
+    border: "rgba(0, 162, 199, 0.45)",
+    topLine: "linear-gradient(90deg, transparent 0%, rgba(0, 162, 199, 0.75) 50%, transparent 100%)"
   }
 };
 

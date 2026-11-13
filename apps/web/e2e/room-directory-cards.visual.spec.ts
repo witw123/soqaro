@@ -349,7 +349,9 @@ test("room directory grid and threshold sheet preserve clean hierarchy across sh
   await expect(dialog).toContainText("随机播放，可以刷歌");
   await expect(dialog).toContainText("Your Eyes");
   await expect(dialog).toContainText("56 首曲目");
-  await expect(dialog).toContainText("MKRDDD");
+  await expect(dialog).toContainText("房主");
+  await expect(dialog).toContainText("系错");
+  await expect(dialog).toContainText("进入房间");
 
   await page.screenshot({ path: testInfo.outputPath("room-threshold-short-bio-desktop.png") });
 

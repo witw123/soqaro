@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { Route } from "next";
 import { AppSidebar } from "./AppSidebar";
@@ -69,6 +69,21 @@ function PersistentAppRouteViews({
   const routeCache = useRef(new Map<string, ReactNode>());
   const visibleRoute = useRef<string | null>(null);
   const lastChildren = useRef<ReactNode | undefined>(undefined);
+  const prevRouteKeyRef = useRef<string>(routeKey);
+  const [animatingRouteKey, setAnimatingRouteKey] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (prevRouteKeyRef.current === routeKey) return;
+    prevRouteKeyRef.current = routeKey;
+    if (
+      typeof document !== "undefined" &&
+      document.documentElement.hasAttribute("data-room-transition")
+    ) {
+      setAnimatingRouteKey(null);
+      return;
+    }
+    setAnimatingRouteKey(routeKey);
+  }, [routeKey]);
 
   const cachedPage = routeCache.current.get(routeKey);
   if (routeCache.current.has(routeKey)) {
@@ -97,11 +112,25 @@ function PersistentAppRouteViews({
     <div className="contents">
       {[...routeCache.current.entries()].map(([cachedRoute, page]) => {
         const isVisible = cachedRoute === visibleRoute.current;
+        const isEntering = isVisible && animatingRouteKey === cachedRoute;
         return (
           <div
             aria-hidden={!isVisible}
-            className={isVisible ? "mobile-app-route-view custom-layout-content-region md:contents" : "hidden"}
+            className={
+              isVisible
+                ? `mobile-app-route-view${isEntering ? " mobile-app-route-view--enter" : ""} custom-layout-content-region md:contents`
+                : "hidden"
+            }
             key={cachedRoute}
+            onAnimationEnd={
+              isEntering
+                ? (event) => {
+                    if (event.target === event.currentTarget) {
+                      setAnimatingRouteKey((current) => (current === cachedRoute ? null : current));
+                    }
+                  }
+                : undefined
+            }
           >
             <WorkspacePageActivity.Provider value={isVisible}>
               {page}

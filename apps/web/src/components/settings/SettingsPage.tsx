@@ -86,7 +86,7 @@ const playbackModeLabels: Record<PlaybackMode, string> = {
 function resolveThemePreviewPattern(patternKind: ThemePreviewPalette["patternKind"], borderColor: string, accentColor: string): string {
   switch (patternKind) {
     case "contour":
-      return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M0 10 Q9 4 18 10 T36 10 M0 28 Q9 22 18 28 T36 28' fill='none' stroke='%2329a383' stroke-opacity='0.14' stroke-width='1'/%3E%3C/svg%3E")`;
+      return `radial-gradient(24px 12px at 50% 0%, transparent 10.5px, color-mix(in srgb, ${accentColor} 18%, transparent) 11px, transparent 12px), radial-gradient(24px 12px at 50% 100%, transparent 10.5px, color-mix(in srgb, ${accentColor} 18%, transparent) 11px, transparent 12px)`;
     case "grain":
       return "repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 4px)";
     case "grid":
@@ -1413,7 +1413,7 @@ export function SettingsPage() {
         <aside className="hidden w-52 shrink-0 md:block lg:w-56 md:sticky md:top-6">
           <nav
             aria-label="设置分类"
-            className="rounded-xl border border-surface-border bg-surface/30 p-2 space-y-1 backdrop-blur-xs"
+            className="rounded-xl border border-surface-border bg-surface/30 p-2 space-y-1"
           >
             {isSearching ? (
               <div className="mb-2 border-b border-surface-border/60 pb-2">
@@ -1480,7 +1480,7 @@ export function SettingsPage() {
         <section className="min-w-0 flex-1 space-y-6">
           {/* 搜索提示条 */}
           {isSearching ? (
-            <div className="flex items-center justify-between rounded-lg border border-surface-border/70 bg-surface/40 px-3.5 py-2 text-xs text-foreground-muted backdrop-blur-xs">
+            <div className="flex items-center justify-between rounded-lg border border-surface-border/70 bg-surface/40 px-3.5 py-2 text-xs text-foreground-muted">
               <div>
                 <span>搜索 </span>
                 <strong className="text-foreground">“{searchQuery}”</strong>
@@ -1508,7 +1508,7 @@ export function SettingsPage() {
 
           {/* 无匹配空状态 */}
           {isSearching && displayedItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-surface-border bg-surface/30 px-4 py-12 text-center backdrop-blur-xs">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-surface-border bg-surface/30 px-4 py-12 text-center">
               <Search size={32} className="mb-3 text-foreground-muted/40" />
               <p className="text-sm font-medium text-foreground">未找到匹配的设置项</p>
               <p className="mt-1 text-xs text-foreground-muted">

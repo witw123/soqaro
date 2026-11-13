@@ -23,7 +23,7 @@ export function AudioUnlockOverlay({ visible, onUnlock }: AudioUnlockOverlayProp
 
   return (
     <div
-      className="light-overlay-scrim fixed inset-0 z-[var(--z-max)] flex items-center justify-center bg-black/60 backdrop-blur-md"
+      className="light-overlay-scrim fixed inset-0 z-[var(--z-max)] flex items-center justify-center bg-black/60 md:backdrop-blur-md"
       onClick={handleClick}
       onTouchStart={handleClick}
       role="button"

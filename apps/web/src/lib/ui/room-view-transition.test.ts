@@ -404,4 +404,27 @@ describe("room-view-transition", () => {
     resolveFinished();
     await finished;
   });
+
+  it("ignores Radix transient data-aria-hidden wrappers on card-close while skipping real aria-hidden cached routes", () => {
+    const cachedRouteCard = {
+      ...createMockElement("cached-route-card", { visibleRect: true }),
+      closest: (selector: string) =>
+        selector.includes('[aria-hidden="true"]:not([data-aria-hidden="true"])') ? ({} as Element) : null
+    } as unknown as HTMLElement;
+    const radixMaskedVisibleCard = {
+      ...createMockElement("radix-masked-card", { visibleRect: true }),
+      closest: (selector: string) =>
+        selector.includes('[aria-hidden="true"]:not([data-aria-hidden="true"])') ? null : ({} as Element)
+    } as unknown as HTMLElement;
+
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {} },
+      querySelectorAll: (selector: string) => {
+        if (selector.includes("data-mosaic-slot-id")) return [cachedRouteCard, radixMaskedVisibleCard];
+        return [];
+      }
+    });
+
+    expect(findRoomCardElement("room_radix_close")?.id).toBe("radix-masked-card");
+  });
 });

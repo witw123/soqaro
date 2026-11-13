@@ -182,19 +182,19 @@ export function PlayerQueueDrawer({
           {isImmersiveDesktop ? (
             <div
               aria-hidden="true"
-              className="fixed inset-0 z-[85] bg-black/35 backdrop-blur-[1px]"
+              className="fixed inset-0 z-[85] bg-black/35 md:backdrop-blur-[1px]"
               onClick={() => setIsOpen(false)}
             />
           ) : isBottomSheet ? (
             <div
               aria-hidden="true"
-              className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm"
+              className="fixed inset-0 z-[95] bg-black/60 md:backdrop-blur-sm"
               onClick={() => setIsOpen(false)}
             />
           ) : (
             <div
               aria-hidden="true"
-              className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm sm:hidden"
+              className="fixed inset-0 z-[95] bg-black/60 sm:hidden"
               onClick={() => setIsOpen(false)}
             />
           )}

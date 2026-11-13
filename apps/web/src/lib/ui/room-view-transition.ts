@@ -99,7 +99,9 @@ function classifyMorphRole(el: HTMLElement | null): "pill" | "card" | null {
 function findFirstVisibleCandidate(selector: string): HTMLElement | null {
   const candidates = document.querySelectorAll<HTMLElement>(selector);
   for (const candidate of candidates) {
-    if (candidate.closest('[aria-hidden="true"], .hidden')) continue;
+    // Ignore hidden cached routes in PersistentAppRouteViews, but do not skip
+    // visible routes whose Radix `data-aria-hidden="true"` cleanup runs passively.
+    if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
     if (isElementVisibleInViewport(candidate)) {
       return candidate;
     }

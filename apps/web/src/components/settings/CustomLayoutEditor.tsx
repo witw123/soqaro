@@ -220,7 +220,7 @@ export function CustomLayoutEditor({ value, onApply, onReset, onClose }: CustomL
   }
 
   const editor = (
-    <div aria-label="自定义界面编辑器" aria-modal="true" className="fixed inset-0 z-[120] flex flex-col bg-background/95 text-foreground backdrop-blur-2xl" role="dialog">
+    <div aria-label="自定义界面编辑器" aria-modal="true" className="fixed inset-0 z-[120] flex flex-col bg-background/95 text-foreground md:backdrop-blur-2xl" role="dialog">
       <header className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-surface-border px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/12 text-accent">

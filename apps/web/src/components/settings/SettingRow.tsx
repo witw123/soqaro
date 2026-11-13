@@ -10,7 +10,7 @@ export function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-surface-border bg-surface/40 p-4 sm:p-5 backdrop-blur-xs">
+    <section className="rounded-xl border border-surface-border bg-surface/40 p-4 sm:p-5">
       <div className="mb-2 flex items-center gap-2">
         {badge ? (
           <span className="rounded bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">

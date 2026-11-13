@@ -111,7 +111,7 @@ export function AnchoredDialog({
 
   return createPortal(
     <div
-      className="light-overlay-scrim fixed inset-0 z-[500] overflow-y-auto bg-black/75 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] backdrop-blur-sm"
+      className="light-overlay-scrim fixed inset-0 z-[500] overflow-y-auto bg-black/75 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] md:backdrop-blur-sm"
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();

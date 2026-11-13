@@ -41,6 +41,21 @@ public class SystemMediaControlsPlugin extends Plugin {
     }
 
     @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        if (!isKeepAliveActive) {
+            return;
+        }
+        Intent intent = serviceIntent();
+        if (intent != null) {
+            intent.putExtra("restoreAudioFocus", true);
+            intent.putExtra("keepAlive", true);
+            intent.putExtra("roomName", keepAliveRoomName);
+            startService(intent);
+        }
+    }
+
+    @Override
     protected void handleOnDestroy() {
         if (activeInstance == this) {
             activeInstance = null;

@@ -41,6 +41,8 @@ export class RoomAudioOutput {
   private readonly broadcastStreamListeners = new Set<BroadcastStreamListener>();
   private localAudioElementGraph: LocalAudioElementGraph | null = null;
   private equalizerGains: [number, number, number, number, number] | null = null;
+  private systemAudioScale = 1;
+  private lastAppliedVolumeInput: ApplyRoomAudioVolumeInput | null = null;
   private readonly localAudioElementSources = new WeakMap<
     HTMLAudioElement,
     { context: AudioContext; source: MediaElementAudioSourceNode }
@@ -123,8 +125,31 @@ export class RoomAudioOutput {
     return this.equalizerGains ? [...this.equalizerGains] : null;
   }
 
+  getSystemAudioScale() {
+    return this.systemAudioScale;
+  }
+
+  setSystemAudioScale(scale: number) {
+    const normalized = Number.isFinite(scale) ? Math.min(1, Math.max(0, scale)) : 1;
+    if (this.systemAudioScale === normalized) {
+      return;
+    }
+    this.systemAudioScale = normalized;
+    if (this.lastAppliedVolumeInput) {
+      this.applyVolume(this.lastAppliedVolumeInput);
+    }
+  }
+
   applyVolume(input: ApplyRoomAudioVolumeInput) {
+    this.lastAppliedVolumeInput = {
+      localAudio: input.localAudio,
+      volume: input.volume,
+      ...(typeof input.loudnessGainDb === "number"
+        ? { loudnessGainDb: input.loudnessGainDb }
+        : {})
+    };
     const safeVolume = normalizeOutputVolume(input.volume);
+    const effectiveVolume = normalizeOutputVolume(safeVolume * this.systemAudioScale);
     const loudnessGain = typeof input.loudnessGainDb === "number"
       ? normalizeGainDb(input.loudnessGainDb)
       : input.localAudio
@@ -145,8 +170,8 @@ export class RoomAudioOutput {
         ? this.localAudioElementGraph
         : null;
       if (localGraph) {
-        if (volumeChanged || localGraph.localGain.gain.value !== safeVolume) {
-          this.setGraphVolume(localGraph, safeVolume);
+        if (volumeChanged || localGraph.localGain.gain.value !== effectiveVolume) {
+          this.setGraphVolume(localGraph, effectiveVolume);
         }
         if (loudnessChanged || (typeof input.loudnessGainDb === "number" && localGraph.normalizationGain.gain.value !== loudnessGain)) {
           this.setGraphLoudnessGain(localGraph, loudnessGain);
@@ -154,7 +179,7 @@ export class RoomAudioOutput {
         element.volume = 1;
         return;
       }
-      element.volume = normalizeOutputVolume(safeVolume * loudnessGain);
+      element.volume = normalizeOutputVolume(effectiveVolume * loudnessGain);
     }
   }
 
@@ -208,7 +233,10 @@ export class RoomAudioOutput {
         this.setGraphLoudnessGain(this.localAudioElementGraph, graphGain);
       }
       if (options?.volume !== undefined && previousRequestedVolume !== requestedVolume) {
-        this.setGraphVolume(this.localAudioElementGraph, requestedVolume);
+        this.setGraphVolume(
+          this.localAudioElementGraph,
+          normalizeOutputVolume(requestedVolume * this.systemAudioScale)
+        );
       }
       return destination?.stream ?? null;
     }
@@ -229,7 +257,7 @@ export class RoomAudioOutput {
       normalizationGain.gain.value = graphGain;
       this.elementLoudnessGains.set(element, graphGain);
       const localGain = context.createGain();
-      localGain.gain.value = requestedVolume;
+      localGain.gain.value = normalizeOutputVolume(requestedVolume * this.systemAudioScale);
 
       let equalizerChain: EqualizerFilterNodeChain | null = null;
       if (typeof context.createBiquadFilter === "function") {

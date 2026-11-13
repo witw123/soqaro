@@ -283,7 +283,7 @@ export function useSegmentedOpusPlayback(input: {
           manifest: currentPlaybackAsset,
           playback: currentPlayback,
           serverNowMs,
-          volume: runtime.volume,
+          volume: runtime.volume * (roomAudioOutput.getSystemAudioScale?.() ?? 1),
           loudnessGainDb: runtime.loudnessGainDb,
           broadcast: true,
           getUnit: (unitIndex, signal) => getPlayableAssetUnit(

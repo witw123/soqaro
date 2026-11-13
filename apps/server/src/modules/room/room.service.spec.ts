@@ -2879,15 +2879,27 @@ describe("RoomService", () => {
     expect(initialPlayback.status).toBe("playing");
     expect(initialPlayback.sourcePeerId).toBe("peer-host");
 
-    // Host goes offline. For all tracks including provider tracks, playback pauses.
+    // Host goes offline while another online member remains on a complete track asset:
+    // keep the room playing with sourcePeerId cleared so cached/provider playback continues.
     const roomAfterDeparture = await roomService.updatePeerPresence(
       snapshot.room.id,
       host.id,
       null,
       "offline"
     );
-    expect(roomAfterDeparture.playback.status).toBe("paused");
+    expect(roomAfterDeparture.playback.status).toBe("playing");
     expect(roomAfterDeparture.playback.sourcePeerId).toBeNull();
+
+    // When the uploader reconnects, sourcePeerId is restored and media epoch bumps.
+    const roomAfterReconnect = await roomService.updatePeerPresence(
+      snapshot.room.id,
+      host.id,
+      "peer-host-reconnected",
+      "online"
+    );
+    expect(roomAfterReconnect.playback.status).toBe("playing");
+    expect(roomAfterReconnect.playback.sourcePeerId).toBe("peer-host-reconnected");
+    expect(roomAfterReconnect.playback.mediaEpoch).toBe(initialPlayback.mediaEpoch + 1);
   });
 
   it("updates track assets and starts playback when asset is prepared for waiting track", async () => {

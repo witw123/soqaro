@@ -11,6 +11,7 @@ export {
   resolveRoomSnapshotWatchdogAction,
   shouldAcceptIncomingPeerSignal,
   shouldExitRoomOnSnapshotMissing,
+  shouldResubscribeAfterPresenceOutcome,
   shouldResyncSnapshotForPlaybackPatch,
   shouldSuppressPlaybackWatchdogEscalation
 } from "./room-realtime-policy";

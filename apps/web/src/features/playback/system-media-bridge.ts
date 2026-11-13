@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { roomAudioOutput } from "@/features/playback/room-audio-output";
 import {
   capacitorPlugin,
   invokeTauri,
@@ -60,6 +61,18 @@ function applyCommand(
       break;
     case "seekBy":
       if (typeof deltaMs === "number") handlers.onSeekBy(deltaMs);
+      break;
+    case "localInterrupt":
+      // Transient/OS audio focus loss should only silence this device locally,
+      // never pause synchronized room playback for other room members.
+      roomAudioOutput.setSystemAudioScale(0);
+      break;
+    case "localDuck":
+      roomAudioOutput.setSystemAudioScale(0.25);
+      break;
+    case "localResume":
+      roomAudioOutput.setSystemAudioScale(1);
+      void roomAudioOutput.resumeSharedAudioContext();
       break;
     default:
       break;
@@ -162,6 +175,7 @@ export function useSystemMediaTransport(input: SystemMediaTransportInput) {
       cancelled = true;
       unlisten?.();
       unlisten = undefined;
+      roomAudioOutput.setSystemAudioScale(1);
       if (isTauriRuntime()) void invokeTauri("system_media_clear");
       else void capacitorPlugin("SystemMediaControls")?.hide?.({ force: !roomIdRef.current });
     };

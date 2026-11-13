@@ -591,9 +591,25 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     const message = parsed.data;
 
     this.ensureBroadcasterServer();
+    if (
+      client.data.isRealtimeAuthenticated &&
+      client.data.roomId !== message.roomId &&
+      !client.data.roomId
+    ) {
+      return { ok: false, reason: "not-subscribed" as const };
+    }
     this.assertRealtimeClient(client, message.roomId);
     await this.assertUserStillActive(client.data.sessionId as string);
-    await this.sessionLease.assert(client);
+    const leaseStatus = await this.sessionLease.checkSocketLease(client);
+    if (leaseStatus === "missing") {
+      return { ok: false, reason: "lease-missing" as const };
+    }
+    if (leaseStatus === "replaced") {
+      throw new WsException("Realtime session was replaced.");
+    }
+    if (leaseStatus === "unavailable") {
+      throw new WsException("Realtime session coordination is unavailable.");
+    }
     if (!(await this.sessionLease.renew(client))) {
       throw new WsException("Realtime session was replaced.");
     }

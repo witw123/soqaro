@@ -70,12 +70,32 @@ public class SystemMediaService extends Service {
     private AudioManager audioManager;
     private AudioFocusRequest audioFocusRequest;
     private boolean hasAudioFocus;
+    private boolean transientlyLostFocus;
+    private boolean focusSuppressedByLoss;
     private final AudioManager.OnAudioFocusChangeListener audioFocusChangeListener = focusChange -> {
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_LOSS:
-            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                hasAudioFocus = false;
+                focusSuppressedByLoss = true;
+                transientlyLostFocus = false;
                 abandonAudioFocus();
-                emit("pause", null, null);
+                emit("localInterrupt", null, null);
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                hasAudioFocus = false;
+                transientlyLostFocus = true;
+                // Keep focus registration active so Android delivers AUDIOFOCUS_GAIN
+                // when notifications, voice messages, or calls finish.
+                emit("localInterrupt", null, null);
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                emit("localDuck", null, null);
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN:
+                hasAudioFocus = true;
+                transientlyLostFocus = false;
+                focusSuppressedByLoss = false;
+                emit("localResume", null, null);
                 break;
             default:
                 break;
@@ -91,6 +111,8 @@ public class SystemMediaService extends Service {
         session.setCallback(new MediaSessionCompat.Callback() {
             @Override
             public void onPlay() {
+                focusSuppressedByLoss = false;
+                transientlyLostFocus = false;
                 emit("play", null, null);
             }
 
@@ -167,15 +189,36 @@ public class SystemMediaService extends Service {
                 durationMs = intent.getLongExtra("durationMs", 0L);
                 loadArtwork();
             }
+            boolean wasPlaying = isPlaying;
+            boolean restoreAudioFocus = intent.getBooleanExtra("restoreAudioFocus", false);
             if (intent.hasExtra("isPlaying")) {
                 isPlaying = intent.getBooleanExtra("isPlaying", false);
                 positionMs = intent.getLongExtra("positionMs", 0L);
             }
-        }
-        if (isPlaying) {
-            requestAudioFocus();
+            if ((!wasPlaying && isPlaying) || restoreAudioFocus) {
+                focusSuppressedByLoss = false;
+                transientlyLostFocus = false;
+            }
+            if (isPlaying) {
+                if (!focusSuppressedByLoss && !transientlyLostFocus) {
+                    requestAudioFocus();
+                    if (restoreAudioFocus && hasAudioFocus) {
+                        emit("localResume", null, null);
+                    }
+                }
+            } else {
+                focusSuppressedByLoss = false;
+                transientlyLostFocus = false;
+                abandonAudioFocus();
+            }
         } else {
-            abandonAudioFocus();
+            if (isPlaying) {
+                if (!focusSuppressedByLoss && !transientlyLostFocus) {
+                    requestAudioFocus();
+                }
+            } else {
+                abandonAudioFocus();
+            }
         }
         try {
             Notification notification = buildNotification();

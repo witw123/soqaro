@@ -247,7 +247,13 @@ export class RoomLifecycleService {
       await this.roomPresenceService.clear(roomId, memberId);
       await this.roomActivityService.stop(memberId, roomId, record.room);
       record.room.members = record.room.members.filter((candidate) => candidate.id !== memberId);
-      await this.roomPlaybackService.handleSourceDeparture(record, memberId);
+      const activePresenceAfterRemoval = await this.roomPresenceService.getActivePresence(
+        roomId,
+        record.room.members
+      );
+      await this.roomPlaybackService.handleSourceDeparture(record, memberId, {
+        hasOtherOnlineMember: activePresenceAfterRemoval.size > 0
+      });
       incrementPresenceRevision(record.room);
       incrementRoomRevision(record.room);
       await this.roomRecordRepository.persistRecord(record);
@@ -266,7 +272,13 @@ export class RoomLifecycleService {
       await this.roomPresenceService.clear(roomId, memberId);
       await this.roomActivityService.stop(memberId, roomId, record.room);
       record.room.members = record.room.members.filter((candidate) => candidate.id !== memberId);
-      await this.roomPlaybackService.handleSourceDeparture(record, memberId);
+      const activePresenceAfterRemoval = await this.roomPresenceService.getActivePresence(
+        roomId,
+        record.room.members
+      );
+      await this.roomPlaybackService.handleSourceDeparture(record, memberId, {
+        hasOtherOnlineMember: activePresenceAfterRemoval.size > 0
+      });
       incrementPresenceRevision(record.room);
       incrementRoomRevision(record.room);
       await this.roomRecordRepository.persistRecord(record);
@@ -330,7 +342,14 @@ export class RoomLifecycleService {
         record.room.members = record.room.members.filter((member) => member.id !== sessionId);
       }
 
-      await this.roomPlaybackService.handleSourceDeparture(record, sessionId);
+      const activePresenceAfterLeave = await this.roomPresenceService.getActivePresence(
+        roomId,
+        record.room.members
+      );
+      const hasOtherOnlineMember = [...activePresenceAfterLeave.keys()].some((id) => id !== sessionId);
+      await this.roomPlaybackService.handleSourceDeparture(record, sessionId, {
+        hasOtherOnlineMember
+      });
       incrementPresenceRevision(record.room);
       incrementRoomRevision(record.room);
 

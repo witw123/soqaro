@@ -232,3 +232,26 @@ export function resolveRoomSnapshotWatchdogAction(input: {
     shouldRequestResync: true
   };
 }
+
+export function shouldResubscribeAfterPresenceOutcome(input: {
+  timedOut: boolean;
+  ack?: { ok?: boolean; reason?: string } | null;
+  socketConnected: boolean;
+  lastResubscribeAtMs: number | null;
+  nowMs: number;
+  cooldownMs: number;
+}) {
+  if (!input.socketConnected) {
+    return false;
+  }
+  if (!input.timedOut && input.ack?.ok === true) {
+    return false;
+  }
+  if (
+    input.lastResubscribeAtMs !== null &&
+    input.nowMs - input.lastResubscribeAtMs < input.cooldownMs
+  ) {
+    return false;
+  }
+  return true;
+}

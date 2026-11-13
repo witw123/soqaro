@@ -351,12 +351,20 @@ export type ServerToClientEvents = {
   disconnect: () => void;
 };
 
+export type RoomPresenceAckPayload = {
+  ok: boolean;
+  reason?: string;
+};
+
 export type ClientToServerEvents = {
   "room.subscribe": (
     payload: RoomSubscribePayload,
     ack?: (payload: RoomSubscribeAckPayload) => void
   ) => void;
-  "room.presence": (payload: RoomPresencePayload) => void;
+  "room.presence": (
+    payload: RoomPresencePayload,
+    ack?: (payload: RoomPresenceAckPayload) => void
+  ) => void;
   "room.unsubscribe": (payload: RoomUnsubscribePayload) => void;
   "peer.signal": (payload: z.infer<typeof peerSignalMessageSchema>) => void;
   "room.chat": (payload: RoomChatInputPayload) => void;

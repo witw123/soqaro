@@ -272,7 +272,7 @@ export class RoomSessionLeaseService {
     }
   }
 
-  private async checkSocketLease(socket: Socket): Promise<SocketLeaseCheckResult> {
+  async checkSocketLease(socket: Socket): Promise<SocketLeaseCheckResult> {
     const roomId = socket.data.roomId as string | undefined;
     const sessionId = socket.data.sessionId as string | undefined;
     const fenceToken = socket.data.sessionFenceToken as string | undefined;

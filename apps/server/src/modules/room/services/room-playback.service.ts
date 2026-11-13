@@ -11,6 +11,7 @@ import {
   getEffectivePlaybackPositionMs,
   getGaplessTransitionAt,
   getTrackDurationMs,
+  isProviderTrack,
   pausePlaybackAt,
   pickTrackSourceCandidate
 } from "./room-playback.helpers";
@@ -643,14 +644,40 @@ export class RoomPlaybackService {
   }
 
   /**
-   * A provider-backed track can keep its room timeline while the uploader is
-   * offline. Listeners will resolve the provider source locally; local uploads
-   * still pause because they have no remote source to fall back to.
+   * When a provider-backed track already has a complete distribution asset and
+   * other members remain online, keep the room timeline playing with
+   * `sourcePeerId: null` so members do not suffer a mid-song pause when the
+   * uploader temporarily drops offline. Local uploads still pause because
+   * uncached listeners have no remote provider source to fall back to.
    */
-  handleSourceDeparture(record: RoomRecord, sessionId: string) {
+  handleSourceDeparture(
+    record: RoomRecord,
+    sessionId: string,
+    options?: {
+      hasOtherOnlineMember?: boolean;
+    }
+  ) {
     const playback = record.room.playback;
     if (!playback.currentTrackId || playback.sourceSessionId !== sessionId) {
       return false;
+    }
+
+    const currentTrack = record.tracks.find((item) => item.id === playback.currentTrackId);
+    const hasOtherOnlineMember = options?.hasOtherOnlineMember ?? record.room.members.some(
+      (member) => member.id !== sessionId && member.presenceState === "online"
+    );
+    if (
+      playback.status === "playing" &&
+      isProviderTrack(currentTrack) &&
+      hasCompleteRoomAsset(currentTrack) &&
+      hasOtherOnlineMember
+    ) {
+      if (playback.sourcePeerId === null) {
+        return false;
+      }
+      playback.sourcePeerId = null;
+      bumpPlaybackVersion(playback);
+      return true;
     }
 
     const positionMs = getEffectivePlaybackPositionMs(record, playback);

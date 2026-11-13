@@ -12,6 +12,7 @@ import {
   resolvePresenceRepairAction,
   resolveRoomRealtimeSnapshotInputs,
   resolveRoomSnapshotWatchdogAction,
+  shouldResubscribeAfterPresenceOutcome,
   shouldResyncSnapshotForPlaybackPatch,
   shouldSuppressPlaybackWatchdogEscalation
 } from "./use-room-realtime-connection";
@@ -420,6 +421,65 @@ describe("resolveRoomSnapshotWatchdogAction", () => {
         nowMs: 9_500,
         staleAfterMs: 8_000
       }).shouldRequestResync
+    ).toBe(false);
+  });
+});
+
+describe("shouldResubscribeAfterPresenceOutcome", () => {
+  it("triggers resubscribe when presence ack fails or times out while connected", () => {
+    expect(
+      shouldResubscribeAfterPresenceOutcome({
+        timedOut: false,
+        ack: { ok: false, reason: "lease-missing" },
+        socketConnected: true,
+        lastResubscribeAtMs: null,
+        nowMs: 10_000,
+        cooldownMs: 5_000
+      })
+    ).toBe(true);
+
+    expect(
+      shouldResubscribeAfterPresenceOutcome({
+        timedOut: true,
+        ack: null,
+        socketConnected: true,
+        lastResubscribeAtMs: null,
+        nowMs: 10_000,
+        cooldownMs: 5_000
+      })
+    ).toBe(true);
+
+    expect(
+      shouldResubscribeAfterPresenceOutcome({
+        timedOut: false,
+        ack: { ok: true },
+        socketConnected: true,
+        lastResubscribeAtMs: null,
+        nowMs: 10_000,
+        cooldownMs: 5_000
+      })
+    ).toBe(false);
+
+    expect(
+      shouldResubscribeAfterPresenceOutcome({
+        timedOut: false,
+        ack: { ok: false, reason: "lease-missing" },
+        socketConnected: true,
+        lastResubscribeAtMs: 7_000,
+        nowMs: 10_000,
+        cooldownMs: 5_000
+      })
+    ).toBe(false);
+
+    expect(
+      shouldResubscribeAfterPresenceOutcome({
+        timedOut: true,
+        ack: null,
+        socketConnected: false,
+        lastResubscribeAtMs: null,
+        nowMs: 10_000,
+        cooldownMs: 5_000
+      })
     ).toBe(false);
   });
 });

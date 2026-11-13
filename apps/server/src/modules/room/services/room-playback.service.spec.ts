@@ -154,6 +154,51 @@ describe("RoomPlaybackService gapless playback", () => {
     expect(room.room.playback.sourcePeerId).toBeNull();
   });
 
+  it("keeps complete provider-track playback running with sourcePeerId cleared while another online member remains", async () => {
+    const room = record(0);
+    room.tracks[0] = {
+      ...room.tracks[0]!,
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "123" }
+    };
+    room.room.members = [
+      {
+        id: "owner",
+        nickname: "Owner",
+        role: "host",
+        peerId: "peer-owner",
+        joinedAt: "2026-07-20T00:00:00.000Z",
+        presenceState: "online"
+      },
+      {
+        id: "listener",
+        nickname: "Listener",
+        role: "member",
+        peerId: "peer-listener",
+        joinedAt: "2026-07-20T00:00:00.000Z",
+        presenceState: "online"
+      }
+    ];
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map([
+        ["owner", "peer-owner"],
+        ["listener", "peer-listener"]
+      ])
+    } as never);
+
+    await service.updatePlayback(room, {
+      action: "play",
+      trackId: "track_1"
+    });
+    const mediaEpochBefore = room.room.playback.mediaEpoch;
+
+    const changed = service.handleSourceDeparture(room, "owner");
+    expect(changed).toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.sourcePeerId).toBeNull();
+    expect(room.room.playback.mediaEpoch).toBe(mediaEpochBefore);
+  });
+
   it("plays the selected next item without changing queue order", async () => {
     const room = record(0);
     room.room.playback.nextQueueItemId = "queue_2";

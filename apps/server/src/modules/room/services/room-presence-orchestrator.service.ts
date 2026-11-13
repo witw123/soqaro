@@ -274,7 +274,14 @@ export class RoomPresenceOrchestratorService {
     }
 
     if (presenceState === "offline") {
-      await this.roomPlaybackService.handleSourceDeparture(record, sessionId);
+      const activePresence = await this.roomPresenceService.getActivePresence(
+        roomId,
+        record.room.members
+      );
+      const hasOtherOnlineMember = [...activePresence.keys()].some((id) => id !== sessionId);
+      await this.roomPlaybackService.handleSourceDeparture(record, sessionId, {
+        hasOtherOnlineMember
+      });
       await this.roomActivityService.stop(sessionId, roomId, record.room);
     }
 

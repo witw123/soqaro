@@ -231,4 +231,24 @@ describe("room audio output", () => {
     roomAudioOutput.releaseRoomAudioSession();
     expect(filters[0].disconnect).toHaveBeenCalled();
   });
+
+  it("scales output volume during local audio focus interruptions without mutating the requested volume", () => {
+    const { context, gain } = createAudioContextMock();
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext")
+      .mockReturnValue(context as unknown as AudioContext);
+    const audio = { volume: 1 } as HTMLAudioElement;
+
+    roomAudioOutput.bindLocalAudioElement(audio, { broadcast: false });
+    roomAudioOutput.applyVolume({ localAudio: audio, volume: 0.8 });
+    expect(gain.gain.setValueAtTime).toHaveBeenLastCalledWith(0.8, 12);
+
+    roomAudioOutput.setSystemAudioScale(0);
+    expect(gain.gain.setValueAtTime).toHaveBeenLastCalledWith(0, 12);
+
+    roomAudioOutput.setSystemAudioScale(0.25);
+    expect(gain.gain.setValueAtTime).toHaveBeenLastCalledWith(0.2, 12);
+
+    roomAudioOutput.setSystemAudioScale(1);
+    expect(gain.gain.setValueAtTime).toHaveBeenLastCalledWith(0.8, 12);
+  });
 });

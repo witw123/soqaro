@@ -13,10 +13,13 @@ import type { RoomRecoveryMode } from "./room-runtime-types";
 import {
   resolvePresenceRepairAction,
   resolveRoomRealtimeSnapshotInputs,
-  resolveRoomSnapshotWatchdogAction
+  resolveRoomSnapshotWatchdogAction,
+  shouldResubscribeAfterPresenceOutcome
 } from "./room-realtime-policy";
 
 const presenceHeartbeatIntervalMs = 10_000;
+const presenceAckTimeoutMs = 5_000;
+const presenceResubscribeCooldownMs = 5_000;
 export function useRoomRealtimeConnectionEffects(input: {
   roomSnapshot: RoomSnapshot | null;
   initialRoomId: string | null;
@@ -52,6 +55,7 @@ export function useRoomRealtimeConnectionEffects(input: {
     lastRealtimeRoomEventAtRef,
     peerId,
     requestRoomSnapshotResync,
+    resubscribeRoomRef,
     roomSnapshot,
     socketRef,
     uploadedTrackIds
@@ -69,16 +73,27 @@ export function useRoomRealtimeConnectionEffects(input: {
     fallbackUploadedTrackIds: uploadedTrackIds
   });
   const presenceIntervalRef = useRef<number | null>(null);
+  const presenceAckTimerRef = useRef<number | null>(null);
+  const presenceSequenceRef = useRef(0);
+  const lastPresenceResubscribeAtRef = useRef<number | null>(null);
   const roomSnapshotWatchdogIntervalRef = useRef<number | null>(null);
   const presenceRepairKeyRef = useRef<string | null>(null);
   const initialRoomSnapshotResyncKeyRef = useRef<string | null>(null);
 
+  const clearPresenceAckTimer = useCallback(() => {
+    if (presenceAckTimerRef.current !== null) {
+      window.clearTimeout(presenceAckTimerRef.current);
+      presenceAckTimerRef.current = null;
+    }
+  }, []);
+
   const stopPresenceHeartbeat = useCallback(() => {
+    clearPresenceAckTimer();
     if (presenceIntervalRef.current !== null) {
       window.clearInterval(presenceIntervalRef.current);
       presenceIntervalRef.current = null;
     }
-  }, []);
+  }, [clearPresenceAckTimer]);
 
   const stopRoomSnapshotWatchdog = useCallback(() => {
     if (roomSnapshotWatchdogIntervalRef.current !== null) {
@@ -86,6 +101,28 @@ export function useRoomRealtimeConnectionEffects(input: {
       roomSnapshotWatchdogIntervalRef.current = null;
     }
   }, []);
+
+  const triggerPresenceResubscribe = useCallback(
+    (timedOut: boolean, ack?: { ok?: boolean; reason?: string } | null) => {
+      const nowMs = Date.now();
+      const socket = socketRef.current;
+      if (
+        !shouldResubscribeAfterPresenceOutcome({
+          timedOut,
+          ack,
+          socketConnected: !!socket?.connected,
+          lastResubscribeAtMs: lastPresenceResubscribeAtRef.current,
+          nowMs,
+          cooldownMs: presenceResubscribeCooldownMs
+        })
+      ) {
+        return;
+      }
+      lastPresenceResubscribeAtRef.current = nowMs;
+      resubscribeRoomRef.current?.();
+    },
+    [resubscribeRoomRef, socketRef]
+  );
 
   const emitPresence = useCallback(() => {
     const currentSession = activeSessionRef.current;
@@ -103,12 +140,39 @@ export function useRoomRealtimeConnectionEffects(input: {
       return;
     }
 
-    socket.emit("room.presence", {
-      roomId: currentRoomId,
-      sessionId: currentSession.userId,
-      peerId
-    });
-  }, [activeSessionRef, currentRoomRef, peerId, socketRef]);
+    clearPresenceAckTimer();
+    const sequence = ++presenceSequenceRef.current;
+    presenceAckTimerRef.current = window.setTimeout(() => {
+      presenceAckTimerRef.current = null;
+      if (presenceSequenceRef.current !== sequence) {
+        return;
+      }
+      triggerPresenceResubscribe(true);
+    }, presenceAckTimeoutMs);
+
+    socket.emit(
+      "room.presence",
+      {
+        roomId: currentRoomId,
+        sessionId: currentSession.userId,
+        peerId
+      },
+      (ack?: { ok?: boolean; reason?: string }) => {
+        if (presenceSequenceRef.current !== sequence) {
+          return;
+        }
+        clearPresenceAckTimer();
+        triggerPresenceResubscribe(false, ack ?? null);
+      }
+    );
+  }, [
+    activeSessionRef,
+    clearPresenceAckTimer,
+    currentRoomRef,
+    peerId,
+    socketRef,
+    triggerPresenceResubscribe
+  ]);
 
   const startPresenceHeartbeat = useCallback(() => {
     emitPresence();

@@ -283,4 +283,40 @@ describe("SignalingGateway chat", () => {
       })).rejects.toThrow("曲目不属于该房间。");
     });
   });
+
+  describe("SignalingGateway room.presence", () => {
+    it("returns lease-missing when the session lease expired so the client can resubscribe", async () => {
+      const gateway = Object.assign(Object.create(SignalingGateway.prototype), {
+        ensureBroadcasterServer: jest.fn(),
+        assertRealtimeClient: jest.fn(),
+        assertUserStillActive: jest.fn().mockResolvedValue(undefined),
+        sessionLease: {
+          checkSocketLease: jest.fn().mockResolvedValue("missing")
+        }
+      }) as {
+        handleRoomPresence: (
+          client: { data: Record<string, unknown> },
+          payload: unknown
+        ) => Promise<{ ok: boolean; reason?: string }>;
+      };
+
+      const result = await gateway.handleRoomPresence(
+        {
+          data: {
+            isRealtimeAuthenticated: true,
+            roomId: "room_1",
+            sessionId: "user_1",
+            peerId: "peer_1"
+          }
+        },
+        {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        }
+      );
+
+      expect(result).toEqual({ ok: false, reason: "lease-missing" });
+    });
+  });
 });

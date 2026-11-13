@@ -1312,7 +1312,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             return;
           }
 
-          const audioContextState = roomAudioOutput.getSharedAudioContext()?.state ?? null;
+          let audioContextState = roomAudioOutput.getSharedAudioContext()?.state ?? null;
           let sourceBroadcastStream: MediaStream | null = null;
           if (activeRuntime.isCurrentSource) {
             sourceBroadcastStream = roomAudioOutput.bindLocalAudioElement(audio, {
@@ -1349,6 +1349,16 @@ export function useRoomSegmentedPlaybackRuntime(input: {
               : null,
             activeRuntime.audibleRef.current === true
           );
+
+          if (
+            activeRuntime.isCurrentSource &&
+            activeRuntime.audioUnlocked &&
+            audioContextState !== "running"
+          ) {
+            await roomAudioOutput.resumeSharedAudioContext();
+            if (!isCurrentLocalAudioRequest()) return;
+            audioContextState = roomAudioOutput.getSharedAudioContext()?.state ?? null;
+          }
 
           if (shouldWaitForLocalAudioContext({
             isCurrentSource: activeRuntime.isCurrentSource,

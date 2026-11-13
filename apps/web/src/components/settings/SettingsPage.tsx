@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
@@ -35,12 +35,18 @@ import {
   getDefaultAppSettings,
   normalizeCustomLayoutSettings,
   resetAppSettings,
+  themePreferences,
   updateAppSettings,
   useAppSettings,
   type AudioQualityPreference,
-  type PlayerStyle,
-  type ThemePreference
+  type PlayerStyle
 } from "@/features/settings/settings-store";
+import {
+  getThemeLabel,
+  THEME_PROFILES,
+  type ThemePreviewPalette
+} from "@/features/settings/theme-profiles";
+import { ThemeAwareNavIcon, ThemeAwareRoomTypeGlyph } from "@/components/icons/ThemeIcons";
 import {
   queryNotificationPermissionState,
   requestNotificationPermission,
@@ -77,133 +83,20 @@ const playbackModeLabels: Record<PlaybackMode, string> = {
   single: "单曲循环"
 };
 
-const themeLabels: Record<ThemePreference, string> = {
-  system: "跟随系统",
-  dark: "深空灰",
-  light: "日间白",
-  "sage-dark": "灰绿深色",
-  "sage-light": "灰绿浅色",
-  obsidian: "黑曜红",
-  "midnight-dark": "午夜深蓝",
-  "midnight-light": "晴空浅蓝",
-  paper: "暖白素笺"
-};
-
-interface ThemePreviewSpec {
-  bg: string;
-  card: string;
-  stage: string;
-  border: string;
-  fg: string;
-  muted: string;
-  accent: string;
-  frameRadius: string;
-  badgeRadius: string;
-  splitSystem?: boolean;
-}
-
-const themePreviewColors: Record<ThemePreference, ThemePreviewSpec> = {
-  system: {
-    bg: "#111113",
-    card: "#18191b",
-    stage: "#212225",
-    border: "#363a3f",
-    fg: "#ecedee",
-    muted: "#9ba1a6",
-    accent: "#0090ff",
-    frameRadius: "5px",
-    badgeRadius: "3px",
-    splitSystem: true
-  },
-  dark: {
-    bg: "#111113",
-    card: "#18191b",
-    stage: "#212225",
-    border: "#363a3f",
-    fg: "#ecedee",
-    muted: "#9ba1a6",
-    accent: "#0090ff",
-    frameRadius: "5px",
-    badgeRadius: "3px"
-  },
-  light: {
-    bg: "#fcfcfd",
-    card: "#f9f9fb",
-    stage: "#f0f0f3",
-    border: "#d9d9e0",
-    fg: "#1c2024",
-    muted: "#60646c",
-    accent: "#0090ff",
-    frameRadius: "5px",
-    badgeRadius: "3px"
-  },
-  "sage-dark": {
-    bg: "#0f1412",
-    card: "#161c19",
-    stage: "#1e2622",
-    border: "#37453e",
-    fg: "#eaf0ec",
-    muted: "#a4b5ac",
-    accent: "#29a383",
-    frameRadius: "6px",
-    badgeRadius: "9999px"
-  },
-  "sage-light": {
-    bg: "#eff5f2",
-    card: "#f8fbf9",
-    stage: "#e7efeb",
-    border: "#c4d3cb",
-    fg: "#17221d",
-    muted: "#475950",
-    accent: "#29a383",
-    frameRadius: "6px",
-    badgeRadius: "9999px"
-  },
-  obsidian: {
-    bg: "#070708",
-    card: "#0f0f12",
-    stage: "#17171c",
-    border: "#32323d",
-    fg: "#fafafa",
-    muted: "#a7a7b5",
-    accent: "#e54666",
-    frameRadius: "3px",
-    badgeRadius: "2px"
-  },
-  "midnight-dark": {
-    bg: "#08101d",
-    card: "#0e182a",
-    stage: "#14233b",
-    border: "#2d4772",
-    fg: "#ecf3fe",
-    muted: "#9eb7dc",
-    accent: "#00a2c7",
-    frameRadius: "5px",
-    badgeRadius: "3px"
-  },
-  "midnight-light": {
-    bg: "#eaf2fc",
-    card: "#f6f9fe",
-    stage: "#e1ecfa",
-    border: "#b6cde9",
-    fg: "#0e1d34",
-    muted: "#39547b",
-    accent: "#3e63dd",
-    frameRadius: "5px",
-    badgeRadius: "3px"
-  },
-  paper: {
-    bg: "#f5efe3",
-    card: "#fbf8f1",
-    stage: "#ede5d6",
-    border: "#cfc2ac",
-    fg: "#221b14",
-    muted: "#544739",
-    accent: "#d95308",
-    frameRadius: "6px",
-    badgeRadius: "3px"
+function resolveThemePreviewPattern(patternKind: ThemePreviewPalette["patternKind"], borderColor: string, accentColor: string): string {
+  switch (patternKind) {
+    case "contour":
+      return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M0 10 Q9 4 18 10 T36 10 M0 28 Q9 22 18 28 T36 28' fill='none' stroke='%2329a383' stroke-opacity='0.14' stroke-width='1'/%3E%3C/svg%3E")`;
+    case "grain":
+      return "repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 4px)";
+    case "grid":
+      return `linear-gradient(to right, color-mix(in srgb, ${accentColor} 11%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${accentColor} 11%, transparent) 1px, transparent 1px)`;
+    case "paper":
+      return "repeating-linear-gradient(45deg, rgba(120, 105, 86, 0.06) 0 1px, transparent 1px 6px), repeating-linear-gradient(-45deg, rgba(120, 105, 86, 0.05) 0 1px, transparent 1px 6px)";
+    default:
+      return `radial-gradient(color-mix(in srgb, ${borderColor} 55%, transparent) 0.75px, transparent 0.75px)`;
   }
-};
+}
 
 const playerStyleLabels: Record<PlayerStyle, string> = {
   vinyl: "唱片",
@@ -401,14 +294,19 @@ export function SettingsPage() {
       categoryId: "appearance",
       sectionTitle: "主题与色彩风格",
       label: "主题风格",
-      description: "选择应用的外观配色方案与界面质感预设。",
-      keywords: ["主题", "颜色", "色彩", "深色", "深空灰", "浅色", "日间白", "系统", "灰绿", "石墨", "黑曜", "深蓝", "午夜", "浅蓝", "晴空", "暖白", "素笺", "theme", "dark", "light", "sage", "obsidian", "midnight", "paper"],
+      description: "选择全局配色、背景材质与图标工艺风格。",
+      keywords: ["主题", "颜色", "色彩", "背景", "图标", "深色", "深空灰", "浅色", "日间白", "系统", "灰绿", "石墨", "黑曜", "深蓝", "午夜", "浅蓝", "晴空", "暖白", "素笺", "theme", "dark", "light", "sage", "obsidian", "midnight", "paper"],
       render: () => (
-        <SettingRow key="theme" label="主题风格" description="选择应用的外观配色方案与界面质感预设。" stacked>
+        <SettingRow key="theme" label="主题风格" description="选择全局配色、背景材质与图标工艺风格。" stacked>
           <div aria-label="主题预设" className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full" role="group">
-            {(Object.entries(themeLabels) as Array<[ThemePreference, string]>).map(([themeKey, label]) => {
+            {themePreferences.map((themeKey) => {
               const isSelected = settings.theme === themeKey;
-              const preview = themePreviewColors[themeKey];
+              const isSystem = themeKey === "system";
+              const profile = THEME_PROFILES[isSystem ? "dark" : themeKey];
+              const lightProfile = THEME_PROFILES.light;
+              const preview = profile.preview;
+              const label = getThemeLabel(themeKey);
+
               return (
                 <button
                   key={themeKey}
@@ -423,50 +321,68 @@ export function SettingsPage() {
                 >
                   <div
                     aria-hidden="true"
-                    className="relative h-14 w-full overflow-hidden rounded-[5px] p-1.5 flex flex-col justify-between"
+                    data-icon-pack={profile.iconPack}
+                    className="relative h-16 w-full overflow-hidden rounded-[5px] p-1.5 flex flex-col justify-between"
                     style={{
-                      background: preview.splitSystem
+                      backgroundColor: preview.bg,
+                      backgroundImage: isSystem
                         ? "linear-gradient(135deg, #fcfcfd 49.5%, #111113 50.5%)"
-                        : preview.bg,
-                      border: `0.5px solid ${preview.border}`
-                    }}
+                        : resolveThemePreviewPattern(preview.patternKind, preview.border, preview.accent),
+                      backgroundSize: isSystem ? "100% 100%" : preview.patternKind === "grid" ? "14px 14px" : "10px 10px",
+                      border: `0.5px solid ${preview.border}`,
+                      "--preview-accent": preview.accent
+                    } as CSSProperties}
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span
-                        className="h-1.5 w-7"
+                      <div
+                        className="flex items-center gap-1 px-1 py-0.5"
                         style={{
                           borderRadius: preview.badgeRadius,
-                          backgroundColor: preview.splitSystem ? "#d9d9e0" : preview.stage
+                          backgroundColor: isSystem ? "#ffffff" : preview.card,
+                          border: `0.5px solid ${isSystem ? lightProfile.preview.border : preview.border}`,
+                          color: isSystem ? lightProfile.preview.fg : preview.fg
                         }}
-                      />
+                      >
+                        <ThemeAwareNavIcon name="home" size={9} />
+                        <ThemeAwareNavIcon name="discover" size={9} />
+                        <ThemeAwareNavIcon name="playlist" size={9} />
+                      </div>
                       <span
-                        className="h-1.5 w-3.5"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5"
                         style={{
                           borderRadius: preview.badgeRadius,
-                          backgroundColor: preview.accent
+                          backgroundColor: preview.accent,
+                          color: "#ffffff"
                         }}
-                      />
+                      >
+                        <ThemeAwareRoomTypeGlyph roomType="request" className="!h-2.5 !w-2.5" />
+                      </span>
                     </div>
+
                     <div className="grid grid-cols-2 gap-1">
                       <div
                         className="p-1 space-y-1"
                         style={{
                           borderRadius: preview.frameRadius,
-                          backgroundColor: preview.splitSystem ? "#f9f9fb" : preview.card,
-                          border: `0.5px solid ${preview.splitSystem ? "#d9d9e0" : preview.border}`
+                          backgroundColor: isSystem ? lightProfile.preview.card : preview.card,
+                          border: `0.5px solid ${isSystem ? lightProfile.preview.border : preview.border}`
                         }}
                       >
                         <div
-                          className="h-2.5 w-full"
+                          className="h-2.5 w-full flex items-center justify-between px-1"
                           style={{
                             borderRadius: preview.badgeRadius,
-                            backgroundColor: preview.splitSystem ? "#e8e8ec" : preview.stage
+                            backgroundColor: isSystem ? lightProfile.preview.stage : preview.stage,
+                            color: isSystem ? lightProfile.preview.fg : preview.fg
                           }}
-                        />
+                        >
+                          <ThemeAwareRoomTypeGlyph roomType="interactive" className="!h-2 !w-2" />
+                          <span className="h-1 w-1 rounded-full" style={{ backgroundColor: "var(--green-9)" }} />
+                        </div>
                         <div
                           className="h-1 w-4/5 rounded-full"
                           style={{
-                            backgroundColor: preview.splitSystem ? "#1c2024" : preview.fg,
+                            backgroundColor: isSystem ? lightProfile.preview.fg : preview.fg,
                             opacity: 0.72
                           }}
                         />
@@ -480,24 +396,15 @@ export function SettingsPage() {
                         }}
                       >
                         <div
-                          className="h-2.5 w-full flex items-start justify-between p-0.5"
+                          className="h-2.5 w-full flex items-center justify-between px-1"
                           style={{
                             borderRadius: preview.badgeRadius,
-                            backgroundColor: preview.stage
+                            backgroundColor: preview.stage,
+                            color: preview.fg
                           }}
                         >
-                          <span
-                            className="h-1 w-2"
-                            style={{
-                              borderRadius: preview.badgeRadius,
-                              backgroundColor: preview.muted,
-                              opacity: 0.65
-                            }}
-                          />
-                          <span
-                            className="h-1 w-1 rounded-full"
-                            style={{ backgroundColor: "var(--green-9)" }}
-                          />
+                          <ThemeAwareRoomTypeGlyph roomType="radio" className="!h-2 !w-2" />
+                          <span className="h-1 w-1 rounded-full" style={{ backgroundColor: preview.accent }} />
                         </div>
                         <div
                           className="h-1 w-3/4 rounded-full"

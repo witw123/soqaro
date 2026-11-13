@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import type { AuthSession } from "@soqaro/shared";
+import { ThemeAwareBrandGlyph } from "@/components/icons/ThemeIcons";
 import { Button } from "@/components/ui/button";
 
 type TopBarProps = {
@@ -14,15 +15,11 @@ function TopBarBase({ activeSession, onLogout, variant = "app" }: TopBarProps) {
   const isMarketing = variant === "marketing";
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-surface-border bg-background/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 w-full border-b-[0.5px] border-surface-border bg-background/95">
       <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 min-w-0 items-center gap-3 md:h-16">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-xs">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
+          <div className="app-sidebar__brand-mark flex h-8 w-8 shrink-0 items-center justify-center bg-accent text-white shadow-xs">
+            <ThemeAwareBrandGlyph className="text-white" size={16} />
           </div>
           <div className="min-w-0 leading-none">
             <span className="block truncate text-sm font-bold tracking-tight text-foreground">Soqaro</span>

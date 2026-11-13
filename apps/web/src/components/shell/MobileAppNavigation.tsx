@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type MouseEvent } from "react";
-import { Home, Compass, ListMusic, User } from "lucide-react";
+import { ThemeAwareNavIcon } from "@/components/icons/ThemeIcons";
 import { storeAwayRoomId } from "@/lib/domain/away-room";
 import { runRoomViewTransition } from "@/lib/ui/room-view-transition";
 
@@ -127,13 +127,7 @@ export function MobileAppNavigation({ onNavigateAway }: { onNavigateAway?: () =>
 }
 
 function MobileNavIcon({ name }: { name: MobileNavIconName }) {
-  const className = "mobile-app-navigation__icon h-5 w-5";
-
-  if (name === "home") return <Home className={className} />;
-  if (name === "discover") return <Compass className={className} />;
-  if (name === "playlist") return <ListMusic className={className} />;
-  if (name === "profile") return <User className={className} />;
-  return null;
+  return <ThemeAwareNavIcon className="mobile-app-navigation__icon h-5 w-5" name={name} size={20} />;
 }
 
 function isActivePath(pathname: string | null, href: Route) {

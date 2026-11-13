@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { getNextPlaybackMode, type PlaybackMode } from "./playback-mode";
 import { SquareAlbumCover } from "./PlayerArtwork";
 import { getArtworkSourceUrl, withAlpha } from "./artwork-colors";
+import { ThemeAwarePlaybackModeGlyph, ThemeAwareVolumeGlyph } from "@/components/icons/ThemeIcons";
 import {
   updateAppSettings,
   useAppSettings,
@@ -134,39 +135,7 @@ export function VinylBadge({
 }
 
 export function PlaybackModeIcon({ mode }: { mode: PlaybackMode }) {
-  if (mode === "shuffle") {
-    return (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M4 7h3.5c3.5 0 4.5 10 9 10H20" />
-        <path d="m17 14 3 3-3 3" />
-        <path d="M4 17h3c1.4 0 2.4-1.1 3.1-2.4" />
-        <path d="M14 9.4C14.8 8 15.8 7 17.2 7H20" />
-        <path d="m17 4 3 3-3 3" />
-      </svg>
-    );
-  }
-
-  if (mode === "single") {
-    return (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M17 2l4 4-4 4" />
-        <path d="M3 11V9a3 3 0 0 1 3-3h15" />
-        <path d="m7 22-4-4 4-4" />
-        <path d="M21 13v2a3 3 0 0 1-3 3H3" />
-        <path d="M12 10v4" />
-        <path d="M10.5 10h1.5a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-1.5" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 7h12" />
-      <path d="m13 4 3 3-3 3" />
-      <path d="M20 17H8" />
-      <path d="m11 14-3 3 3 3" />
-    </svg>
-  );
+  return <ThemeAwarePlaybackModeGlyph mode={mode} />;
 }
 
 const playbackModeLabels: Record<PlaybackMode, string> = {
@@ -258,23 +227,7 @@ export function LyricsToggleButton({
 }
 
 function VolumeIcon({ volume }: { volume: number }) {
-  if (volume <= 0.01) {
-    return (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M11 5 6 9H3v6h3l5 4V5Z" />
-        <path d="m19 9-5 6" />
-        <path d="m14 9 5 6" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M11 5 6 9H3v6h3l5 4V5Z" />
-      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-      <path d="M18.5 5.5a9 9 0 0 1 0 13" />
-    </svg>
-  );
+  return <ThemeAwareVolumeGlyph muted={volume <= 0.01} />;
 }
 
 function VolumeControl({
@@ -866,7 +819,7 @@ export function DesktopBottomPlayerLayout({
 
         <div className="min-w-0 max-w-[140px] lg:max-w-[190px]">
           <h3
-            className="truncate text-sm font-medium text-foreground hover:text-white transition-colors cursor-pointer"
+            className="truncate text-sm font-medium text-foreground hover:text-accent transition-colors cursor-pointer"
             onClick={onToggleImmersive}
             title={title}
           >

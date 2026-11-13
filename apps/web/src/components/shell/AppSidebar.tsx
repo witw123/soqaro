@@ -5,18 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type MouseEvent } from "react";
 import type { Route } from "next";
 import {
-  Compass,
-  Heart,
-  Home,
-  ListMusic,
-  Music,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Search,
-  Settings,
-  Sun,
-  User
-} from "lucide-react";
+  ThemeAwareBrandGlyph,
+  ThemeAwareNavIcon,
+  type ThemeNavIconName
+} from "@/components/icons/ThemeIcons";
 import { storeAwayRoomId } from "@/lib/domain/away-room";
 import { runRoomViewTransition } from "@/lib/ui/room-view-transition";
 import {
@@ -55,17 +47,7 @@ const navItems: NavItemConfig[] = [
   { id: "profile", label: "个人主页", href: "/app/profile", icon: "profile", group: "library" }
 ];
 
-type IconName =
-  | "home"
-  | "discover"
-  | "search"
-  | "playlist"
-  | "favorite"
-  | "profile"
-  | "settings"
-  | "sun"
-  | "collapse"
-  | "expand";
+type IconName = ThemeNavIconName;
 
 export function AppSidebar({
   activeItem,
@@ -187,19 +169,19 @@ export function AppSidebar({
 
   return (
     <aside
-      className={`app-sidebar relative z-40 mx-3 mb-3 overflow-hidden rounded-2xl border border-surface-border bg-background-secondary/95 pt-[env(safe-area-inset-top)] text-foreground shadow-2xl backdrop-blur-2xl md:flex md:flex-col md:fixed md:top-0 md:left-0 md:right-auto md:mx-0 md:mb-0 md:rounded-none md:border-b-0 md:border-l-0 md:border-t-0 md:border-r md:border-surface-border md:pt-0 ${desktopBottomOffsetClass}`}
+      className={`app-sidebar relative z-40 mx-3 mb-3 overflow-hidden rounded-2xl border-[0.5px] border-surface-border bg-background-secondary pt-[env(safe-area-inset-top)] text-foreground shadow-2xl md:flex md:flex-col md:fixed md:top-0 md:left-0 md:right-auto md:mx-0 md:mb-0 md:rounded-none md:border-b-0 md:border-l-0 md:border-t-0 md:border-r-[0.5px] md:border-surface-border md:pt-0 ${desktopBottomOffsetClass}`}
       data-custom-layout-item="sidebar"
       aria-label="主导航"
     >
-      <div className={`flex items-center gap-3 border-b border-surface-border md:flex-col md:items-stretch ${compactMobile ? "px-3 py-2.5" : "px-4 py-3"} md:px-2 md:py-3`}>
+      <div className={`flex items-center gap-3 border-b-[0.5px] border-surface-border md:flex-col md:items-stretch ${compactMobile ? "px-3 py-2.5" : "px-4 py-3"} md:px-2 md:py-3`}>
         <Link
           href="/app"
           className={`flex min-w-0 items-center gap-3 ${collapsed ? "md:justify-center" : ""}`}
           aria-label="返回首页"
           onClick={(event) => handleNavigateAway(event, "/app")}
         >
-          <span className={`flex shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm ${compactMobile ? "h-8 w-8" : "h-9 w-9"} md:h-9 md:w-9`}>
-            <Music size={18} strokeWidth={2} aria-hidden="true" />
+          <span className={`app-sidebar__brand-mark flex shrink-0 items-center justify-center bg-accent text-white shadow-sm ${compactMobile ? "h-8 w-8" : "h-9 w-9"} md:h-9 md:w-9`}>
+            <ThemeAwareBrandGlyph size={18} />
           </span>
           <span className={`min-w-0 leading-none ${collapsed ? "md:hidden" : ""}`}>
             <span className="block truncate text-sm font-bold text-foreground tracking-tight">Soqaro</span>
@@ -211,7 +193,7 @@ export function AppSidebar({
       <div className={`hide-scrollbar flex min-h-0 flex-1 items-center overflow-hidden md:flex-col md:items-stretch md:gap-2.5 md:p-2 ${compactMobile ? "gap-2 p-1.5" : "gap-3 p-2.5"}`}>
         <nav className="hide-scrollbar flex min-w-0 flex-1 flex-wrap items-center gap-1 overflow-x-hidden md:min-h-0 md:flex-col md:items-stretch md:overflow-y-auto md:overflow-x-hidden" aria-label="工作区">
           {!collapsed && (
-            <div className="hidden px-3 pt-2 pb-1 text-xs font-medium text-foreground-muted/70 select-none md:block">
+            <div className="hidden px-3 pt-2 pb-1 text-xs font-medium text-foreground-muted select-none md:block">
               探索
             </div>
           )}
@@ -227,20 +209,18 @@ export function AppSidebar({
                   onClick={(event) => handleNavigateAway(event, item.href)}
                   onPointerDown={() => setPendingItemId(item.id)}
                   title={collapsed ? item.label : undefined}
-                  className={`app-sidebar__nav-item group relative flex min-h-10 min-w-0 flex-1 flex-col items-center justify-center rounded-xl font-medium transition-all duration-150 sm:flex-row sm:gap-2.5 sm:px-3 sm:py-2 sm:text-xs md:flex-none md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm ${compactMobile ? "gap-0.5 px-0.5 py-1.5 text-xs" : "gap-1 px-1 py-2 text-xs"} ${
-                    isActive
-                      ? "text-accent bg-accent/10 font-semibold"
-                      : "text-foreground-muted hover:text-foreground hover:bg-surface"
+                  className={`app-sidebar__nav-item group relative flex min-h-10 min-w-0 flex-1 flex-col items-center justify-center rounded-xl font-medium transition-colors duration-150 sm:flex-row sm:gap-2.5 sm:px-3 sm:py-2 sm:text-xs md:flex-none md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm ${compactMobile ? "gap-0.5 px-0.5 py-1.5 text-xs" : "gap-1 px-1 py-2 text-xs"} ${
+                    isActive ? "app-sidebar__nav-item--active font-semibold" : ""
                   } ${collapsed ? "md:justify-center md:px-2" : ""}`}
                 >
-                  <NavIcon name={item.icon} />
+                  <ThemeAwareNavIcon name={item.icon} />
                   <span className={`truncate ${collapsed ? "md:hidden" : ""}`}>{item.label}</span>
                 </Link>
               );
             })}
 
           {!collapsed && (
-            <div className="hidden px-3 pt-3 pb-1 text-xs font-medium text-foreground-muted/70 select-none md:block">
+            <div className="hidden px-3 pt-3 pb-1 text-xs font-medium text-foreground-muted select-none md:block">
               音乐空间
             </div>
           )}
@@ -256,49 +236,47 @@ export function AppSidebar({
                   onClick={(event) => handleNavigateAway(event, item.href)}
                   onPointerDown={() => setPendingItemId(item.id)}
                   title={collapsed ? item.label : undefined}
-                  className={`app-sidebar__nav-item group relative flex min-h-10 min-w-0 flex-1 flex-col items-center justify-center rounded-xl font-medium transition-all duration-150 sm:flex-row sm:gap-2.5 sm:px-3 sm:py-2 sm:text-xs md:flex-none md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm ${compactMobile ? "gap-0.5 px-0.5 py-1.5 text-xs" : "gap-1 px-1 py-2 text-xs"} ${
-                    isActive
-                      ? "text-accent bg-accent/10 font-semibold"
-                      : "text-foreground-muted hover:text-foreground hover:bg-surface"
+                  className={`app-sidebar__nav-item group relative flex min-h-10 min-w-0 flex-1 flex-col items-center justify-center rounded-xl font-medium transition-colors duration-150 sm:flex-row sm:gap-2.5 sm:px-3 sm:py-2 sm:text-xs md:flex-none md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm ${compactMobile ? "gap-0.5 px-0.5 py-1.5 text-xs" : "gap-1 px-1 py-2 text-xs"} ${
+                    isActive ? "app-sidebar__nav-item--active font-semibold" : ""
                   } ${collapsed ? "md:justify-center md:px-2" : ""}`}
                 >
-                  <NavIcon name={item.icon} />
+                  <ThemeAwareNavIcon name={item.icon} />
                   <span className={`truncate ${collapsed ? "md:hidden" : ""}`}>{item.label}</span>
                 </Link>
               );
             })}
         </nav>
 
-        <div className={`app-sidebar__footer hidden flex-col border-t border-surface-border md:flex ${collapsed ? "md:items-center md:gap-2 md:px-0 md:pb-1 md:pt-2.5" : "md:items-stretch md:gap-1 md:px-0 md:pb-1 md:pt-2.5"}`}>
+        <div className={`app-sidebar__footer hidden flex-col border-t-[0.5px] border-surface-border md:flex ${collapsed ? "md:items-center md:gap-2 md:px-0 md:pb-1 md:pt-2.5" : "md:items-stretch md:gap-1 md:px-0 md:pb-1 md:pt-2.5"}`}>
           <Link
             href={"/app/settings" as Route}
             onClick={(event) => handleNavigateAway(event, "/app/settings")}
-            className={`app-sidebar__footer-control group flex min-w-0 items-center justify-center gap-2.5 font-medium text-foreground-muted hover:text-foreground hover:bg-surface rounded-xl transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${footerControlSizeClass} ${collapsed ? "md:justify-center" : "md:justify-start"}`}
+            className={`app-sidebar__footer-control group flex min-w-0 items-center justify-center gap-2.5 font-medium rounded-xl transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${footerControlSizeClass} ${collapsed ? "md:justify-center" : "md:justify-start"}`}
             title="设置与偏好"
           >
-            <NavIcon name="settings" size={18} />
+            <ThemeAwareNavIcon name="settings" size={18} />
             <span className={collapsed ? "md:hidden" : "truncate"}>设置与偏好</span>
           </Link>
           <button
             aria-label={`切换到${themeActionLabel}`}
-            className={`app-sidebar__footer-control app-sidebar__theme group flex min-w-0 items-center justify-center gap-2.5 font-medium text-foreground-muted hover:text-foreground hover:bg-surface rounded-xl transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${footerControlSizeClass}`}
+            className={`app-sidebar__footer-control app-sidebar__theme group flex min-w-0 items-center justify-center gap-2.5 font-medium rounded-xl transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${footerControlSizeClass} ${collapsed ? "md:justify-center" : "md:justify-start"}`}
             onClick={handleThemeToggle}
             title={themeActionLabel}
             type="button"
           >
-            <NavIcon name="sun" size={18} />
+            <ThemeAwareNavIcon isDarkTheme={isCurrentDark} name="theme-toggle" size={18} />
             <span className={collapsed ? "md:hidden" : "truncate"}>{themeActionLabel}</span>
           </button>
           <button
             aria-label={collapsed ? "展开侧边栏" : "收纳侧边栏"}
             aria-expanded={!collapsed}
-            className={`app-sidebar__footer-control group flex min-w-0 items-center justify-center gap-2.5 font-medium text-foreground-muted hover:text-foreground hover:bg-surface rounded-xl transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40 ${footerControlSizeClass} ${collapsed ? "md:justify-center" : "md:justify-start"}`}
+            className={`app-sidebar__footer-control group flex min-w-0 items-center justify-center gap-2.5 font-medium rounded-xl transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40 ${footerControlSizeClass} ${collapsed ? "md:justify-center" : "md:justify-start"}`}
             onClick={() => updateAppSettings({ layout: { sidebarCollapsed: !collapsed } })}
             disabled={customLayoutEnabled}
             title={collapsed ? "展开侧边栏" : "收纳侧边栏"}
             type="button"
           >
-            <NavIcon name={collapsed ? "expand" : "collapse"} size={18} />
+            <ThemeAwareNavIcon name={collapsed ? "expand" : "collapse"} size={18} />
             <span className={collapsed ? "md:hidden" : "truncate"}>收起侧栏</span>
           </button>
         </div>
@@ -373,34 +351,6 @@ function resolveActiveItem(pathname: string | null): AppNavItemId | null {
     return "home";
   }
   return null;
-}
-
-function NavIcon({ name, size = 18 }: { name: IconName; size?: number }) {
-  const props = { size, "aria-hidden": true as const, className: "shrink-0" };
-  switch (name) {
-    case "home":
-      return <Home {...props} />;
-    case "playlist":
-      return <ListMusic {...props} />;
-    case "search":
-      return <Search {...props} />;
-    case "discover":
-      return <Compass {...props} />;
-    case "profile":
-      return <User {...props} />;
-    case "favorite":
-      return <Heart {...props} />;
-    case "settings":
-      return <Settings {...props} />;
-    case "collapse":
-      return <PanelLeftClose {...props} />;
-    case "expand":
-      return <PanelLeftOpen {...props} />;
-    case "sun":
-      return <Sun {...props} />;
-    default:
-      return <Music {...props} />;
-  }
 }
 
 

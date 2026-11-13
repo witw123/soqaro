@@ -12,11 +12,11 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     if (variant === "default") {
       variantStyles = "bg-accent hover:bg-accent-hover text-white shadow-xs"
     } else if (variant === "destructive") {
-      variantStyles = "bg-rose-600 hover:bg-rose-500 text-white shadow-xs"
+      variantStyles = "bg-[var(--red-9)] hover:bg-[var(--red-10)] text-white shadow-xs"
     } else if (variant === "ghost") {
       variantStyles = "hover:bg-surface-hover text-foreground-muted hover:text-foreground"
     } else if (variant === "outline") {
-      variantStyles = "border border-surface-border hover:bg-surface-hover text-foreground"
+      variantStyles = "border-[0.5px] border-surface-border hover:bg-surface-hover text-foreground"
     } else if (variant === "glass") {
       variantStyles = "glass-button text-foreground-muted hover:text-foreground"
     }
@@ -27,12 +27,12 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     } else if (size === "sm") {
       sizeStyles = "h-8 px-3 text-xs"
     } else if (size === "lg") {
-      sizeStyles = "h-11 px-6 text-sm rounded-lg"
+      sizeStyles = "h-11 px-6 text-sm rounded-[var(--theme-control-radius,0.5rem)]"
     } else if (size === "icon") {
       sizeStyles = "h-9 w-9 shrink-0 p-0"
     }
 
-    const baseStyles = "inline-flex items-center justify-center rounded-lg font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98] cursor-pointer"
+    const baseStyles = "inline-flex items-center justify-center rounded-[var(--theme-control-radius,0.5rem)] font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98] cursor-pointer"
 
     return (
       <button

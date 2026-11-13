@@ -17,8 +17,19 @@ const themeInitScript = `(() => {
     }
     const isDark = resolved === "dark" || resolved === "sage-dark" || resolved === "obsidian" || resolved === "midnight-dark";
     const themeMode = isDark ? "dark" : "light";
+    const iconPacks = {
+      dark: "studio",
+      light: "studio",
+      "sage-dark": "botanical",
+      "sage-light": "botanical",
+      obsidian: "noir",
+      "midnight-dark": "blueprint",
+      "midnight-light": "blueprint",
+      paper: "editorial"
+    };
     document.documentElement.dataset.theme = resolved;
     document.documentElement.dataset.themeMode = themeMode;
+    document.documentElement.dataset.iconPack = iconPacks[resolved] || "studio";
     document.documentElement.dataset.sidebarCollapsed = String(sidebarCollapsed);
     document.documentElement.style.colorScheme = themeMode;
 

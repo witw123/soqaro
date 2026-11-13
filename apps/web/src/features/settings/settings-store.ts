@@ -2,6 +2,7 @@ import type { PlaybackMode } from "@soqaro/shared";
 import { create } from "zustand";
 import { invokeTauri, isTauriRuntime } from "@/lib/desktop/tauri";
 import { EQUALIZER_PRESETS, type EqualizerPresetId } from "../playback/audio-equalizer";
+import { getThemeProfile } from "./theme-profiles";
 
 export const appSettingsStorageKey = "soqaro-settings-v1";
 export const appSettingsChangeEvent = "soqaro-settings-change";
@@ -527,21 +528,13 @@ export function applyAppTheme(preference: ThemePreference): ResolvedTheme {
   const resolved = resolveAppTheme(preference);
   if (typeof document !== "undefined") {
     const isDark = isDarkTheme(resolved);
+    const profile = getThemeProfile(resolved);
     document.documentElement.dataset.theme = resolved;
     document.documentElement.dataset.themeMode = isDark ? "dark" : "light";
+    document.documentElement.dataset.iconPack = profile.iconPack;
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
 
-    const metaThemeColors: Record<ResolvedTheme, string> = {
-      dark: "#111113",
-      light: "#fcfcfd",
-      "sage-dark": "#0f1412",
-      "sage-light": "#eff5f2",
-      obsidian: "#070708",
-      "midnight-dark": "#08101d",
-      "midnight-light": "#eaf2fc",
-      paper: "#f5efe3"
-    };
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", metaThemeColors[resolved] ?? "#111113");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", profile.metaThemeColor);
   }
   return resolved;
 }

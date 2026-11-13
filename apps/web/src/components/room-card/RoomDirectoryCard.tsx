@@ -4,6 +4,7 @@
 import { memo, useCallback, type CSSProperties } from "react";
 import type { RoomDirectoryItem, RoomType } from "@soqaro/shared";
 import { ArtisticRoomStageScene } from "./ArtisticRoomStageScene";
+import { ThemeAwareRoomTypeGlyph } from "@/components/icons/ThemeIcons";
 
 import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 
@@ -152,7 +153,7 @@ function RoomStageVisualContent({
       <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-2">
         <span className="room-card-stage-badge inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium shadow-xs">
           <span className="room-card-stage-badge-icon">
-            <RoomTypeGlyph roomType={room.roomType} />
+            <ThemeAwareRoomTypeGlyph roomType={room.roomType} />
           </span>
           {themeLabel}
         </span>
@@ -245,35 +246,6 @@ function RoomNowPlayingStageScene({
         </div>
       </div>
     </div>
-  );
-}
-
-function RoomTypeGlyph({ large = false, roomType }: { large?: boolean; roomType: RoomType }) {
-  const sizeClass = large ? "h-6 w-6" : "h-3.5 w-3.5";
-  if (roomType === "request") {
-    return (
-      <svg className={`${sizeClass} shrink-0 text-current`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M9 18V5l12-2v13" />
-        <circle cx="6" cy="18" r="3" />
-        <circle cx="18" cy="16" r="3" />
-      </svg>
-    );
-  }
-  if (roomType === "radio") {
-    return (
-      <svg className={`${sizeClass} shrink-0 text-current`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="2" />
-        <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
-      </svg>
-    );
-  }
-  return (
-    <svg className={`${sizeClass} shrink-0 text-current`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
   );
 }
 

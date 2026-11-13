@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appSettingsStorageKey,
+  applyAppTheme,
   applyUiScale,
   getDefaultAppSettings,
   getCustomLayoutItemIds,
@@ -13,6 +14,7 @@ import {
   resetAppSettings,
   updateAppSettings
 } from "./settings-store";
+import { getThemeLabel, getThemeProfile, THEME_PROFILES } from "./theme-profiles";
 
 describe("app settings store", () => {
   afterEach(() => {
@@ -49,6 +51,42 @@ describe("app settings store", () => {
     expect(resolveAppTheme("obsidian", true)).toBe("obsidian");
     expect(resolveAppTheme("system", true)).toBe("light");
     expect(resolveAppTheme("system", false)).toBe("dark");
+  });
+
+  it("maps each theme to a distinct icon pack and applies DOM attributes", () => {
+    expect(Object.keys(THEME_PROFILES)).toHaveLength(8);
+    expect(getThemeProfile("sage-dark").iconPack).toBe("botanical");
+    expect(getThemeProfile("obsidian").iconPack).toBe("noir");
+    expect(getThemeProfile("midnight-light").iconPack).toBe("blueprint");
+    expect(getThemeProfile("paper").iconPack).toBe("editorial");
+    expect(getThemeLabel("system")).toBe("跟随系统");
+    expect(getThemeLabel("paper")).toBe("暖白素笺");
+
+    const setAttribute = vi.fn();
+    const documentElement = {
+      dataset: {} as Record<string, string>,
+      style: {} as Record<string, string>
+    };
+    vi.stubGlobal("document", {
+      documentElement,
+      querySelector: vi.fn(() => ({ setAttribute }))
+    });
+
+    applyAppTheme("obsidian");
+    expect(documentElement.dataset).toMatchObject({
+      theme: "obsidian",
+      themeMode: "dark",
+      iconPack: "noir"
+    });
+    expect(setAttribute).toHaveBeenCalledWith("content", "#070708");
+
+    applyAppTheme("sage-light");
+    expect(documentElement.dataset).toMatchObject({
+      theme: "sage-light",
+      themeMode: "light",
+      iconPack: "botanical"
+    });
+    expect(setAttribute).toHaveBeenCalledWith("content", "#eff5f2");
   });
 
   it("normalizes the shared player style preference", () => {

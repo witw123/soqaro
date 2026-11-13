@@ -456,6 +456,7 @@ export function RoomsHomePage({
             style={{ background: activeChannelTheme.topLine }}
           />
           <RoomDirectoryGrid
+            activeModalRoomId={selectedRoom?.room.id ?? null}
             awayRoomId={effectiveAwayRoomId}
             onOpenRoom={openRoomDetails}
             onPrewarmRoom={handlePrewarmRoom}

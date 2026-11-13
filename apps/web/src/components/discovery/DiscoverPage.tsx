@@ -558,6 +558,7 @@ export function DiscoverPage() {
                 {filteredRooms.map((entry) => (
                   <RecommendedRoomCard
                     entry={entry}
+                    isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                     key={entry.item.room.id}
                     onOpen={openRoomDetails}
                     onPrewarm={handlePrewarmRoom}
@@ -604,6 +605,7 @@ export function DiscoverPage() {
                   {liveSpotlightRooms.map((entry) => (
                     <LiveSpotlightRoomCard
                       entry={entry}
+                      isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
@@ -632,6 +634,7 @@ export function DiscoverPage() {
                   {tasteMatchedRooms.slice(0, 6).map((entry) => (
                     <RecommendedRoomCard
                       entry={entry}
+                      isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
@@ -656,6 +659,7 @@ export function DiscoverPage() {
                   {frequentRooms.slice(0, 3).map((entry) => (
                     <RecommendedRoomCard
                       entry={entry}
+                      isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                       key={entry.item.room.id}
                       onOpen={openRoomDetails}
                       onPrewarm={handlePrewarmRoom}
@@ -679,6 +683,7 @@ export function DiscoverPage() {
                 {remainingRecommendedRooms.map((entry) => (
                   <RecommendedRoomCard
                     entry={entry}
+                    isExpandedToModal={selectedRoom?.room.id === entry.item.room.id}
                     key={entry.item.room.id}
                     onOpen={openRoomDetails}
                     onPrewarm={handlePrewarmRoom}
@@ -722,10 +727,12 @@ export function DiscoverPage() {
 
 const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
   entry,
+  isExpandedToModal = false,
   onOpen,
   onPrewarm
 }: {
   entry: CuratedRoomRecommendation;
+  isExpandedToModal?: boolean;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm: (roomId: string) => void;
 }) {
@@ -734,23 +741,33 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
   const artworkSrc = nowPlaying?.artworkUrl
     ? getArtworkSourceUrl(nowPlaying.artworkUrl)
     : null;
+  const hiddenCardClass = isExpandedToModal ? "invisible pointer-events-none select-none" : "";
 
   return (
     <article
       className="group relative flex min-w-0 items-center gap-3.5 rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)]"
       data-discover-room-id={room.id}
+      data-morphed-to-modal={isExpandedToModal ? "true" : undefined}
       onPointerEnter={() => onPrewarm(room.id)}
     >
       <button
+        aria-hidden={isExpandedToModal || undefined}
         aria-label={`查看 ${room.name} 的房间详情`}
-        className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--blue-8)]"
+        className={`absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--blue-8)] ${
+          isExpandedToModal ? "invisible pointer-events-none" : ""
+        }`}
+        disabled={isExpandedToModal}
         onClick={() => onOpen(entry.item)}
         onFocus={() => onPrewarm(room.id)}
+        tabIndex={isExpandedToModal ? -1 : undefined}
         type="button"
       />
 
       {/* Album Cover / Stage Artwork */}
-      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)]">
+      <div
+        aria-hidden={isExpandedToModal || undefined}
+        className={`relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border-hairline border-[var(--slate-6)] bg-[var(--slate-3)] ${hiddenCardClass}`}
+      >
         {artworkSrc ? (
           <img
             alt={nowPlaying?.title ?? room.name}
@@ -765,7 +782,10 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
       </div>
 
       {/* Room & Track Info */}
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+      <div
+        aria-hidden={isExpandedToModal || undefined}
+        className={`flex min-w-0 flex-1 flex-col justify-center gap-2 ${hiddenCardClass}`}
+      >
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <h3 className="truncate text-sm font-semibold tracking-tight text-[var(--slate-12)]">
@@ -817,10 +837,12 @@ const LiveSpotlightRoomCard = memo(function LiveSpotlightRoomCard({
 
 const RecommendedRoomCard = memo(function RecommendedRoomCard({
   entry,
+  isExpandedToModal = false,
   onOpen,
   onPrewarm
 }: {
   entry: CuratedRoomRecommendation;
+  isExpandedToModal?: boolean;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm: (roomId: string) => void;
 }) {
@@ -829,22 +851,29 @@ const RecommendedRoomCard = memo(function RecommendedRoomCard({
   const artworkSrc = nowPlaying?.artworkUrl
     ? getArtworkSourceUrl(nowPlaying.artworkUrl)
     : null;
+  const hiddenCardClass = isExpandedToModal ? "invisible pointer-events-none select-none" : "";
 
   return (
     <article
       className="group relative flex min-w-0 flex-col justify-between rounded-xl border-hairline border-[var(--slate-6)] bg-[var(--slate-2)] p-3 transition-colors duration-[250ms] ease-out hover:border-[var(--slate-8)] hover:bg-[var(--slate-3)]"
       data-discover-room-id={room.id}
+      data-morphed-to-modal={isExpandedToModal ? "true" : undefined}
       onPointerEnter={() => onPrewarm(room.id)}
     >
       <button
+        aria-hidden={isExpandedToModal || undefined}
         aria-label={`查看 ${room.name} 的房间详情`}
-        className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--blue-8)]"
+        className={`absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--blue-8)] ${
+          isExpandedToModal ? "invisible pointer-events-none" : ""
+        }`}
+        disabled={isExpandedToModal}
         onClick={() => onOpen(entry.item)}
         onFocus={() => onPrewarm(room.id)}
+        tabIndex={isExpandedToModal ? -1 : undefined}
         type="button"
       />
 
-      <div>
+      <div aria-hidden={isExpandedToModal || undefined} className={hiddenCardClass}>
         {/* Card Header: Title + Online Count */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">

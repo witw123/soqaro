@@ -35,6 +35,7 @@ type RoomDirectoryGridProps = {
   rooms: RoomDirectoryItem[];
   roomsLoaded: boolean;
   awayRoomId: string | null;
+  activeModalRoomId?: string | null;
   morphingRoomId?: string | null;
   onOpenRoom: (room: RoomDirectoryItem) => void;
   onPrewarmRoom: (roomId: string) => void;
@@ -44,6 +45,7 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
   rooms,
   roomsLoaded,
   awayRoomId,
+  activeModalRoomId = null,
   morphingRoomId = null,
   onOpenRoom,
   onPrewarmRoom
@@ -164,6 +166,7 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
         }) => {
           const roomId = item.room.id;
           const isAway = Boolean(awayRoomId && awayRoomId === roomId);
+          const isExpandedToModal = activeModalRoomId === roomId;
           const isMorphTarget = morphingRoomId === roomId;
 
           return (
@@ -182,6 +185,7 @@ export const RoomDirectoryGrid = memo(function RoomDirectoryGrid({
               key={roomId}
             >
               <RoomDirectoryCard
+                isExpandedToModal={isExpandedToModal}
                 onOpen={onOpenRoom}
                 onPrewarm={onPrewarmRoom}
                 room={item}

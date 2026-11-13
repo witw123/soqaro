@@ -10,6 +10,7 @@ import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 
 type RoomDirectoryCardProps = {
   room: RoomDirectoryItem;
+  isExpandedToModal?: boolean;
   shellTransitionName?: string;
   onOpen: (room: RoomDirectoryItem) => void;
   onPrewarm?: (roomId: string) => void;
@@ -77,6 +78,7 @@ const roomCardStaticStyles: Record<RoomType, RoomCardStyle> = {
 
 export const RoomDirectoryCard = memo(function RoomDirectoryCard({
   room: directoryItem,
+  isExpandedToModal = false,
   shellTransitionName,
   onOpen,
   onPrewarm
@@ -97,9 +99,12 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
     onPrewarm?.(room.id);
   }, [onPrewarm, room.id]);
 
+  const hiddenCardClass = isExpandedToModal ? "invisible pointer-events-none select-none" : "";
+
   return (
     <article
       className="group relative flex w-full h-full min-w-0 flex-col overflow-hidden rounded-xl border-[0.5px] border-surface-border bg-surface-elevated p-3 shadow-xs transition-[border-color,background-color,box-shadow,transform] duration-[250ms] ease-out hover:border-[color:var(--room-border)] focus-within:border-[color:var(--room-accent)] focus-within:ring-1 focus-within:ring-[color:var(--room-accent)] motion-reduce:transition-none"
+      data-morphed-to-modal={isExpandedToModal ? "true" : undefined}
       data-room-theme={room.roomType}
       data-room-type={room.roomType}
       data-testid="room-directory-card"
@@ -107,17 +112,23 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
       style={cardStyle}
     >
       <button
+        aria-hidden={isExpandedToModal || undefined}
         aria-label={`查看 ${room.name} 的房间详情`}
-        className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none"
+        className={`absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none ${
+          isExpandedToModal ? "invisible pointer-events-none" : ""
+        }`}
         data-testid="room-directory-open"
+        disabled={isExpandedToModal}
         onClick={handleOpen}
         onFocus={handlePrewarm}
+        tabIndex={isExpandedToModal ? -1 : undefined}
         type="button"
       />
 
       {/* Room Visual Cover: Integrates Room Type Badge and Online Status inside the cover */}
       <section
-        className="room-directory-stage-frame relative w-full aspect-[2.4/1] md:aspect-auto md:h-[148px] xl:h-[160px] shrink-0 overflow-hidden rounded-lg border-[0.5px] border-surface-border bg-surface shadow-xs"
+        aria-hidden={isExpandedToModal || undefined}
+        className={`room-directory-stage-frame relative w-full aspect-[2.4/1] md:aspect-auto md:h-[148px] xl:h-[160px] shrink-0 overflow-hidden rounded-lg border-[0.5px] border-surface-border bg-surface shadow-xs ${hiddenCardClass}`}
         data-card-scene={room.roomType}
         data-testid="room-directory-stage"
       >
@@ -125,9 +136,18 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
       </section>
 
       {/* Track Playing Information Placed BELOW the cover */}
-      {nowPlaying?.title ? <RoomNowPlayingBar nowPlaying={nowPlaying} className="mt-2" /> : null}
+      {nowPlaying?.title ? (
+        <RoomNowPlayingBar
+          ariaHidden={isExpandedToModal}
+          className={`mt-2 ${hiddenCardClass}`}
+          nowPlaying={nowPlaying}
+        />
+      ) : null}
 
-      <div className={nowPlaying?.title ? "pt-2" : "pt-2.5"}>
+      <div
+        aria-hidden={isExpandedToModal || undefined}
+        className={`${nowPlaying?.title ? "pt-2" : "pt-2.5"} ${hiddenCardClass}`}
+      >
         <h3 className="truncate text-sm sm:text-base font-semibold tracking-tight text-foreground transition-colors">
           {room.name}
         </h3>
@@ -135,6 +155,14 @@ export const RoomDirectoryCard = memo(function RoomDirectoryCard({
           {room.description?.trim() || fallbackDescription(room)}
         </p>
       </div>
+
+      {isExpandedToModal ? (
+        <div
+          aria-hidden="true"
+          className="room-card-morphed-slot pointer-events-none absolute inset-3 rounded-lg border-[0.5px] border-dashed border-[var(--slate-8)] bg-[var(--slate-1)]"
+          data-testid="room-directory-card-morphed-slot"
+        />
+      ) : null}
     </article>
   );
 });
@@ -177,13 +205,18 @@ function RoomStageVisualContent({
 
 function RoomNowPlayingBar({
   nowPlaying,
-  className = ""
+  className = "",
+  ariaHidden = false
 }: {
   nowPlaying: NonNullable<RoomDirectoryItem["room"]["directoryNowPlaying"]>;
   className?: string;
+  ariaHidden?: boolean;
 }) {
   return (
-    <div className={`room-card-now-playing-bar flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-lg px-2.5 py-1 ${className}`}>
+    <div
+      aria-hidden={ariaHidden || undefined}
+      className={`room-card-now-playing-bar flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-lg px-2.5 py-1 ${className}`}
+    >
       <div className="flex items-end gap-0.5 h-3 shrink-0 text-accent" aria-hidden="true">
         <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "0.8s" }} />
         <span className="w-0.5 h-full bg-current rounded-full animate-music-bar origin-bottom will-change-transform" style={{ animationDuration: "1.1s", animationDelay: "0.2s" }} />

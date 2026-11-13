@@ -1491,6 +1491,38 @@
     box-shadow: inset 0 0 0 1px var(--room-border) !important;
   }
 
+  /* Detached slot state when a room card has morphed into RoomThresholdSheet */
+  [data-testid="room-directory-card"][data-morphed-to-modal="true"],
+  [data-testid="room-directory-card"][data-morphed-to-modal="true"]:hover,
+  [data-testid="room-directory-card"][data-morphed-to-modal="true"]:focus-within,
+  .mosaic-puzzle-grid [data-testid="room-directory-card"][data-morphed-to-modal="true"],
+  .mosaic-puzzle-grid [data-testid="room-directory-card"][data-morphed-to-modal="true"]:hover,
+  .mosaic-puzzle-grid [data-testid="room-directory-card"][data-morphed-to-modal="true"]:focus-within {
+    z-index: auto;
+    background-color: var(--slate-1) !important;
+    box-shadow: none !important;
+    pointer-events: none;
+    transition: none !important;
+  }
+
+  [data-discover-room-id][data-morphed-to-modal="true"],
+  [data-discover-room-id][data-morphed-to-modal="true"]:hover,
+  [data-discover-room-id][data-morphed-to-modal="true"]:focus-within {
+    background-color: var(--slate-1) !important;
+    border-style: dashed !important;
+    border-color: var(--slate-8) !important;
+    box-shadow: none !important;
+    pointer-events: none;
+    transition: none !important;
+  }
+
+  html[data-room-transition="card-open"] [data-testid="room-directory-card"],
+  html[data-room-transition="card-close"] [data-testid="room-directory-card"],
+  html[data-room-transition="card-open"] [data-discover-room-id],
+  html[data-room-transition="card-close"] [data-discover-room-id] {
+    transition: none !important;
+  }
+
   .mosaic-puzzle-grid .room-directory-stage-frame {
     contain: layout paint style;
   }

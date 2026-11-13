@@ -43,8 +43,7 @@ import {
 } from "@/features/settings/settings-store";
 import {
   getThemeLabel,
-  THEME_PROFILES,
-  type ThemePreviewPalette
+  THEME_PROFILES
 } from "@/features/settings/theme-profiles";
 import { ThemeAwareNavIcon, ThemeAwareRoomTypeGlyph } from "@/components/icons/ThemeIcons";
 import {
@@ -82,21 +81,6 @@ const playbackModeLabels: Record<PlaybackMode, string> = {
   shuffle: "随机播放",
   single: "单曲循环"
 };
-
-function resolveThemePreviewPattern(patternKind: ThemePreviewPalette["patternKind"], borderColor: string, accentColor: string): string {
-  switch (patternKind) {
-    case "contour":
-      return `radial-gradient(24px 12px at 50% 0%, transparent 10.5px, color-mix(in srgb, ${accentColor} 18%, transparent) 11px, transparent 12px), radial-gradient(24px 12px at 50% 100%, transparent 10.5px, color-mix(in srgb, ${accentColor} 18%, transparent) 11px, transparent 12px)`;
-    case "grain":
-      return "repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 4px)";
-    case "grid":
-      return `linear-gradient(to right, color-mix(in srgb, ${accentColor} 11%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${accentColor} 11%, transparent) 1px, transparent 1px)`;
-    case "paper":
-      return "repeating-linear-gradient(45deg, rgba(120, 105, 86, 0.06) 0 1px, transparent 1px 6px), repeating-linear-gradient(-45deg, rgba(120, 105, 86, 0.05) 0 1px, transparent 1px 6px)";
-    default:
-      return `radial-gradient(color-mix(in srgb, ${borderColor} 55%, transparent) 0.75px, transparent 0.75px)`;
-  }
-}
 
 const playerStyleLabels: Record<PlayerStyle, string> = {
   vinyl: "唱片",
@@ -294,10 +278,10 @@ export function SettingsPage() {
       categoryId: "appearance",
       sectionTitle: "主题与色彩风格",
       label: "主题风格",
-      description: "选择全局配色、背景材质与图标工艺风格。",
+      description: "选择全局配色与图标工艺风格。",
       keywords: ["主题", "颜色", "色彩", "背景", "图标", "深色", "深空灰", "浅色", "日间白", "系统", "灰绿", "石墨", "黑曜", "深蓝", "午夜", "浅蓝", "晴空", "暖白", "素笺", "theme", "dark", "light", "sage", "obsidian", "midnight", "paper"],
       render: () => (
-        <SettingRow key="theme" label="主题风格" description="选择全局配色、背景材质与图标工艺风格。" stacked>
+        <SettingRow key="theme" label="主题风格" description="选择全局配色与图标工艺风格。" stacked>
           <div aria-label="主题预设" className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full" role="group">
             {themePreferences.map((themeKey) => {
               const isSelected = settings.theme === themeKey;
@@ -325,10 +309,12 @@ export function SettingsPage() {
                     className="relative h-16 w-full overflow-hidden rounded-[5px] p-1.5 flex flex-col justify-between"
                     style={{
                       backgroundColor: preview.bg,
-                      backgroundImage: isSystem
-                        ? "linear-gradient(135deg, #fcfcfd 49.5%, #111113 50.5%)"
-                        : resolveThemePreviewPattern(preview.patternKind, preview.border, preview.accent),
-                      backgroundSize: isSystem ? "100% 100%" : preview.patternKind === "grid" ? "14px 14px" : "10px 10px",
+                      ...(isSystem
+                        ? {
+                            backgroundImage: "linear-gradient(135deg, #fcfcfd 49.5%, #111113 50.5%)",
+                            backgroundSize: "100% 100%"
+                          }
+                        : {}),
                       border: `0.5px solid ${preview.border}`,
                       "--preview-accent": preview.accent
                     } as CSSProperties}

@@ -18,7 +18,6 @@ export interface ThemePreviewPalette {
   accentSubtle: string;
   frameRadius: string;
   badgeRadius: string;
-  patternKind: "dots" | "contour" | "grain" | "grid" | "paper";
 }
 
 export interface ThemeProfile {
@@ -49,8 +48,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#0090ff",
       accentSubtle: "#13273c",
       frameRadius: "5px",
-      badgeRadius: "3px",
-      patternKind: "dots"
+      badgeRadius: "3px"
     }
   },
   light: {
@@ -69,8 +67,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#0090ff",
       accentSubtle: "#e6f4fe",
       frameRadius: "5px",
-      badgeRadius: "3px",
-      patternKind: "dots"
+      badgeRadius: "3px"
     }
   },
   "sage-dark": {
@@ -89,8 +86,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#29a383",
       accentSubtle: "#132d26",
       frameRadius: "6px",
-      badgeRadius: "9999px",
-      patternKind: "contour"
+      badgeRadius: "9999px"
     }
   },
   "sage-light": {
@@ -109,8 +105,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#29a383",
       accentSubtle: "#dff3ec",
       frameRadius: "6px",
-      badgeRadius: "9999px",
-      patternKind: "contour"
+      badgeRadius: "9999px"
     }
   },
   obsidian: {
@@ -129,8 +124,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#e54666",
       accentSubtle: "#3a141e",
       frameRadius: "3px",
-      badgeRadius: "2px",
-      patternKind: "grain"
+      badgeRadius: "2px"
     }
   },
   "midnight-dark": {
@@ -149,8 +143,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#00a2c7",
       accentSubtle: "#0d2a3a",
       frameRadius: "5px",
-      badgeRadius: "3px",
-      patternKind: "grid"
+      badgeRadius: "3px"
     }
   },
   "midnight-light": {
@@ -169,8 +162,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#3e63dd",
       accentSubtle: "#e5ecfd",
       frameRadius: "5px",
-      badgeRadius: "3px",
-      patternKind: "grid"
+      badgeRadius: "3px"
     }
   },
   paper: {
@@ -189,8 +181,7 @@ export const THEME_PROFILES: Record<ResolvedTheme, ThemeProfile> = {
       accent: "#d95308",
       accentSubtle: "#ffebd6",
       frameRadius: "6px",
-      badgeRadius: "3px",
-      patternKind: "paper"
+      badgeRadius: "3px"
     }
   }
 };

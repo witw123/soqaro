@@ -319,6 +319,92 @@ describe("SignalingGateway chat", () => {
 
       expect(result).toEqual({ ok: false, reason: "lease-missing" });
     });
+
+    it("returns not-subscribed for handshake-authenticated sockets whose room state was cleared or mismatched", async () => {
+      const gateway = Object.assign(Object.create(SignalingGateway.prototype), {
+        ensureBroadcasterServer: jest.fn(),
+        assertRealtimeClient: jest.fn(() => {
+          throw new Error("should not reach assertRealtimeClient");
+        })
+      }) as {
+        handleRoomPresence: (
+          client: { data: Record<string, unknown> },
+          payload: unknown
+        ) => Promise<{ ok: boolean; reason?: string }>;
+      };
+
+      const clearedSocketResult = await gateway.handleRoomPresence(
+        {
+          data: {
+            handshakeAuthenticated: true,
+            isRealtimeAuthenticated: false,
+            roomId: undefined,
+            sessionId: undefined,
+            peerId: undefined
+          }
+        },
+        {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        }
+      );
+      expect(clearedSocketResult).toEqual({ ok: false, reason: "not-subscribed" });
+
+      const otherRoomResult = await gateway.handleRoomPresence(
+        {
+          data: {
+            handshakeAuthenticated: true,
+            isRealtimeAuthenticated: true,
+            roomId: "room_other",
+            sessionId: "user_1",
+            peerId: "peer_1"
+          }
+        },
+        {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        }
+      );
+      expect(otherRoomResult).toEqual({ ok: false, reason: "not-subscribed" });
+    });
+
+    it("returns lease-missing when checkSocketLease hits cache but renewSocketLease detects an expired lease", async () => {
+      const gateway = Object.assign(Object.create(SignalingGateway.prototype), {
+        ensureBroadcasterServer: jest.fn(),
+        assertRealtimeClient: jest.fn(),
+        assertUserStillActive: jest.fn().mockResolvedValue(undefined),
+        sessionLease: {
+          checkSocketLease: jest.fn().mockResolvedValue("owned"),
+          renewSocketLease: jest.fn().mockResolvedValue("missing")
+        }
+      }) as {
+        handleRoomPresence: (
+          client: { data: Record<string, unknown> },
+          payload: unknown
+        ) => Promise<{ ok: boolean; reason?: string }>;
+      };
+
+      const result = await gateway.handleRoomPresence(
+        {
+          data: {
+            handshakeAuthenticated: true,
+            isRealtimeAuthenticated: true,
+            roomId: "room_1",
+            sessionId: "user_1",
+            peerId: "peer_1"
+          }
+        },
+        {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        }
+      );
+
+      expect(result).toEqual({ ok: false, reason: "lease-missing" });
+    });
   });
 
   describe("SignalingGateway security enforcement", () => {
@@ -353,7 +439,10 @@ describe("SignalingGateway chat", () => {
         resolvePeerRecoveryGeneration: jest.fn().mockReturnValue(1),
         emitToPeer: jest.fn().mockResolvedValue(undefined)
       };
-      const readiness = { clearForSession: jest.fn() };
+      const readiness = {
+        clearForSession: jest.fn(),
+        getReadinessForTimeline: jest.fn().mockReturnValue([])
+      };
       const metrics = {
         bindRealtimeSocket: jest.fn(),
         unbindRealtimeSocket: jest.fn(),
@@ -642,6 +731,114 @@ describe("SignalingGateway chat", () => {
       expect(socket2.data.isRealtimeAuthenticated).toBe(false);
       expect(sessionLease.forceDelete).toHaveBeenCalledWith("room_1", "user_2", "peer_2");
       expect(peerSignals.clearRoomState).toHaveBeenCalledWith("room_1");
+    });
+
+    it("does not emit room.session.replaced when replacing a socket during seamless same-peerId reconnect", async () => {
+      const sessionLease = { invalidateSocket: jest.fn() };
+      const peerSignals = {
+        unregisterPeerSocket: jest.fn(),
+        clearRecoveryGeneration: jest.fn()
+      };
+      const metrics = { unbindRealtimeSocket: jest.fn() };
+      const roomService = { handleDuplicateSessionReplacement: jest.fn().mockResolvedValue(undefined) };
+      const roomRealtimePublisher = { emitTopologySnapshot: jest.fn().mockResolvedValue(undefined) };
+      const registry = new RoomSessionRegistryService(
+        sessionLease as never,
+        peerSignals as never,
+        {} as never,
+        roomService as never,
+        roomRealtimePublisher as never,
+        metrics as never
+      );
+
+      const oldSocket = {
+        id: "sock_old",
+        data: {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1",
+          sessionFenceToken: "fence_1",
+          isRealtimeAuthenticated: true
+        },
+        emit: jest.fn(),
+        leave: jest.fn()
+      };
+      const newSocket = {
+        id: "sock_new",
+        data: {
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_other",
+          sessionFenceToken: "fence_2",
+          isRealtimeAuthenticated: true
+        },
+        emit: jest.fn(),
+        leave: jest.fn()
+      };
+      registry.setServer({
+        sockets: {
+          sockets: new Map([
+            ["sock_old", oldSocket],
+            ["sock_new", newSocket]
+          ])
+        }
+      } as never);
+
+      registry.registerSessionSocket("room_1", "user_1", "peer_1", "sock_old", "fence_1");
+      await registry.replaceExistingRoomSession("room_1", "user_1", "peer_1", "sock_reconnect");
+      expect(oldSocket.emit).not.toHaveBeenCalled();
+      expect(oldSocket.leave).toHaveBeenCalledWith("room_1");
+      expect(roomService.handleDuplicateSessionReplacement).not.toHaveBeenCalled();
+
+      registry.registerSessionSocket("room_1", "user_1", "peer_other", "sock_new", "fence_2");
+      await registry.replaceExistingRoomSession("room_1", "user_1", "peer_different", "sock_tab2");
+      expect(newSocket.emit).toHaveBeenCalledWith("room.session.replaced", {
+        roomId: "room_1",
+        reason: "duplicate-session"
+      });
+      expect(roomService.handleDuplicateSessionReplacement).toHaveBeenCalledWith("room_1", "user_1");
+    });
+
+    it("keeps active socket registrations intact during same-room same-session resubscribe", async () => {
+      const { gateway, registry, peerSignals, roomService } = createSubscribeGatewayHarness();
+      roomService.getAccessibleRoomSnapshot.mockResolvedValue({
+        room: {
+          id: "room_1",
+          hostId: "host_1",
+          playback: { currentTrackId: null, mediaEpoch: 0 },
+          members: [{ id: "user_1", peerId: "peer_1", presenceState: "online" }]
+        }
+      });
+      const client = {
+        id: "socket_1",
+        handshake: { headers: { "x-session-token": "tok_1" }, auth: {} },
+        data: {
+          handshakeAuthenticated: true,
+          handshakeSessionId: "user_1",
+          isRealtimeAuthenticated: true,
+          roomId: "room_1",
+          sessionId: "user_1",
+          peerId: "peer_1"
+        },
+        join: jest.fn(),
+        emit: jest.fn(),
+        leave: jest.fn()
+      };
+
+      await gateway.handleRoomSubscribe(client, {
+        roomId: "room_1",
+        sessionId: "user_1",
+        peerId: "peer_1",
+        protocolVersion: 4,
+        capabilities: ["webrtc-opus-v1"]
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(peerSignals.unregisterPeerSocket).not.toHaveBeenCalled();
+      expect(registry.unregisterSessionSocket).not.toHaveBeenCalled();
+      expect(peerSignals.registerPeerSocket).toHaveBeenCalledWith("room_1", "peer_1", "socket_1");
+      expect(registry.registerSessionSocket).toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledWith("room.snapshot", expect.anything());
     });
   });
 });

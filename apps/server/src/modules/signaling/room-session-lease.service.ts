@@ -180,6 +180,12 @@ export class RoomSessionLeaseService {
   }
 
   async renew(client: Socket) {
+    return (await this.renewSocketLease(client)) === "renewed";
+  }
+
+  async renewSocketLease(
+    client: Socket
+  ): Promise<"renewed" | "missing" | "replaced" | "unavailable"> {
     const roomId = client.data.roomId as string;
     const sessionId = client.data.sessionId as string;
     const peerId = client.data.peerId as string;
@@ -209,13 +215,21 @@ export class RoomSessionLeaseService {
             Math.ceil(this.sessionLeaseTtlMs / 1000)
           );
         }
-      } else {
-        this.invalidateSocket(client.id);
+        return "renewed";
       }
-      return renewed;
+
+      this.invalidateSocket(client.id);
+      const existingLease = await this.redisService.getJson<{
+        socketId?: string;
+        fenceToken?: string;
+      }>(this.key(roomId, sessionId));
+      if (!existingLease) {
+        return "missing";
+      }
+      return "replaced";
     } catch {
       this.invalidateSocket(client.id);
-      return !isStrictRealtimeCoordination();
+      return isStrictRealtimeCoordination() ? "unavailable" : "renewed";
     }
   }
 

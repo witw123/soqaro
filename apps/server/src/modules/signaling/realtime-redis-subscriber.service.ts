@@ -426,6 +426,7 @@ export class RealtimeRedisSubscriber {
         roomId?: string;
         sessionId?: string;
         socketId?: string;
+        notifyReplaced?: boolean;
       };
       if (
         !hasForeignRedisEnvelope(message, this.roomRealtimeBroadcaster.instanceId) ||
@@ -436,7 +437,7 @@ export class RealtimeRedisSubscriber {
         return;
       }
 
-      const socket = this.server!.sockets.sockets.get(message.socketId);
+      const socket = this.server?.sockets.sockets.get(message.socketId);
       if (
         !socket ||
         socket.data.roomId !== message.roomId ||
@@ -445,7 +446,9 @@ export class RealtimeRedisSubscriber {
         return;
       }
 
-      this.registry.invalidateReplacedSocket(socket, message.roomId);
+      this.registry.invalidateReplacedSocket(socket, message.roomId, {
+        notifyReplaced: message.notifyReplaced !== false
+      });
     }).then((unsubscribe) => {
       this.redisUnsubscribers.push(unsubscribe);
     });

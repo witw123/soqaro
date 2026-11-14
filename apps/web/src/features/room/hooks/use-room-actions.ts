@@ -39,6 +39,7 @@ type UseRoomActionsOptions = {
 import {
   createPendingPausePlayback,
   createPendingSeekPlayback,
+  hasPlaybackTimelineAdvanced,
   runBestEffortRoomLeave,
   shouldResetPlayerAfterQueueRemoval,
   shouldResetPlayerAfterTrackRemoval,
@@ -265,11 +266,14 @@ export function useRoomActions({
                 retryTarget &&
                 !shouldRetryPlaybackMutationAfterConflict(
                   retryTarget,
-                  snapshot.room.playback
+                  snapshot.room.playback,
+                  options
                 )
               ) {
-                setStatusMessage("播放曲目已更新，本次操作未重试。");
-                return null;
+                if (!options?.silentOnConflictSkip) {
+                  setStatusMessage("播放曲目已更新，本次操作未重试。");
+                }
+                return options?.returnSnapshotOnConflictSkip ? snapshot.room.playback : null;
               }
               nextExpectedVersion = snapshot.room.playback.playbackRevision;
             } catch (refreshError) {
@@ -627,12 +631,17 @@ export function useRoomActions({
     );
   }, [roomSnapshot, activeSession, getCurrentPeerId, runPlaybackMutation]);
 
-  const nextTrack = useCallback(async () => {
+  const nextTrack = useCallback(async (options?: PlaybackMutationOptions) => {
     if (!roomSnapshot || !activeSession || !hasRoomPermission(roomSnapshot, activeSession.userId, "player")) {
-      return;
+      return null;
     }
 
-    await runPlaybackMutation(
+    const safeOptions =
+      options && typeof options === "object" && !("nativeEvent" in options)
+        ? options
+        : undefined;
+
+    return runPlaybackMutation(
       roomSnapshot.room.id,
       roomSnapshot.room.playback.playbackRevision,
       (expectedVersion) =>
@@ -641,7 +650,13 @@ export function useRoomActions({
           actorPeerId: getCurrentPeerId?.() ?? undefined,
           expectedVersion
         }),
-      roomSnapshot.room.playback
+      roomSnapshot.room.playback,
+      {
+        requireSameTimelineAnchor: true,
+        silentOnConflictSkip: true,
+        returnSnapshotOnConflictSkip: true,
+        ...safeOptions
+      }
     );
   }, [roomSnapshot, activeSession, getCurrentPeerId, runPlaybackMutation]);
 
@@ -994,12 +1009,21 @@ export function useRoomActions({
   );
 
   const handleEnded = useCallback(async () => {
-    if (!roomSnapshot) {
-      return;
+    if (!roomSnapshot || !activeSession) {
+      return false;
+    }
+    if (!hasRoomPermission(roomSnapshot, activeSession.userId, "player")) {
+      return true;
     }
 
-    await nextTrack();
-  }, [roomSnapshot, nextTrack]);
+    const previousPlayback = roomSnapshot.room.playback;
+    const result = await nextTrack({
+      requireSameTimelineAnchor: true,
+      silentOnConflictSkip: true,
+      returnSnapshotOnConflictSkip: true
+    });
+    return hasPlaybackTimelineAdvanced(previousPlayback, result);
+  }, [activeSession, roomSnapshot, nextTrack]);
 
   return {
     refreshRoomSnapshot,

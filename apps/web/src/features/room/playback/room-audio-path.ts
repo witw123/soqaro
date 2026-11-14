@@ -27,6 +27,49 @@ import { providerDisplayName } from "@/lib/domain/provider-labels";
 
 export const localAudioSeekToleranceSeconds = 0.35;
 const localAudioMetadataTimeoutMs = 8_000;
+export const playbackEndedRetryCooldownMs = 2_500;
+
+export type PlaybackEndedAdvanceState = {
+  timelineKey: string | null;
+  inFlight: boolean;
+  completed: boolean;
+  lastAttemptAtMs: number;
+};
+
+export function resolvePlaybackEndedTimelineKey(
+  playback: Pick<
+    PlaybackSnapshot,
+    "currentTrackId" | "mediaEpoch" | "startAt" | "startedAt"
+  > | null | undefined
+) {
+  if (!playback?.currentTrackId) {
+    return null;
+  }
+
+  return [
+    playback.currentTrackId,
+    playback.mediaEpoch,
+    playback.startAt ?? playback.startedAt ?? "none"
+  ].join(":");
+}
+
+export function shouldAttemptPlaybackEndedAdvance(
+  state: PlaybackEndedAdvanceState,
+  timelineKey: string | null,
+  nowMs: number,
+  cooldownMs = playbackEndedRetryCooldownMs
+) {
+  if (!timelineKey) {
+    return false;
+  }
+  if (state.timelineKey !== timelineKey) {
+    return true;
+  }
+  if (state.inFlight || state.completed) {
+    return false;
+  }
+  return nowMs - state.lastAttemptAtMs >= cooldownMs;
+}
 
 export type LocalAudioResolutionStatus = "idle" | "checking" | "available" | "missing";
 

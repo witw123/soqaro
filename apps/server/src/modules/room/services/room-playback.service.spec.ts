@@ -385,4 +385,138 @@ describe("RoomPlaybackService gapless playback", () => {
     expect(snapshot.sourceSessionId).toBe("offline-owner");
     expect(snapshot.sourcePeerId).toBeNull();
   });
+
+  it("advances across complete provider tracks whose uploaders are offline when another member is online", async () => {
+    const room = record(5_000, "offline-owner");
+    room.tracks[0] = {
+      ...room.tracks[0]!,
+      ownerSessionId: "offline-owner",
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "111" }
+    };
+    room.tracks[1] = {
+      ...room.tracks[1]!,
+      ownerSessionId: "offline-owner",
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "222" }
+    };
+    room.room.members = [
+      { id: "offline-owner", nickname: "Offline", role: "host", peerId: null, presenceState: "offline", joinedAt: "2026-07-20T00:00:00.000Z" },
+      { id: "listener", nickname: "Listener", role: "member", peerId: "peer-listener", presenceState: "online", joinedAt: "2026-07-20T00:00:00.000Z" }
+    ];
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map([["listener", "peer-listener"]])
+    } as never);
+
+    // Sequence mode auto-advance at song end.
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.currentTrackId).toBe("track_2");
+    expect(room.room.playback.sourcePeerId).toBeNull();
+
+    // Single-track loop mode with offline uploader and online listener.
+    room.room.playback.playbackMode = "single";
+    room.room.playback.positionMs = 6_000;
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.currentTrackId).toBe("track_2");
+
+    // Explicit nextQueueItemId to a complete provider track with offline uploader.
+    room.room.playback.playbackMode = "sequence";
+    room.room.playback.nextQueueItemId = "queue_1";
+    await service.updatePlayback(room, { action: "next" });
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.currentTrackId).toBe("track_1");
+  });
+
+  it("defers track end for complete provider tracks while listeners are reconnecting and pauses once all are offline", async () => {
+    const room = record(5_000, "offline-owner");
+    room.tracks[0] = {
+      ...room.tracks[0]!,
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "111" }
+    };
+    room.tracks[1] = {
+      ...room.tracks[1]!,
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "222" }
+    };
+    room.room.members = [
+      { id: "owner", nickname: "Owner", role: "host", peerId: null, presenceState: "reconnecting", joinedAt: "2026-07-20T00:00:00.000Z" }
+    ];
+    let presenceState: "reconnecting" | "offline" = "reconnecting";
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map<string, string>(),
+      getPresenceSnapshot: async () => new Map([["owner", { peerId: null, presenceState }]])
+    } as never);
+
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(false);
+    expect(room.room.playback.status).toBe("playing");
+
+    presenceState = "offline";
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("paused");
+  });
+
+  it("does not pause in shuffle mode when remaining bag tracks are offline or only currentTrackId is playable", async () => {
+    const room = record(5_000, "offline-owner");
+    const third = track("track_3", "owner", 5_000);
+    room.tracks.push(third);
+    room.queue.push({
+      id: "queue_3",
+      trackId: "track_3",
+      requestedBy: "owner",
+      requestedById: "owner",
+      source: "manual",
+      sourceSeedTrackId: null,
+      position: 2,
+      createdAt: "2026-07-19T00:00:00.000Z"
+    });
+    room.room.playback.playbackMode = "shuffle";
+    room.room.playback.shuffleBagTrackIds = ["track_2"];
+
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map([["owner", "peer-owner"]])
+    } as never);
+
+    // Remaining bag only contained offline track_2, while track_3 is playable:
+    // refill cycle and pick track_3 instead of pausing at song end.
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.currentTrackId).toBe("track_3");
+
+    // Now make track_1 offline too so track_3 is the only playable track in a multi-track queue.
+    room.tracks[0] = { ...room.tracks[0]!, ownerSessionId: "offline-owner" };
+    room.room.playback.positionMs = 5_000;
+    room.room.playback.shuffleBagTrackIds = [];
+    await expect(service.advanceIfTrackEnded(room)).resolves.toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.currentTrackId).toBe("track_3");
+  });
+
+  it("keeps complete provider tracks playing during session replacement when another online member remains", () => {
+    const room = record(1_500);
+    room.tracks[0] = {
+      ...room.tracks[0]!,
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "111" }
+    };
+    room.room.members.push({
+      id: "listener",
+      nickname: "Listener",
+      role: "member",
+      peerId: "peer-listener",
+      presenceState: "online",
+      joinedAt: "2026-07-20T00:00:00.000Z"
+    });
+    const service = new RoomPlaybackService({
+      getActivePresence: async () => new Map([["listener", "peer-listener"]])
+    } as never);
+    const epochBefore = room.room.playback.mediaEpoch;
+
+    expect(service.pausePlaybackForSessionReplacement(room, "owner")).toBe(true);
+    expect(room.room.playback.status).toBe("playing");
+    expect(room.room.playback.sourcePeerId).toBeNull();
+    expect(room.room.playback.mediaEpoch).toBe(epochBefore);
+  });
 });

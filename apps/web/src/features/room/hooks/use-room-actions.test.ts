@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createPendingPausePlayback,
   createPendingSeekPlayback,
+  hasPlaybackTimelineAdvanced,
   runBestEffortRoomLeave,
   shouldRetryPlaybackMutationAfterConflict,
   shouldResetPlayerAfterQueueRemoval,
@@ -123,6 +124,77 @@ describe("playback mutation conflict retry", () => {
         currentQueueItemId: "queue_2"
       })
     ).toBe(false);
+  });
+
+  it("skips retrying track advance when single-track repeat already restarted on the server", () => {
+    const expectedTarget = {
+      currentTrackId: "track_1",
+      currentQueueItemId: "queue_1",
+      status: "playing" as const,
+      startAt: "2026-07-22T00:00:00.000Z",
+      startedAt: "2026-07-22T00:00:00.000Z"
+    };
+
+    expect(
+      shouldRetryPlaybackMutationAfterConflict(
+        expectedTarget,
+        {
+          ...expectedTarget,
+          startAt: "2026-07-22T00:03:00.000Z",
+          startedAt: "2026-07-22T00:03:00.000Z"
+        },
+        { requireSameTimelineAnchor: true }
+      )
+    ).toBe(false);
+
+    expect(
+      shouldRetryPlaybackMutationAfterConflict(
+        expectedTarget,
+        {
+          ...expectedTarget,
+          status: "paused"
+        },
+        { requireSameTimelineAnchor: true }
+      )
+    ).toBe(false);
+
+    expect(
+      shouldRetryPlaybackMutationAfterConflict(
+        expectedTarget,
+        expectedTarget,
+        { requireSameTimelineAnchor: true }
+      )
+    ).toBe(true);
+  });
+
+  it("detects whether a playback timeline actually advanced or rolled back", () => {
+    const previous = {
+      status: "playing" as const,
+      currentTrackId: "track_1",
+      currentQueueItemId: "queue_1",
+      playbackAssetId: "asset_1",
+      startAt: "2026-07-22T00:00:00.000Z",
+      startedAt: "2026-07-22T00:00:00.000Z",
+      sourceSessionId: "session_1",
+      sourcePeerId: "peer_1",
+      sourceTrackId: "track_1",
+      positionMs: 0,
+      queueVersion: 1,
+      playbackRevision: 4,
+      mediaEpoch: 1,
+      playbackMode: "single" as const
+    };
+
+    expect(hasPlaybackTimelineAdvanced(previous, previous)).toBe(false);
+    expect(hasPlaybackTimelineAdvanced(previous, null)).toBe(false);
+    expect(
+      hasPlaybackTimelineAdvanced(previous, {
+        ...previous,
+        startAt: "2026-07-22T00:03:00.000Z",
+        startedAt: "2026-07-22T00:03:00.000Z",
+        playbackRevision: 5
+      })
+    ).toBe(true);
   });
 });
 

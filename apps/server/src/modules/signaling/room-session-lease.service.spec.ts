@@ -321,4 +321,25 @@ describe("RoomSessionLeaseService", () => {
       }
     );
   });
+
+  it("distinguishes missing and replaced leases when renewSocketLease fails", async () => {
+    const redis = createRedis();
+    redis.renewJsonLeaseIfValue.mockResolvedValue(false);
+    const lease = new RoomSessionLeaseService(redis as never, createBroadcaster() as never);
+    const socket = createSocket({
+      roomId: "room-1",
+      sessionId: "session-1",
+      peerId: "peer-1",
+      sessionFenceToken: "fence-1"
+    });
+
+    redis.getJson.mockResolvedValueOnce(null);
+    await expect(lease.renewSocketLease(socket)).resolves.toBe("missing");
+
+    redis.getJson.mockResolvedValueOnce({
+      socketId: "socket-2",
+      fenceToken: "fence-2"
+    });
+    await expect(lease.renewSocketLease(socket)).resolves.toBe("replaced");
+  });
 });

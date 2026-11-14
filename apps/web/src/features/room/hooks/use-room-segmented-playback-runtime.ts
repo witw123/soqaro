@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import type {
+  PlaybackSnapshot,
   RoomPlaybackReadinessInputPayload,
   RoomPlaybackReadinessPayload,
   RoomSnapshot,
@@ -52,21 +53,26 @@ import {
   hasCurrentLocalAudio,
   isRecoverableLocalAudioError,
   localAudioSeekToleranceSeconds,
+  playbackEndedRetryCooldownMs,
   resolveCacheReadinessReport,
   resolveLocalAudioTimelineKey,
   resolveLocalAudioTrackKey,
+  resolvePlaybackEndedTimelineKey,
   resolveRemoteAudioTimelineKey,
   resolveRoomAudioPath,
   resolveRoomAudioPositionMs,
   resolveRoomProviderCachePlan,
+  shouldAttemptPlaybackEndedAdvance,
   shouldDisableSourcePlayback,
   shouldSkipUnavailableStreamingTrack,
   shouldWaitForLocalAudioContext,
   waitForLocalAudioMetadata,
   type LocalAudioObjectUrl,
   type LocalAudioResolution,
-  type LocalAudioResolutionStatus
+  type LocalAudioResolutionStatus,
+  type PlaybackEndedAdvanceState
 } from "@/features/room/playback/room-audio-path";
+import { hasPlaybackTimelineAdvanced } from "@/features/room/hooks/room-actions-helpers";
 import { resolveCurrentSourcePeerId } from "@/features/room/hooks/use-room-page-derived";
 
 const mediaPlaybackCommitIntervalMs = 500;
@@ -99,7 +105,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     track: MediaStreamTrack;
   }) => void) => () => void;
   restartMediaPeer: (peerId: string, options?: { forceRecreate?: boolean }) => Promise<unknown>;
-  onPlaybackEnded: () => void | Promise<void>;
+  onPlaybackEnded: () => unknown;
   setMediaConnectionState: Dispatch<SetStateAction<"idle" | "connecting" | "live" | "buffering" | "reconnecting" | "failed">>;
   setSourceStartState: Dispatch<SetStateAction<"idle" | "awaiting-unlock" | "starting" | "live" | "failed">>;
   setLastSourceStartError: Dispatch<SetStateAction<string | null>>;
@@ -237,12 +243,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     localAudioTrackKey
   );
   const usesNativeLocalAudio = !streamingOnlyPlayback && currentLocalAudioAvailable;
-  const nativeLocalAudioTimelineKey = useMemo(() => {
-    const roomPlayback = input.roomSnapshot?.room.playback ?? null;
-    return roomPlayback
-      ? resolveLocalAudioTimelineKey(roomPlayback, playbackBarrier)
-      : null;
-  }, [input.roomSnapshot?.room.playback, playbackBarrier]);
   const runtimeInputRef = useRef({
     ...input,
     playbackAsset: null as TrackMeta["playbackAsset"] | null,
@@ -302,8 +302,74 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     roomId: string;
     revision: number;
   } | null>(null);
-  const nativeLocalAudioTimelineRef = useRef<string | null>(null);
   const remoteAudioTimelineKeyRef = useRef<string | null>(null);
+  const endedAdvanceStateRef = useRef<PlaybackEndedAdvanceState>({
+    timelineKey: null,
+    inFlight: false,
+    completed: false,
+    lastAttemptAtMs: 0
+  });
+  const triggerPlaybackEnded = useCallback(
+    async (roomPlayback: PlaybackSnapshot | null | undefined) => {
+      if (roomPlayback?.status !== "playing") {
+        return false;
+      }
+      const timelineKey = resolvePlaybackEndedTimelineKey(roomPlayback);
+      const nowMs = Date.now();
+      if (
+        !shouldAttemptPlaybackEndedAdvance(
+          endedAdvanceStateRef.current,
+          timelineKey,
+          nowMs
+        )
+      ) {
+        return false;
+      }
+      endedAdvanceStateRef.current = {
+        timelineKey,
+        inFlight: true,
+        completed: false,
+        lastAttemptAtMs: nowMs
+      };
+      let succeeded = false;
+      try {
+        const result = await onPlaybackEnded();
+        if (result === false) {
+          succeeded = false;
+        } else if (
+          result &&
+          typeof result === "object" &&
+          "playbackRevision" in result
+        ) {
+          succeeded = hasPlaybackTimelineAdvanced(
+            roomPlayback,
+            result as PlaybackSnapshot
+          );
+        } else if (result === null) {
+          const latestPlayback = runtimeInputRef.current.roomSnapshot?.room.playback;
+          succeeded =
+            latestPlayback?.status !== "playing" ||
+            resolvePlaybackEndedTimelineKey(latestPlayback) !== timelineKey;
+        } else {
+          succeeded = true;
+        }
+      } catch {
+        succeeded = false;
+      } finally {
+        if (endedAdvanceStateRef.current.timelineKey === timelineKey) {
+          endedAdvanceStateRef.current = {
+            ...endedAdvanceStateRef.current,
+            inFlight: false,
+            completed: succeeded
+          };
+        }
+      }
+      return succeeded;
+    },
+    [onPlaybackEnded]
+  );
+  const triggerPlaybackEndedRef = useRef(triggerPlaybackEnded);
+  triggerPlaybackEndedRef.current = triggerPlaybackEnded;
   const skippedUnavailableStreamingTimelineRef = useRef<string | null>(null);
   const failedLocalAudioKeysRef = useRef<Set<string>>(new Set());
   const localAudioResolutionRef = useRef(localAudioResolution);
@@ -849,29 +915,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   }, [audioRef, input.volume, loudnessGainDb]);
 
   useEffect(() => {
-    if (!usesNativeLocalAudio) {
-      nativeLocalAudioTimelineRef.current = null;
-      return;
-    }
-
-    const previousTimelineKey = nativeLocalAudioTimelineRef.current;
-    nativeLocalAudioTimelineRef.current = nativeLocalAudioTimelineKey;
-    if (
-      previousTimelineKey !== null &&
-      previousTimelineKey !== nativeLocalAudioTimelineKey
-    ) {
-      // Seeking keeps the room status as "playing" while the server assigns
-      // a new clock anchor. Only a real timeline replacement may interrupt
-      // the cached element; playbackRevision updates are routine sync data.
-      audioRef.current?.pause();
-    }
-  }, [
-    audioRef,
-    usesNativeLocalAudio,
-    nativeLocalAudioTimelineKey
-  ]);
-
-  useEffect(() => {
     if (usesNativeLocalAudio) {
       return;
     }
@@ -1269,19 +1312,22 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             ? Math.min(targetPositionMs / 1000, Math.max(0, elementDurationSeconds - 0.05))
             : targetPositionMs / 1000;
           const shouldForceSync = localAudioTimelineKeyRef.current !== timelineKey;
-          if (
-            shouldForceSync ||
+          const needsSeek =
             !Number.isFinite(audio.currentTime) ||
-            Math.abs(audio.currentTime - targetSeconds) >= localAudioSeekToleranceSeconds
+            Math.abs(audio.currentTime - targetSeconds) >= localAudioSeekToleranceSeconds ||
+            (audio.ended && elementDurationSeconds > 0 && targetSeconds < elementDurationSeconds - 0.1);
+          if (
+            needsSeek ||
+            (shouldForceSync && (activeRoomPlayback.status !== "playing" || audio.paused || audio.ended))
           ) {
             if (shouldForceSync && activeRoomPlayback.status !== "playing") {
               audio.pause();
             }
             audio.currentTime = Math.max(0, targetSeconds);
           }
+          localAudioTimelineKeyRef.current = timelineKey;
 
           if (activeRoomPlayback.status !== "playing") {
-            localAudioTimelineKeyRef.current = timelineKey;
             // Pause the local timeline without tearing down the source's RTP
             // topology. The destination track remains live and carries
             // silence while the local element is paused, so resume/seek can
@@ -1379,10 +1425,12 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           }
 
           if (audio.ended && elementDurationSeconds > 0 && targetSeconds >= elementDurationSeconds - 0.1) {
-            audio.pause();
+            if (activeRuntime.isCurrentSource || activeRuntime.isSourceMemberOffline) {
+              void triggerPlaybackEndedRef.current(activeRoomPlayback);
+            }
             if (!cancelled) {
               setMediaPlayback({
-                state: "paused",
+                state: "ended",
                 bufferedMs: 0,
                 ownedUnitCount: 0,
                 totalUnitCount,
@@ -1420,7 +1468,9 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           }
           if (!result.ok) {
             if (isAudioPlaybackBlockedError(result.error)) {
-              setAudioUnlocked(false);
+              if (typeof document === "undefined" || !document.hidden) {
+                setAudioUnlocked(false);
+              }
               setMediaPlayback({
                 state: "awaiting-unlock",
                 bufferedMs: 0,
@@ -1452,7 +1502,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             return;
           }
 
-          localAudioTimelineKeyRef.current = timelineKey;
           // Decode/buffering can continue after play() is requested. Catch up
           // to the room clock, not the position captured before that wait.
           alignCurrentLocalAudio(false);
@@ -1912,8 +1961,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     setMediaPlayback,
     isCurrentSource,
     roomId,
-    input.roomSnapshot?.room.playback.currentTrackId,
-    input.roomSnapshot?.room.playback.mediaEpoch,
     ensureListenerMediaConnection,
     subscribeRemoteAudioTrack
   ]);
@@ -1924,7 +1971,11 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     streamingOnlyPlayback,
     usesNativeLocalAudio,
     input.roomSnapshot?.room.playback.status,
-    input.roomSnapshot?.room.playback.playbackRevision
+    input.roomSnapshot?.room.playback.playbackRevision,
+    input.roomSnapshot?.room.playback.currentTrackId,
+    input.roomSnapshot?.room.playback.mediaEpoch,
+    input.roomSnapshot?.room.playback.startAt,
+    input.roomSnapshot?.room.playback.startedAt
   ]);
 
   useEffect(() => {
@@ -2002,6 +2053,9 @@ export function useRoomSegmentedPlaybackRuntime(input: {
         if (resumed && roomAudioOutput.isActivated() && roomAudioOutput.isAudioContextReady()) {
           setAudioUnlocked(true);
         }
+        if (resumed) {
+          void syncMediaRef.current?.();
+        }
       });
     };
 
@@ -2016,7 +2070,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   }, [audioRef, input.volume, loudnessGainDb, setAudioUnlocked]);
 
   const lastReportedErrorRef = useRef<string | null>(null);
-  const completedTimelineRef = useRef<string | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -2035,14 +2088,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       ) {
         return;
       }
-      const timelineKey = [
-        roomPlayback.currentTrackId,
-        roomPlayback.mediaEpoch,
-        roomPlayback.startAt ?? roomPlayback.startedAt
-      ].join(":");
-      if (completedTimelineRef.current === timelineKey) return;
-      completedTimelineRef.current = timelineKey;
-      void onPlaybackEnded();
+      void triggerPlaybackEnded(roomPlayback);
     };
 
     audio.addEventListener("ended", handleEnded);
@@ -2050,8 +2096,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   }, [
     audioRef,
     input.isCurrentSource,
-    onPlaybackEnded,
-    providerCachePlan.isSourceMemberOffline
+    providerCachePlan.isSourceMemberOffline,
+    triggerPlaybackEnded
   ]);
 
   useEffect(() => {
@@ -2184,23 +2230,45 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     if (playback.state !== "ended" || !isCurrentSource) return;
     const room = roomSnapshot?.room;
     const activePlayback = room?.playback;
-    if (!room || !activePlayback?.currentTrackId) return;
+    if (!room || !activePlayback?.currentTrackId || activePlayback.status !== "playing") return;
     if (localPeerId !== runtimePeerId) return;
-    const timelineKey = [
-      activePlayback.currentTrackId,
-      activePlayback.mediaEpoch,
-      activePlayback.startAt
-    ].join(":");
-    if (completedTimelineRef.current === timelineKey) return;
-    completedTimelineRef.current = timelineKey;
-    void onPlaybackEnded();
+
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    const attemptEndAdvance = () => {
+      if (cancelled) return;
+      void triggerPlaybackEnded(activePlayback).then((advanced) => {
+        if (cancelled || advanced) {
+          return;
+        }
+        const timelineKey = resolvePlaybackEndedTimelineKey(activePlayback);
+        if (
+          endedAdvanceStateRef.current.completed &&
+          endedAdvanceStateRef.current.timelineKey === timelineKey
+        ) {
+          return;
+        }
+        if (retryTimer !== null) {
+          window.clearTimeout(retryTimer);
+        }
+        retryTimer = window.setTimeout(attemptEndAdvance, playbackEndedRetryCooldownMs);
+      });
+    };
+    attemptEndAdvance();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+    };
   }, [
     isCurrentSource,
     localPeerId,
-    onPlaybackEnded,
     playback.state,
     roomSnapshot,
-    runtimePeerId
+    runtimePeerId,
+    triggerPlaybackEnded
   ]);
 
   const audioPath = resolveRoomAudioPath({

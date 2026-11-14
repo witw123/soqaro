@@ -116,15 +116,14 @@ export class RoomSessionRegistryService {
     this.metrics.unbindRealtimeSocket(existing.socketId);
     this.peerSignals.clearRecoveryGeneration(roomId, sessionId, existing.peerId);
 
-    const replacedSocket = this.server!.sockets.sockets.get(existing.socketId);
+    const replacedSocket = this.server?.sockets.sockets.get(existing.socketId);
     const isSeamlessReconnect = existing.peerId === nextPeerId;
     if (isSeamlessReconnect) {
       if (replacedSocket) {
-        this.invalidateReplacedSocket(replacedSocket, roomId);
+        this.invalidateReplacedSocket(replacedSocket, roomId, { notifyReplaced: false });
       }
       return;
     }
-
 
     await this.roomService.handleDuplicateSessionReplacement(roomId, sessionId);
     await this.roomRealtimePublisher.emitTopologySnapshot(roomId);
@@ -200,7 +199,13 @@ export class RoomSessionRegistryService {
     this.peerSignals.clearRecoveryGeneration(roomId, sessionId, peerId);
   }
 
-  invalidateReplacedSocket(socket: Socket, roomId: string) {
+  invalidateReplacedSocket(
+    socket: Socket,
+    roomId: string,
+    options?: {
+      notifyReplaced?: boolean;
+    }
+  ) {
     const sessionId = socket.data.sessionId as string | undefined;
     const peerId = socket.data.peerId as string | undefined;
     this.sessionLease.invalidateSocket(socket.id);
@@ -210,10 +215,12 @@ export class RoomSessionRegistryService {
     this.peerSignals.unregisterPeerSocket(roomId, peerId, socket.id);
     this.unregisterSessionSocket(roomId, sessionId, socket.id);
     this.metrics.unbindRealtimeSocket(socket.id);
-    socket.emit("room.session.replaced", {
-      roomId,
-      reason: "duplicate-session"
-    });
+    if (options?.notifyReplaced !== false) {
+      socket.emit("room.session.replaced", {
+        roomId,
+        reason: "duplicate-session"
+      });
+    }
     socket.leave(roomId);
     socket.data.roomId = undefined;
     socket.data.sessionId = undefined;

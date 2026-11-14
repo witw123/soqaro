@@ -301,6 +301,12 @@ export class RoomPlaybackService {
     direction: "next" | "prev",
     positionMs: number
   ) {
+    const activePresence = await this.roomPresenceService.getActivePresence(
+      record.room.id,
+      record.room.members
+    );
+    const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
+
     if (direction === "next") {
       const playback = record.room.playback;
       const queuedNextId = playback.nextQueueItemId;
@@ -312,7 +318,7 @@ export class RoomPlaybackService {
         if (
           queuedNext &&
           queuedNext.id !== playback.currentQueueItemId &&
-          await this.resolveTrackSourceCandidate(record, queuedNext.trackId)
+          this.canAdvanceToTrack(trackById.get(queuedNext.trackId), activePresence)
         ) {
           await this.applyTrackPlayback(
             record,
@@ -332,8 +338,7 @@ export class RoomPlaybackService {
       const currentTrackId = playback.currentTrackId;
       if (currentTrackId) {
         const currentQueueItemId = playback.currentQueueItemId;
-        const sourceCandidate = await this.resolveTrackSourceCandidate(record, currentTrackId);
-        if (sourceCandidate) {
+        if (this.canAdvanceToTrack(trackById.get(currentTrackId), activePresence)) {
           await this.applyTrackPlayback(
             record,
             currentTrackId,
@@ -354,7 +359,7 @@ export class RoomPlaybackService {
     }
 
     if (mode === "shuffle") {
-      const randomized = await this.advanceToRandomPlayable(record, positionMs);
+      const randomized = await this.advanceToRandomPlayable(record, positionMs, activePresence);
       if (randomized) {
         return "advanced" as const;
       }
@@ -377,12 +382,21 @@ export class RoomPlaybackService {
       : this.advanceToPreviousPlayable(record, { positionMs });
   }
 
-  private async advanceToRandomPlayable(record: RoomRecord, positionMs: number) {
+  private async advanceToRandomPlayable(
+    record: RoomRecord,
+    positionMs: number,
+    resolvedPresence?: Map<string, string>
+  ) {
     const playback = record.room.playback;
     const trackIds = [...new Set(record.queue.map((item) => item.trackId))];
     if (trackIds.length === 0) {
       return false;
     }
+
+    const activePresence =
+      resolvedPresence ??
+      (await this.roomPresenceService.getActivePresence(record.room.id, record.room.members));
+    const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
 
     const bag = synchronizeShuffleBagTrackIds(
       playback.shuffleBagTrackIds ?? [],
@@ -392,23 +406,42 @@ export class RoomPlaybackService {
     );
     playback.shuffleBagTrackIds = bag;
 
-    let candidateTrackId: string | null = null;
-    for (const trackId of bag) {
-      if (trackId === playback.currentTrackId) {
-        continue;
-      }
-      if (await this.resolveTrackSourceCandidate(record, trackId)) {
-        candidateTrackId = trackId;
-        break;
+    let nextBag = bag;
+    let candidateTrackId = bag.find(
+      (trackId) =>
+        trackId !== playback.currentTrackId &&
+        this.canAdvanceToTrack(trackById.get(trackId), activePresence)
+    ) ?? null;
+
+    // If the remaining bag only held unplayable tracks, start a fresh cycle
+    // across all queued tracks before giving up on advancing.
+    if (!candidateTrackId && bag.length < trackIds.length) {
+      const refilledBag = synchronizeShuffleBagTrackIds(
+        [],
+        trackIds,
+        playback.currentTrackId,
+        []
+      );
+      const refilledCandidate = refilledBag.find(
+        (trackId) =>
+          trackId !== playback.currentTrackId &&
+          this.canAdvanceToTrack(trackById.get(trackId), activePresence)
+      ) ?? null;
+      if (refilledCandidate) {
+        nextBag = refilledBag;
+        candidateTrackId = refilledCandidate;
       }
     }
 
-    // A one-track queue still loops in shuffle mode rather than stopping.
-    if (!candidateTrackId && trackIds.length === 1 && playback.currentTrackId === trackIds[0]) {
-      if (await this.resolveTrackSourceCandidate(record, trackIds[0])) {
-        candidateTrackId = trackIds[0];
-        playback.shuffleBagTrackIds = [];
-      }
+    // Loop the current track in shuffle mode when no other queued track is playable.
+    if (
+      !candidateTrackId &&
+      playback.currentTrackId &&
+      trackIds.includes(playback.currentTrackId) &&
+      this.canAdvanceToTrack(trackById.get(playback.currentTrackId), activePresence)
+    ) {
+      candidateTrackId = playback.currentTrackId;
+      nextBag = [];
     }
 
     if (!candidateTrackId) {
@@ -420,7 +453,7 @@ export class RoomPlaybackService {
       return false;
     }
 
-    playback.shuffleBagTrackIds = bag.filter((trackId) => trackId !== candidateTrackId);
+    playback.shuffleBagTrackIds = nextBag.filter((trackId) => trackId !== candidateTrackId);
     await this.applyTrackPlayback(record, candidate.trackId, positionMs, candidate.id);
     return true;
   }
@@ -556,18 +589,33 @@ export class RoomPlaybackService {
       if (trackIds.length === 0) {
         return false;
       }
+      const activePresence = await this.roomPresenceService.getActivePresence(
+        record.room.id,
+        record.room.members
+      );
+      const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
       const bag = synchronizeShuffleBagTrackIds(
         playback.shuffleBagTrackIds ?? [],
         trackIds,
         unavailableTrackId,
         []
       );
-      let candidateTrackId: string | null = null;
-      for (const trackId of bag) {
-        if (excludedTrackIds.has(trackId)) continue;
-        if (await this.resolveTrackSourceCandidate(record, trackId)) {
-          candidateTrackId = trackId;
-          break;
+      let nextBag = bag;
+      let candidateTrackId = bag.find(
+        (trackId) =>
+          !excludedTrackIds.has(trackId) &&
+          this.canAdvanceToTrack(trackById.get(trackId), activePresence)
+      ) ?? null;
+      if (!candidateTrackId && bag.length < trackIds.length) {
+        const refilledBag = synchronizeShuffleBagTrackIds([], trackIds, unavailableTrackId, []);
+        const refilledCandidate = refilledBag.find(
+          (trackId) =>
+            !excludedTrackIds.has(trackId) &&
+            this.canAdvanceToTrack(trackById.get(trackId), activePresence)
+        ) ?? null;
+        if (refilledCandidate) {
+          nextBag = refilledBag;
+          candidateTrackId = refilledCandidate;
         }
       }
       if (!candidateTrackId) {
@@ -577,7 +625,7 @@ export class RoomPlaybackService {
       if (!candidate) {
         return false;
       }
-      playback.shuffleBagTrackIds = bag.filter((trackId) => trackId !== candidateTrackId);
+      playback.shuffleBagTrackIds = nextBag.filter((trackId) => trackId !== candidateTrackId);
       await this.applyTrackPlayback(record, candidate.trackId, 0, candidate.id);
       bumpPlaybackVersion(playback);
       return true;
@@ -709,23 +757,27 @@ export class RoomPlaybackService {
   }
 
   pausePlaybackForSessionReplacement(record: RoomRecord, sessionId: string) {
-    const playback = record.room.playback;
-    if (!playback.currentTrackId || playback.sourceSessionId !== sessionId) {
-      return false;
-    }
-
-    const positionMs = getEffectivePlaybackPositionMs(record, playback);
-    pausePlaybackAt(record, positionMs, {
-      sourceCandidate: null,
-      bumpMediaEpoch: true,
-      clearSourcePeer: true,
-      keepSourceSessionId: true
-    });
-    bumpPlaybackVersion(playback);
-    return true;
+    return this.handleSourceDeparture(record, sessionId);
   }
 
-
+  private canAdvanceToTrack(
+    track: RoomRecord["tracks"][number] | undefined,
+    activePresence: Map<string, string>
+  ): boolean {
+    if (!track) {
+      return false;
+    }
+    if (pickTrackSourceCandidate(track, activePresence)) {
+      return true;
+    }
+    // Complete provider-backed tracks can continue advancing as long as at
+    // least one member remains online in the room, matching handleSourceDeparture.
+    return (
+      isProviderTrack(track) &&
+      hasCompleteRoomAsset(track) &&
+      activePresence.size > 0
+    );
+  }
 
   private async shouldDeferTrackEndForReconnectingSource(record: RoomRecord): Promise<boolean> {
     if (typeof this.roomPresenceService.getPresenceSnapshot !== "function") {
@@ -757,16 +809,13 @@ export class RoomPlaybackService {
       }
     }
 
+    let hasCompleteProviderCandidate = false;
     for (const trackId of candidateTrackIds) {
-      if (
-        mode === "shuffle" &&
-        candidateTrackIds.size > 1 &&
-        trackId === playback.currentTrackId
-      ) {
-        continue;
-      }
       const track = trackById.get(trackId);
-      if (track && pickTrackSourceCandidate(track, activePresence)) {
+      if (isProviderTrack(track) && hasCompleteRoomAsset(track)) {
+        hasCompleteProviderCandidate = true;
+      }
+      if (this.canAdvanceToTrack(track, activePresence)) {
         return false;
       }
     }
@@ -775,6 +824,12 @@ export class RoomPlaybackService {
       record.room.id,
       record.room.members
     );
+    if (
+      hasCompleteProviderCandidate &&
+      Array.from(presenceSnapshot.values()).some((entry) => entry.presenceState === "reconnecting")
+    ) {
+      return true;
+    }
     for (const trackId of candidateTrackIds) {
       const track = trackById.get(trackId);
       if (!track) continue;
@@ -796,6 +851,11 @@ export class RoomPlaybackService {
       return null;
     }
 
+    const activePresence = await this.roomPresenceService.getActivePresence(
+      record.room.id,
+      record.room.members
+    );
+    const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
     const excludedTrackIds = options.excludedTrackIds;
     const visited = new Set<number>();
     let index = startIndex;
@@ -803,11 +863,11 @@ export class RoomPlaybackService {
     while (index >= 0 && index < record.queue.length && !visited.has(index)) {
       visited.add(index);
       const item = record.queue[index]!;
-      if (!excludedTrackIds?.has(item.trackId)) {
-        const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
-        if (sourceCandidate) {
-          return item;
-        }
+      if (
+        !excludedTrackIds?.has(item.trackId) &&
+        this.canAdvanceToTrack(trackById.get(item.trackId), activePresence)
+      ) {
+        return item;
       }
       index += direction;
     }
@@ -821,8 +881,7 @@ export class RoomPlaybackService {
         if (visited.has(i)) continue;
         const item = record.queue[i]!;
         if (excludedTrackIds?.has(item.trackId)) continue;
-        const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
-        if (sourceCandidate) {
+        if (this.canAdvanceToTrack(trackById.get(item.trackId), activePresence)) {
           return item;
         }
       }
@@ -831,8 +890,7 @@ export class RoomPlaybackService {
         if (visited.has(i)) continue;
         const item = record.queue[i]!;
         if (excludedTrackIds?.has(item.trackId)) continue;
-        const sourceCandidate = await this.resolveTrackSourceCandidate(record, item.trackId);
-        if (sourceCandidate) {
+        if (this.canAdvanceToTrack(trackById.get(item.trackId), activePresence)) {
           return item;
         }
       }

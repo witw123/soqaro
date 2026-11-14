@@ -3,10 +3,17 @@
 export type PlaybackMutationTarget = Pick<
   PlaybackSnapshot,
   "currentTrackId" | "currentQueueItemId"
->;
+> & {
+  startedAt?: string | null;
+  startAt?: string | null;
+  status?: PlaybackSnapshot["status"];
+};
 
 export type PlaybackMutationOptions = {
   refreshSnapshotOnSuccess?: boolean;
+  requireSameTimelineAnchor?: boolean;
+  silentOnConflictSkip?: boolean;
+  returnSnapshotOnConflictSkip?: boolean;
 };
 
 export async function runBestEffortRoomLeave(input: {
@@ -58,11 +65,58 @@ export function shouldResetPlayerAfterTrackRemoval(
 
 export function shouldRetryPlaybackMutationAfterConflict(
   expectedTarget: PlaybackMutationTarget,
-  latestPlayback: PlaybackMutationTarget
+  latestPlayback: PlaybackMutationTarget,
+  options?: Pick<PlaybackMutationOptions, "requireSameTimelineAnchor">
 ) {
+  if (
+    expectedTarget.currentTrackId !== latestPlayback.currentTrackId ||
+    expectedTarget.currentQueueItemId !== latestPlayback.currentQueueItemId
+  ) {
+    return false;
+  }
+
+  if (options?.requireSameTimelineAnchor) {
+    if (
+      expectedTarget.status !== undefined &&
+      latestPlayback.status !== undefined &&
+      expectedTarget.status !== latestPlayback.status
+    ) {
+      return false;
+    }
+
+    const expectedAnchor = expectedTarget.startAt ?? expectedTarget.startedAt ?? null;
+    const latestAnchor = latestPlayback.startAt ?? latestPlayback.startedAt ?? null;
+    if (expectedAnchor !== latestAnchor) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function hasPlaybackTimelineAdvanced(
+  previousPlayback: Pick<
+    PlaybackSnapshot,
+    | "currentTrackId"
+    | "currentQueueItemId"
+    | "status"
+    | "startAt"
+    | "startedAt"
+    | "playbackRevision"
+  >,
+  nextPlayback: PlaybackSnapshot | null | undefined
+) {
+  if (!nextPlayback) {
+    return false;
+  }
+
   return (
-    expectedTarget.currentTrackId === latestPlayback.currentTrackId &&
-    expectedTarget.currentQueueItemId === latestPlayback.currentQueueItemId
+    nextPlayback.currentTrackId !== previousPlayback.currentTrackId ||
+    nextPlayback.currentQueueItemId !== previousPlayback.currentQueueItemId ||
+    nextPlayback.status !== previousPlayback.status ||
+    (nextPlayback.startAt ?? nextPlayback.startedAt ?? null) !==
+      (previousPlayback.startAt ?? previousPlayback.startedAt ?? null) ||
+    nextPlayback.playbackRevision > previousPlayback.playbackRevision
   );
 }
 

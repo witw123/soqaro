@@ -13,10 +13,12 @@ import {
   resolveCacheReadinessReport,
   hasCurrentLocalAudio,
   resolveLocalAudioTimelineKey,
+  resolvePlaybackEndedTimelineKey,
   resolveRoomAudioPath,
   resolveRoomAudioPositionMs,
   resolveRoomProviderCachePlan,
   resolveRemoteAudioTimelineKey,
+  shouldAttemptPlaybackEndedAdvance,
   shouldDisableSourcePlayback,
   shouldSkipUnavailableStreamingTrack,
   shouldWaitForLocalAudioContext
@@ -674,5 +676,62 @@ describe("room provider cache and offline auto-load plan", () => {
       roomSnapshot: buildSnapshot("online", "playing"),
       track: buildTrack(true)
     }).mode).toBe("provider-cache");
+  });
+});
+
+describe("playback ended advance retry", () => {
+  it("falls back to startedAt when startAt is missing", () => {
+    expect(
+      resolvePlaybackEndedTimelineKey({
+        currentTrackId: "track-1",
+        mediaEpoch: 2,
+        startAt: null,
+        startedAt: "2026-07-22T00:00:10.000Z"
+      })
+    ).toBe("track-1:2:2026-07-22T00:00:10.000Z");
+  });
+
+  it("allows retry after cooldown when end advance fails transiently and blocks duplicates once completed", () => {
+    const timelineKey = "track-1:2:2026-07-22T00:00:10.000Z";
+    const initial = {
+      timelineKey: null,
+      inFlight: false,
+      completed: false,
+      lastAttemptAtMs: 0
+    };
+
+    expect(shouldAttemptPlaybackEndedAdvance(initial, timelineKey, 1_000)).toBe(true);
+
+    const inFlightState = {
+      timelineKey,
+      inFlight: true,
+      completed: false,
+      lastAttemptAtMs: 1_000
+    };
+    expect(shouldAttemptPlaybackEndedAdvance(inFlightState, timelineKey, 5_000)).toBe(false);
+
+    const failedState = {
+      timelineKey,
+      inFlight: false,
+      completed: false,
+      lastAttemptAtMs: 1_000
+    };
+    expect(shouldAttemptPlaybackEndedAdvance(failedState, timelineKey, 2_000)).toBe(false);
+    expect(shouldAttemptPlaybackEndedAdvance(failedState, timelineKey, 3_500)).toBe(true);
+
+    const completedState = {
+      timelineKey,
+      inFlight: false,
+      completed: true,
+      lastAttemptAtMs: 3_500
+    };
+    expect(shouldAttemptPlaybackEndedAdvance(completedState, timelineKey, 10_000)).toBe(false);
+    expect(
+      shouldAttemptPlaybackEndedAdvance(
+        completedState,
+        "track-1:2:2026-07-22T00:03:10.000Z",
+        10_000
+      )
+    ).toBe(true);
   });
 });

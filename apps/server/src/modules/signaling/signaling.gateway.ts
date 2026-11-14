@@ -502,17 +502,35 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
         fenceToken
       );
 
-      this.peerSignals.unregisterPeerSocket(
-        previousRoomId,
-        previousPeerId,
-        client.id
+      const isSwitchingSubscription = Boolean(
+        previousRoomId &&
+          previousSessionId &&
+          (previousRoomId !== message.roomId || previousSessionId !== message.sessionId)
       );
-      this.registry.unregisterSessionSocket(
-        previousRoomId,
-        previousSessionId,
-        client.id
-      );
-      this.metrics.unbindRealtimeSocket(client.id);
+      if (isSwitchingSubscription) {
+        this.peerSignals.unregisterPeerSocket(
+          previousRoomId,
+          previousPeerId,
+          client.id
+        );
+        this.registry.unregisterSessionSocket(
+          previousRoomId,
+          previousSessionId,
+          client.id
+        );
+        this.metrics.unbindRealtimeSocket(client.id);
+      } else if (
+        previousRoomId === message.roomId &&
+        previousSessionId === message.sessionId &&
+        previousPeerId &&
+        previousPeerId !== message.peerId
+      ) {
+        this.peerSignals.unregisterPeerSocket(
+          previousRoomId,
+          previousPeerId,
+          client.id
+        );
+      }
       client.data ??= {};
     } catch (error) {
       await this.sessionLease.releasePeerId(message.roomId, message.sessionId, message.peerId);
@@ -602,7 +620,8 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
           sourceId: this.roomRealtimeBroadcaster.instanceId,
           roomId: message.roomId,
           sessionId: message.sessionId,
-          socketId: previousLease.socketId
+          socketId: previousLease.socketId,
+          notifyReplaced: previousLease.peerId !== message.peerId
         });
       }
 
@@ -648,9 +667,8 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
 
     this.ensureBroadcasterServer();
     if (
-      client.data.isRealtimeAuthenticated &&
-      client.data.roomId !== message.roomId &&
-      !client.data.roomId
+      (client.data.handshakeAuthenticated || client.data.isRealtimeAuthenticated) &&
+      client.data.roomId !== message.roomId
     ) {
       return { ok: false, reason: "not-subscribed" as const };
     }
@@ -666,7 +684,18 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     if (leaseStatus === "unavailable") {
       throw new WsException("Realtime session coordination is unavailable.");
     }
-    if (!(await this.sessionLease.renew(client))) {
+    if (typeof this.sessionLease.renewSocketLease === "function") {
+      const renewStatus = await this.sessionLease.renewSocketLease(client);
+      if (renewStatus === "missing") {
+        return { ok: false, reason: "lease-missing" as const };
+      }
+      if (renewStatus === "replaced") {
+        throw new WsException("Realtime session was replaced.");
+      }
+      if (renewStatus === "unavailable") {
+        throw new WsException("Realtime session coordination is unavailable.");
+      }
+    } else if (!(await this.sessionLease.renew(client))) {
       throw new WsException("Realtime session was replaced.");
     }
 

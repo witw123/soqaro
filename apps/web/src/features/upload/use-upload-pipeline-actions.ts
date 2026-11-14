@@ -293,7 +293,10 @@ export function useUploadPipelineActions({
               let sourceType: TrackSourceType = "local_upload";
               let sourceRef: RemoteTrackSourceRef | undefined;
               if (
-                (provider === "netease" || provider === "qqmusic") &&
+                (provider === "netease" ||
+                  provider === "qqmusic" ||
+                  provider === "bilibili" ||
+                  provider === "alist") &&
                 providerTrackId
               ) {
                 sourceType = provider;

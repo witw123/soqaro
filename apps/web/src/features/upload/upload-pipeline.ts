@@ -1,4 +1,4 @@
-import type { TrackMeta } from "@soqaro/shared";
+import { isSafeArtworkUrl, type TrackMeta } from "@soqaro/shared";
 import type { UploadedTrack } from "@/features/library/audio-utils";
 
 type TrackRegistrationDraft = Omit<TrackMeta, "id"> & {
@@ -27,7 +27,9 @@ export function buildRegisterTrackPayload(track: Omit<TrackMeta, "id"> & { id?: 
     codec: track.codec,
     mimeType: track.mimeType,
     fileHash: track.fileHash,
-    artworkUrl: artworkUrl && artworkUrl.length <= maxRegisterArtworkUrlLength
+    artworkUrl: artworkUrl &&
+      artworkUrl.length <= maxRegisterArtworkUrlLength &&
+      isSafeArtworkUrl(artworkUrl)
       ? artworkUrl
       : null,
     ownerSessionId: track.ownerSessionId,

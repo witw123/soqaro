@@ -106,9 +106,11 @@ function toDurationMs(value: number | undefined) {
 }
 
 function toBitrate(value: number | undefined) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 10_000_000
-    ? Math.round(value)
-    : null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  const rounded = Math.round(value);
+  return rounded > 0 && rounded <= 10_000_000 ? rounded : null;
 }
 
 function readLyrics(tags: ILyricsTag[] | undefined) {

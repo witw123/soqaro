@@ -112,4 +112,19 @@ describe("toHttpApiError", () => {
       }
     });
   });
+
+  it("maps body-parser entity.too.large / 413 errors to 413 VALIDATION_FAILED", () => {
+    const payloadTooLarge = Object.assign(new Error("request entity too large"), {
+      status: 413,
+      statusCode: 413,
+      type: "entity.too.large"
+    });
+    expect(toHttpApiError(payloadTooLarge)).toEqual({
+      status: HttpStatus.PAYLOAD_TOO_LARGE,
+      body: {
+        code: errorCodes.validationFailed,
+        message: "Request payload is too large."
+      }
+    });
+  });
 });

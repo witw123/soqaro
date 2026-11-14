@@ -8,6 +8,12 @@ const opusFrameSize = 960
 // Seek preroll is represented by overlapping source samples and playback
 // trim metadata; it must not be encoded into OpusHead pre-skip.
 export const opusPreSkipSamples = 312
+const opusApplicationIds = {
+	voip: 2048,
+	audio: 2049,
+	lowdelay: 2051
+}
+const validOpusSampleRates = new Set([8000, 12000, 16000, 24000, 48000])
 
 /**
  * Ogg Opus encoder — browser + Node
@@ -32,19 +38,14 @@ export default async function opus(opts) {
 	let nch = opts.channels || 1
 	let bitrate = (opts.bitrate || 64) * 1000
 
-	let mod = await import('opusscript')
-	let OpusScript = mod.default || mod
 	let app = opts.application || 'audio'
-
-	let appConst = app === 'voip' ? OpusScript.Application.VOIP
-		: app === 'lowdelay' ? OpusScript.Application.RESTRICTED_LOWDELAY
-		: OpusScript.Application.AUDIO
+	let appConst = opusApplicationIds[app] || opusApplicationIds.audio
 
 	let OPUS_RATE = opusSampleRate
 	let FRAME_SIZE = opusFrameSize // 20ms at 48kHz
 	let ratio = OPUS_RATE / rate
 
-	let enc = await createOpusScript(OpusScript, OPUS_RATE, nch, appConst)
+	let enc = await createWasmOpusEncoder(OPUS_RATE, nch, appConst)
 	enc.setBitrate(bitrate)
 
 	let serial = (Math.random() * 0xFFFFFFFF) >>> 0
@@ -292,39 +293,49 @@ export default async function opus(opts) {
 	}
 }
 
-let browserWasmModulePromise = null
+let wasmModulePromise = null
 
-async function createOpusScript(OpusScript, samplingRate, channels, application) {
-	// Dedicated workers can use the native WebAssembly build, but opusscript's
-	// default loader cannot resolve its .wasm file after Next bundles the worker.
-	// Feed the binary explicitly and keep asm.js as a compatibility fallback.
-	if (typeof self !== "undefined") {
-		try {
-			if (!browserWasmModulePromise) {
-				browserWasmModulePromise = (async () => {
-					const response = await fetch(new URL("./opusscript_native_wasm.wasm", import.meta.url))
-					if (!response.ok) throw new Error(`Unable to load Opus WASM (${response.status}).`)
-					return createWasmModule({ wasmBinary: await response.arrayBuffer() })
-				})().catch((error) => {
-					browserWasmModulePromise = null
-					throw error
-				})
-			}
-			return new BrowserOpusScript(
-				await browserWasmModulePromise,
-				samplingRate,
-				channels,
-				application
-			)
-		} catch {
-			return new OpusScript(samplingRate, channels, application, { wasm: false })
-		}
+async function loadWasmBinary() {
+	const wasmUrl = new URL("./opusscript_native_wasm.wasm", import.meta.url)
+	if (wasmUrl.protocol === "file:") {
+		const { readFile } = await import(/* webpackIgnore: true */ "node:fs/promises")
+		return new Uint8Array(await readFile(wasmUrl))
 	}
-	return new OpusScript(samplingRate, channels, application, { wasm: true })
+	const response = await fetch(wasmUrl)
+	if (!response.ok) {
+		throw new Error(`Unable to load Opus WASM (${response.status}).`)
+	}
+	return new Uint8Array(await response.arrayBuffer())
 }
 
-class BrowserOpusScript {
+async function getWasmModule() {
+	if (!wasmModulePromise) {
+		wasmModulePromise = (async () => {
+			const wasmBinary = await loadWasmBinary()
+			const module = await createWasmModule({ wasmBinary })
+			return module.ready ? await module.ready : module
+		})().catch((error) => {
+			wasmModulePromise = null
+			throw error
+		})
+	}
+	return wasmModulePromise
+}
+
+async function createWasmOpusEncoder(samplingRate, channels, application) {
+	return new WasmOpusEncoder(
+		await getWasmModule(),
+		samplingRate,
+		channels,
+		application
+	)
+}
+
+class WasmOpusEncoder {
 	constructor(native, samplingRate, channels, application) {
+		if (!validOpusSampleRates.has(samplingRate)) {
+			throw new RangeError(`${samplingRate} is an invalid sampling rate.`)
+		}
 		this.native = native
 		this.channels = channels
 		this.handler = new native.OpusScriptHandler(samplingRate, channels, application)
@@ -334,7 +345,6 @@ class BrowserOpusScript {
 			this.inPCMPointer,
 			this.inPCMPointer + this.inPCMLength
 		)
-		this.inOpusPointer = native._malloc(maxPacketSize)
 		this.outOpusPointer = native._malloc(maxPacketSize)
 	}
 
@@ -364,9 +374,9 @@ class BrowserOpusScript {
 	}
 
 	delete() {
+		if (!this.handler) return
 		this.native.OpusScriptHandler.destroy_handler(this.handler)
 		this.native._free(this.inPCMPointer)
-		this.native._free(this.inOpusPointer)
 		this.native._free(this.outOpusPointer)
 		this.handler = null
 	}

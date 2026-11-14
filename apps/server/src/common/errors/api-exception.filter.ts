@@ -74,6 +74,16 @@ export function toHttpApiError(exception: unknown): {
     };
   }
 
+  if (isPayloadTooLargeError(exception)) {
+    return {
+      status: HttpStatus.PAYLOAD_TOO_LARGE,
+      body: createApiErrorResponse(
+        errorCodes.validationFailed,
+        "Request payload is too large."
+      )
+    };
+  }
+
   const rawMessage = exception instanceof Error ? exception.message : "Internal server error.";
   const code = mapErrorCode(rawMessage, HttpStatus.INTERNAL_SERVER_ERROR);
   const message = sanitizePlainErrorMessage(rawMessage, code);
@@ -81,6 +91,18 @@ export function toHttpApiError(exception: unknown): {
     status: mapErrorStatus(code),
     body: createApiErrorResponse(code, message)
   };
+}
+
+function isPayloadTooLargeError(exception: unknown): boolean {
+  if (typeof exception !== "object" || exception === null) {
+    return false;
+  }
+  const candidate = exception as { status?: unknown; statusCode?: unknown; type?: unknown };
+  return (
+    candidate.status === HttpStatus.PAYLOAD_TOO_LARGE ||
+    candidate.statusCode === HttpStatus.PAYLOAD_TOO_LARGE ||
+    candidate.type === "entity.too.large"
+  );
 }
 
 function publicErrorMessage(message: string, code: ErrorCode) {

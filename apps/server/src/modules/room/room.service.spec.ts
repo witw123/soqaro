@@ -1,5 +1,6 @@
 import { AuthService } from "../auth/auth.service";
 import { createRoomCoreServices } from "./room-graph";
+import { normalizeRoomRecord } from "./room.types";
 
 function createPrismaMock() {
   return {
@@ -3330,5 +3331,110 @@ describe("RoomService", () => {
     await expect(
       roomService.addQueueItem(snapshot.room.id, host.id, baseTrack.id)
     ).rejects.toThrow("播放队列数量已达到上限。");
+  });
+
+  it("clears sourceRef when a local_upload updates an existing provider track by fileHash and repairs stale records", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const snapshot = await roomService.createRoom(host.id, "public", {
+      roomType: "interactive"
+    });
+    const sharedHash = "d".repeat(64);
+
+    const providerTrack = await roomService.registerTrack(snapshot.room.id, host.id, {
+      title: "Provider Track",
+      artist: "Uploader",
+      album: null,
+      durationMs: 120_000,
+      bitrate: 192_000,
+      sizeBytes: 2048,
+      codec: "opus",
+      mimeType: "audio/ogg",
+      fileHash: sharedHash,
+      artworkUrl: null,
+      ownerSessionId: host.id,
+      ownerNickname: host.nickname,
+      sourceType: "bilibili",
+      sourceRef: { provider: "bilibili", trackId: "BV1xx411c7mD" },
+      playbackAsset: createPlaybackAssetMock("f".repeat(64), 120_000, sharedHash)
+    });
+
+    const updatedTrack = await roomService.registerTrack(snapshot.room.id, host.id, {
+      title: "Local Override",
+      artist: "Uploader",
+      album: null,
+      durationMs: 120_000,
+      bitrate: 192_000,
+      sizeBytes: 2048,
+      codec: "opus",
+      mimeType: "audio/ogg",
+      fileHash: sharedHash,
+      artworkUrl: null,
+      ownerSessionId: host.id,
+      ownerNickname: host.nickname,
+      sourceType: "local_upload",
+      playbackAsset: createPlaybackAssetMock("f".repeat(64), 120_000, sharedHash)
+    });
+
+    expect(updatedTrack.id).toBe(providerTrack.id);
+    expect(updatedTrack.sourceType).toBe("local_upload");
+    expect(updatedTrack.sourceRef).toBeUndefined();
+
+    const record = await roomCore.roomRecordRepository.getRoomRecord(snapshot.room.id);
+    expect(normalizeRoomRecord(structuredClone(record))).not.toBeNull();
+
+    const corruptedRecord = structuredClone(record);
+    corruptedRecord.tracks[0] = {
+      ...corruptedRecord.tracks[0],
+      sourceType: "local_upload",
+      sourceRef: { provider: "bilibili", trackId: "BV1xx411c7mD" }
+    };
+    const repaired = normalizeRoomRecord(corruptedRecord);
+    expect(repaired).not.toBeNull();
+    expect(repaired?.tracks[0]?.sourceRef).toBeUndefined();
+    expect(repaired?.tracks[0]?.playbackAsset?.assetId).toBe(updatedTrack.playbackAsset?.assetId);
+  });
+
+  it("retries registerTrack once on transient Room state revision conflict.", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const snapshot = await roomService.createRoom(host.id, "public", {
+      roomType: "interactive"
+    });
+
+    const originalPersist = roomCore.roomRecordRepository.persistRecord.bind(roomCore.roomRecordRepository);
+    const persistSpy = jest
+      .spyOn(roomCore.roomRecordRepository, "persistRecord")
+      .mockRejectedValueOnce(new Error("Room state revision conflict."))
+      .mockImplementationOnce(originalPersist);
+
+    const track = await roomService.registerTrack(snapshot.room.id, host.id, {
+      title: "Retried Track",
+      artist: "Artist",
+      album: null,
+      durationMs: 120_000,
+      bitrate: 192_000,
+      sizeBytes: 1024,
+      codec: "mp3",
+      mimeType: "audio/mpeg",
+      fileHash: "e".repeat(64),
+      artworkUrl: null,
+      ownerSessionId: host.id,
+      ownerNickname: host.nickname,
+      sourceType: "local_upload"
+    });
+
+    expect(persistSpy).toHaveBeenCalledTimes(2);
+    expect(track.title).toBe("Retried Track");
   });
 });

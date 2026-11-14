@@ -40,14 +40,16 @@ export class RoomContentService {
     input: Omit<TrackMeta, "id"> & { id?: string }
   ) {
     const user = await this.authService.getUserOrThrow(sessionId);
-    const record = await this.roomRecordRepository.getRoomRecord(roomId);
-    assertMember(record, sessionId);
-    assertPermission(record, sessionId, "library");
+    return this.withRoomRevisionRetry(async () => {
+      const record = await this.roomRecordRepository.getRoomRecord(roomId);
+      assertMember(record, sessionId);
+      assertPermission(record, sessionId, "library");
 
-    const track = this.upsertRegisteredTrack(record, sessionId, user.nickname, input);
-    incrementRoomRevision(record.room);
-    await this.roomRecordRepository.persistRecord(record);
-    return track;
+      const track = this.upsertRegisteredTrack(record, sessionId, user.nickname, input);
+      incrementRoomRevision(record.room);
+      await this.roomRecordRepository.persistRecord(record);
+      return track;
+    });
   }
 
   async registerTracks(
@@ -55,22 +57,76 @@ export class RoomContentService {
     sessionId: string,
     inputs: Array<Omit<TrackMeta, "id"> & { id?: string }>
   ) {
-    const user = await this.authService.getUserOrThrow(sessionId);
-    const record = await this.roomRecordRepository.getRoomRecord(roomId);
-    assertMember(record, sessionId);
-    assertPermission(record, sessionId, "library");
-
     if (inputs.length === 0) {
       throw new BadRequestException("至少需要导入一首歌曲。");
     }
-    const registered: TrackMeta[] = [];
-    for (const input of inputs) {
-      registered.push(this.upsertRegisteredTrack(record, sessionId, user.nickname, input));
-    }
+    const user = await this.authService.getUserOrThrow(sessionId);
+    return this.withRoomRevisionRetry(async () => {
+      const record = await this.roomRecordRepository.getRoomRecord(roomId);
+      assertMember(record, sessionId);
+      assertPermission(record, sessionId, "library");
 
-    incrementRoomRevision(record.room);
-    await this.roomRecordRepository.persistRecord(record);
-    return registered;
+      const registered: TrackMeta[] = [];
+      for (const input of inputs) {
+        registered.push(this.upsertRegisteredTrack(record, sessionId, user.nickname, input));
+      }
+
+      incrementRoomRevision(record.room);
+      await this.roomRecordRepository.persistRecord(record);
+      return registered;
+    });
+  }
+
+  private async withRoomRevisionRetry<T>(operation: () => Promise<T>, maxAttempts = 3): Promise<T> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        const isConflict =
+          error instanceof Error && error.message === "Room state revision conflict.";
+        if (!isConflict || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
+    throw new Error("Room state revision conflict.");
+  }
+
+  private resolveRegisteredSourceRef(
+    input: Omit<TrackMeta, "id"> & { id?: string },
+    existingTrack?: TrackMeta
+  ): TrackMeta["sourceRef"] {
+    if (input.sourceType === "local_upload") {
+      return undefined;
+    }
+    if (input.sourceRef) {
+      return input.sourceRef;
+    }
+    if (existingTrack?.sourceRef && existingTrack.sourceRef.provider === input.sourceType) {
+      return existingTrack.sourceRef;
+    }
+    return undefined;
+  }
+
+  private buildUpdatedTrack(
+    existingTrack: TrackMeta,
+    input: Omit<TrackMeta, "id"> & { id?: string },
+    ownerSessionId: string,
+    ownerNickname: string
+  ): TrackMeta {
+    const sourceRef = this.resolveRegisteredSourceRef(input, existingTrack);
+    const updated: TrackMeta = {
+      ...existingTrack,
+      ...input,
+      id: existingTrack.id,
+      ownerSessionId,
+      ownerNickname,
+      ...(sourceRef !== undefined ? { sourceRef } : {})
+    };
+    if (sourceRef === undefined) {
+      delete updated.sourceRef;
+    }
+    return updated;
   }
 
   private upsertRegisteredTrack(
@@ -93,20 +149,18 @@ export class RoomContentService {
             )
           );
         }
-        const updated: TrackMeta = {
-          ...existingTrack,
-          ...input,
-          id: existingTrack.id,
-          ownerSessionId: existingTrack.ownerSessionId,
-          ownerNickname:
-            existingTrack.ownerSessionId === sessionId ? nickname : existingTrack.ownerNickname
-        };
+        const updated = this.buildUpdatedTrack(
+          existingTrack,
+          input,
+          existingTrack.ownerSessionId,
+          existingTrack.ownerSessionId === sessionId ? nickname : existingTrack.ownerNickname
+        );
         record.tracks[existingByIdIndex] = updated;
         return updated;
       }
     }
 
-    const sourceRef = input.sourceType !== "local_upload" ? input.sourceRef : null;
+    const sourceRef = this.resolveRegisteredSourceRef(input);
     const duplicateByFileHashIndex = record.tracks.findIndex(
       (item) =>
         item.fileHash === input.fileHash &&
@@ -114,13 +168,7 @@ export class RoomContentService {
     );
     if (duplicateByFileHashIndex >= 0) {
       const existingTrack = record.tracks[duplicateByFileHashIndex];
-      const updated: TrackMeta = {
-        ...existingTrack,
-        ...input,
-        id: existingTrack.id,
-        ownerSessionId: sessionId,
-        ownerNickname: nickname
-      };
+      const updated = this.buildUpdatedTrack(existingTrack, input, sessionId, nickname);
       record.tracks[duplicateByFileHashIndex] = updated;
       return updated;
     }
@@ -136,13 +184,7 @@ export class RoomContentService {
       : -1;
     if (duplicateBySourceIndex >= 0) {
       const existingTrack = record.tracks[duplicateBySourceIndex];
-      const updated: TrackMeta = {
-        ...existingTrack,
-        ...input,
-        id: existingTrack.id,
-        ownerSessionId: sessionId,
-        ownerNickname: nickname
-      };
+      const updated = this.buildUpdatedTrack(existingTrack, input, sessionId, nickname);
       record.tracks[duplicateBySourceIndex] = updated;
       return updated;
     }
@@ -155,8 +197,12 @@ export class RoomContentService {
       ...input,
       ownerSessionId: sessionId,
       ownerNickname: nickname,
-      id: `track_${randomUUID()}`
+      id: `track_${randomUUID()}`,
+      ...(sourceRef !== undefined ? { sourceRef } : {})
     };
+    if (sourceRef === undefined) {
+      delete track.sourceRef;
+    }
     record.tracks.unshift(track);
     return track;
   }
@@ -167,57 +213,59 @@ export class RoomContentService {
     input: PrepareTrackAssetRequest
   ) {
     await this.authService.getUserOrThrow(sessionId);
-    const record = await this.roomRecordRepository.getRoomRecord(roomId);
-    assertMember(record, sessionId);
+    return this.withRoomRevisionRetry(async () => {
+      const record = await this.roomRecordRepository.getRoomRecord(roomId);
+      assertMember(record, sessionId);
 
-    const trackIndex = record.tracks.findIndex((item) => item.id === input.trackId);
-    if (trackIndex < 0) {
-      throw new BadRequestException(`房间中不存在该曲目: ${input.trackId}`);
-    }
+      const trackIndex = record.tracks.findIndex((item) => item.id === input.trackId);
+      if (trackIndex < 0) {
+        throw new BadRequestException(`房间中不存在该曲目: ${input.trackId}`);
+      }
 
-    const track = record.tracks[trackIndex];
-    if (track.ownerSessionId !== sessionId && record.room.hostId !== sessionId) {
-      throw new BadRequestException("只有曲目源成员或房主可以为该曲目准备分发资产。");
-    }
+      const track = record.tracks[trackIndex];
+      if (track.ownerSessionId !== sessionId && record.room.hostId !== sessionId) {
+        throw new BadRequestException("只有曲目源成员或房主可以为该曲目准备分发资产。");
+      }
 
-    const updatedTrack: TrackMeta = {
-      ...track,
-      fileHash: input.fileHash,
-      originalAsset: input.originalAsset,
-      playbackAsset: input.playbackAsset
-    };
-    this.assertTrackLimits(updatedTrack);
+      const updatedTrack: TrackMeta = {
+        ...track,
+        fileHash: input.fileHash,
+        originalAsset: input.originalAsset,
+        playbackAsset: input.playbackAsset
+      };
+      this.assertTrackLimits(updatedTrack);
 
-    record.tracks[trackIndex] = updatedTrack;
-    incrementRoomRevision(record.room);
+      record.tracks[trackIndex] = updatedTrack;
+      incrementRoomRevision(record.room);
 
-    let playbackChanged = false;
-    if (
-      record.room.playback.currentTrackId === track.id &&
-      record.room.playback.status === "paused"
-    ) {
-      await this.roomPlaybackService.applyTrackPlayback(
-        record,
-        track.id,
-        record.room.playback.positionMs ?? 0,
-        record.room.playback.currentQueueItemId,
-        input.playbackAsset.assetId
-      );
-      incrementPlaybackRevision(record.room.playback);
-      playbackChanged = true;
-    }
+      let playbackChanged = false;
+      if (
+        record.room.playback.currentTrackId === track.id &&
+        record.room.playback.status === "paused"
+      ) {
+        await this.roomPlaybackService.applyTrackPlayback(
+          record,
+          track.id,
+          record.room.playback.positionMs ?? 0,
+          record.room.playback.currentQueueItemId,
+          input.playbackAsset.assetId
+        );
+        incrementPlaybackRevision(record.room.playback);
+        playbackChanged = true;
+      }
 
-    await this.roomRecordRepository.persistRecord(record);
-    const playback = playbackChanged
-      ? await this.roomPlaybackService.buildPlaybackForSnapshot(record)
-      : undefined;
+      await this.roomRecordRepository.persistRecord(record);
+      const playback = playbackChanged
+        ? await this.roomPlaybackService.buildPlaybackForSnapshot(record)
+        : undefined;
 
-    return {
-      track: updatedTrack,
-      playbackChanged,
-      playback,
-      roomRevision: record.room.roomRevision ?? 0
-    };
+      return {
+        track: updatedTrack,
+        playbackChanged,
+        playback,
+        roomRevision: record.room.roomRevision ?? 0
+      };
+    });
   }
 
   async reportTrackAssetUnavailable(

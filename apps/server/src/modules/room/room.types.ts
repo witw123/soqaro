@@ -294,7 +294,18 @@ function normalizeTracks(value: unknown): TrackMeta[] | null {
     if (!isRecord(track)) {
       return null;
     }
-    const { originalAsset: _originalAsset, playbackAsset: _playbackAsset, ...metadata } = track;
+    const candidate =
+      track.sourceType === "local_upload" && track.sourceRef !== undefined
+        ? (({ sourceRef: _sourceRef, ...rest }) => rest)(track)
+        : track;
+    if (candidate !== track) {
+      const repaired = trackMetaSchema.safeParse(candidate);
+      if (repaired.success) {
+        tracks.push(repaired.data);
+        continue;
+      }
+    }
+    const { originalAsset: _originalAsset, playbackAsset: _playbackAsset, ...metadata } = candidate;
     const legacyCompatible = trackMetaSchema.safeParse(metadata);
     if (legacyCompatible.success) {
       tracks.push(legacyCompatible.data);

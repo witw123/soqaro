@@ -53,6 +53,30 @@ describe("processSelectedTrackFiles", () => {
     expect(payload.artworkUrl).toBeNull();
   });
 
+  it("strips unsafe or unsupported artwork URLs while keeping safe URLs", () => {
+    const bmpPayload = buildRegisterTrackPayload({
+      ...buildTrack("draft", "hash"),
+      artworkUrl: "data:image/bmp;base64,AAAA"
+    });
+    const xssPayload = buildRegisterTrackPayload({
+      ...buildTrack("draft", "hash"),
+      artworkUrl: "javascript:alert(1)"
+    });
+    const safeJpegPayload = buildRegisterTrackPayload({
+      ...buildTrack("draft", "hash"),
+      artworkUrl: "data:image/jpeg;base64,AAAA"
+    });
+    const safeHttpsPayload = buildRegisterTrackPayload({
+      ...buildTrack("draft", "hash"),
+      artworkUrl: "https://cdn.example.com/cover.jpg"
+    });
+
+    expect(bmpPayload.artworkUrl).toBeNull();
+    expect(xssPayload.artworkUrl).toBeNull();
+    expect(safeJpegPayload.artworkUrl).toBe("data:image/jpeg;base64,AAAA");
+    expect(safeHttpsPayload.artworkUrl).toBe("https://cdn.example.com/cover.jpg");
+  });
+
   it("keeps local artwork when persisting after server registration", async () => {
     const file = new File(["new"], "new.mp3", { type: "audio/mpeg" });
     const localArtworkUrl = `data:image/jpeg;base64,${"a".repeat(4_500)}`;

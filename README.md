@@ -21,24 +21,24 @@
 
 ## 软件下载
 
-当前稳定版本：[Soqaro v1.0.0](https://github.com/witw123/soqaro/releases/tag/v1.0.0)（支持桌面端自动更新）
+当前稳定版本：[Soqaro v1.0.1](https://github.com/witw123/soqaro/releases/tag/v1.0.1)（支持桌面端自动更新）
 
 | 操作系统 | 架构 | 安装包类型 | 下载直链 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| Windows | x64 | NSIS 安装程序 (`.exe`) | [Soqaro_1.0.0_x64-setup.exe](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_x64-setup.exe) | 桌面置顶歌词与系统媒体控制 (SMTC) |
-| Windows | x64 | WiX 安装包 (`.msi`) | [Soqaro_1.0.0_x64_en-US.msi](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_x64_en-US.msi) | 企业分发与静默安装 |
-| macOS | Universal | DMG 镜像 (`.dmg`) | [Soqaro_1.0.0_universal.dmg](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_universal.dmg) | 原生适配 Apple Silicon 与 Intel 架构 |
+| Windows | x64 | NSIS 安装程序 (`.exe`) | [Soqaro_1.0.1_x64-setup.exe](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_x64-setup.exe) | 桌面置顶歌词与系统媒体控制 (SMTC) |
+| Windows | x64 | WiX 安装包 (`.msi`) | [Soqaro_1.0.1_x64_en-US.msi](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_x64_en-US.msi) | 企业分发与静默安装 |
+| macOS | Universal | DMG 镜像 (`.dmg`) | [Soqaro_1.0.1_universal.dmg](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_universal.dmg) | 原生适配 Apple Silicon 与 Intel 架构 |
 | macOS | Universal | 更新归档 (`.app.tar.gz`) | [Soqaro_universal.app.tar.gz](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_universal.app.tar.gz) | 客户端内置自动更新校验包 |
-| Linux | x86_64 | AppImage | [Soqaro_1.0.0_amd64.AppImage](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_amd64.AppImage) | 通用便携免安装执行包 |
-| Linux | x86_64 | Debian (`.deb`) | [Soqaro_1.0.0_amd64.deb](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_amd64.deb) | 适用于 Ubuntu / Debian / Deepin 等 |
-| Linux | x86_64 | RPM (`.rpm`) | [Soqaro-1.0.0-1.x86_64.rpm](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-1.0.0-1.x86_64.rpm) | 适用于 Fedora / RHEL / openSUSE 等 |
-| Android | Universal | APK 安装包 (`.apk`) | [Soqaro-Android-v1.0.0.apk](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-Android-v1.0.0.apk) | 原生 MediaSession 与后台服务常驻保活 |
+| Linux | x86_64 | AppImage | [Soqaro_1.0.1_amd64.AppImage](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_amd64.AppImage) | 通用便携免安装执行包 |
+| Linux | x86_64 | Debian (`.deb`) | [Soqaro_1.0.1_amd64.deb](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_amd64.deb) | 适用于 Ubuntu / Debian / Deepin 等 |
+| Linux | x86_64 | RPM (`.rpm`) | [Soqaro-1.0.1-1.x86_64.rpm](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-1.0.1-1.x86_64.rpm) | 适用于 Fedora / RHEL / openSUSE 等 |
+| Android | Universal | APK 安装包 (`.apk`) | [Soqaro-Android-v1.0.1.apk](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-Android-v1.0.1.apk) | 原生 MediaSession 与后台服务常驻保活 |
 | Web | 现代浏览器 | PWA 在线应用 | [在线访问](https://soqaro.witw.top/app) | 浏览器即开即用，支持 PWA 离线安装 |
 
 > [!NOTE]
 > **安装与运行说明**  
 > - **macOS**：首次打开如遇系统 Gatekeeper 拦截提示，可在终端执行 `sudo xattr -cr /Applications/Soqaro.app` 放行。  
-> - **Linux**：AppImage 文件需在运行前赋予执行权限：`chmod +x Soqaro_1.0.0_amd64.AppImage`。  
+> - **Linux**：AppImage 文件需在运行前赋予执行权限：`chmod +x Soqaro_1.0.1_amd64.AppImage`。  
 > - **Android**：生产发布包已签名，首次安装请在系统弹窗中允许来自当前应用源的安装。
 
 ---

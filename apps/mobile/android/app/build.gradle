@@ -26,7 +26,7 @@ def hasReleaseKeystore = [releaseKeystorePath, releaseKeystorePassword, releaseK
 // on versionCode alone, so it is derived from the version people read rather
 // than hand-numbered: 0.3.3 -> 303. The old hand-numbered 33 stops here on
 // purpose — 303 is larger, so already-installed builds still move forward.
-def appVersionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0.0"
+def appVersionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0.1"
 def versionMatch = appVersionName =~ /^(\d+)\.(\d+)\.(\d+)/
 def appVersionCode = 1
 if (versionMatch.find()) {

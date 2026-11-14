@@ -2,6 +2,27 @@
 
 本文档记录项目对外发布的重要变更。
 
+## [1.0.1] - 2026-11-14
+
+### 桌面端与移动端原生更新
+
+- **安全模型与原生能力加固**：
+  - **桌面端（Tauri）**：启用显式 `csp` 策略并关闭 `withGlobalTauri`，收紧 `default` 与 `local-storage` capabilities 权限范围，新增 `url_guard` 对原生下载与系统媒体外链进行校验，加固 `native_downloader` 与 `system_media`；
+  - **移动端（Android）**：收紧 `capacitor.config.json`（关闭 `cleartext`、`allowMixedContent`、`webContentsDebuggingEnabled` 与 `CapacitorHttp`），加强多种 Android 机型适配并完善 `AppUpdaterPlugin`、`LocalStoragePlugin`、`SystemMediaService`、`SystemNotificationPlugin` 与 `SafeImageLoader`；
+- **多端长会话保活协同**：同步服务端、Web 端与移动端的租约续期与切回重连状态同步，降低长时间听歌场景下的意外断流风险。
+
+### 关键修复
+
+- **房间导入与 Opus 编码修复**：彻底移除 Opus 编码路径中触发 CSP `unsafe-eval` 的动态求值，修复房内导入歌曲时的服务端 500 异常，解决批量导入时的渲染进程内存暴涨与崩溃问题，并支持导入取消；
+- **长时间独听意外暂停修复**：修复单人在房间长时间播放歌曲时音频意外停摆、暂停状态漂移与时钟校准问题；
+- **进出房间与水合崩溃修复**：修复进入房间时的 React 418 水合不一致崩溃、页面切换闪烁及弹窗切换引发的浏览进程异常。
+
+### 功能与体验优化
+
+- **多端统一主题与界面打磨**：提供八套纯色主题与风格化图标预览，完善发现页房间推荐、歌单搜索迁移、房间卡片自适应网格与移动端底栏交互过渡；
+- **离线缓存授权兼容**：允许拥有本地缓存的成员在源成员离线时继续播放已缓存曲目；
+- **工程与依赖安全**：修复安全审计依赖项，修复 Web standalone 静态资源复制与 CI/E2E 校验规则。
+
 ## [1.0.0] - 2026-10-23
 
 ### 重点发布

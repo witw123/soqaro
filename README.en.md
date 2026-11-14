@@ -21,24 +21,24 @@
 
 ## Downloads
 
-Current stable release: [Soqaro v1.0.0](https://github.com/witw123/soqaro/releases/tag/v1.0.0) (With in-app auto-update support)
+Current stable release: [Soqaro v1.0.1](https://github.com/witw123/soqaro/releases/tag/v1.0.1) (With in-app auto-update support)
 
 | OS | Architecture | Package Type | Direct Download Link | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| Windows | x64 | NSIS Installer (`.exe`) | [Soqaro_1.0.0_x64-setup.exe](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_x64-setup.exe) | Floating lyrics overlay and Windows SMTC integration |
-| Windows | x64 | WiX Package (`.msi`) | [Soqaro_1.0.0_x64_en-US.msi](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_x64_en-US.msi) | Enterprise distribution and silent installation |
-| macOS | Universal | DMG Image (`.dmg`) | [Soqaro_1.0.0_universal.dmg](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_universal.dmg) | Native Apple Silicon (M1–M4) and Intel x86_64 bundle |
+| Windows | x64 | NSIS Installer (`.exe`) | [Soqaro_1.0.1_x64-setup.exe](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_x64-setup.exe) | Floating lyrics overlay and Windows SMTC integration |
+| Windows | x64 | WiX Package (`.msi`) | [Soqaro_1.0.1_x64_en-US.msi](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_x64_en-US.msi) | Enterprise distribution and silent installation |
+| macOS | Universal | DMG Image (`.dmg`) | [Soqaro_1.0.1_universal.dmg](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_universal.dmg) | Native Apple Silicon (M1–M4) and Intel x86_64 bundle |
 | macOS | Universal | Update Archive (`.app.tar.gz`) | [Soqaro_universal.app.tar.gz](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_universal.app.tar.gz) | In-app auto-updater archive |
-| Linux | x86_64 | AppImage | [Soqaro_1.0.0_amd64.AppImage](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_amd64.AppImage) | Portable, standalone executable package |
-| Linux | x86_64 | Debian (`.deb`) | [Soqaro_1.0.0_amd64.deb](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.0_amd64.deb) | For Ubuntu, Debian, Linux Mint, Deepin, etc. |
-| Linux | x86_64 | RPM (`.rpm`) | [Soqaro-1.0.0-1.x86_64.rpm](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-1.0.0-1.x86_64.rpm) | For Fedora, RHEL, openSUSE, etc. |
-| Android | Universal | APK Package (`.apk`) | [Soqaro-Android-v1.0.0.apk](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-Android-v1.0.0.apk) | Native MediaSession, lockscreen controls, and background service |
+| Linux | x86_64 | AppImage | [Soqaro_1.0.1_amd64.AppImage](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_amd64.AppImage) | Portable, standalone executable package |
+| Linux | x86_64 | Debian (`.deb`) | [Soqaro_1.0.1_amd64.deb](https://github.com/witw123/soqaro/releases/latest/download/Soqaro_1.0.1_amd64.deb) | For Ubuntu, Debian, Linux Mint, Deepin, etc. |
+| Linux | x86_64 | RPM (`.rpm`) | [Soqaro-1.0.1-1.x86_64.rpm](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-1.0.1-1.x86_64.rpm) | For Fedora, RHEL, openSUSE, etc. |
+| Android | Universal | APK Package (`.apk`) | [Soqaro-Android-v1.0.1.apk](https://github.com/witw123/soqaro/releases/latest/download/Soqaro-Android-v1.0.1.apk) | Native MediaSession, lockscreen controls, and background service |
 | Web | Modern Browsers | PWA Web App | [Launch Web App](https://soqaro.witw.top/app) | Chrome, Edge, Safari, Firefox; installable as a PWA |
 
 > [!NOTE]
 > **Installation Notes**  
 > - **macOS**: If blocked by Gatekeeper on first open, execute `sudo xattr -cr /Applications/Soqaro.app` in Terminal.  
-> - **Linux AppImage**: Grant execution permission before running: `chmod +x Soqaro_1.0.0_amd64.AppImage`.  
+> - **Linux AppImage**: Grant execution permission before running: `chmod +x Soqaro_1.0.1_amd64.AppImage`.  
 > - **Android**: Release APK is signed; allow installation from your browser or file manager when prompted.
 
 ---

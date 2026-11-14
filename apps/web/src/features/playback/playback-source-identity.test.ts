@@ -77,6 +77,40 @@ describe("playback-source-identity", () => {
     ).toBe(false);
   });
 
+  it("preserves source ownership while the active playing source session is reconnecting", () => {
+    const reconnectingPlayback: PlaybackSnapshot = {
+      ...basePlayback,
+      sourcePeerId: null
+    };
+
+    expect(
+      isCurrentPlaybackSourceDevice({
+        playback: reconnectingPlayback,
+        peerId: "peer_device_a",
+        activeSessionId: "user_session_123",
+        sourcePresenceState: "reconnecting"
+      })
+    ).toBe(true);
+
+    expect(
+      isCurrentPlaybackSourceDevice({
+        playback: { ...reconnectingPlayback, status: "paused" },
+        peerId: "peer_device_a",
+        activeSessionId: "user_session_123",
+        sourcePresenceState: "reconnecting"
+      })
+    ).toBe(false);
+
+    expect(
+      isCurrentPlaybackSourceDevice({
+        playback: reconnectingPlayback,
+        peerId: "peer_device_a",
+        activeSessionId: "user_session_other",
+        sourcePresenceState: "reconnecting"
+      })
+    ).toBe(false);
+  });
+
   it("returns true when peerId matches sourcePeerId", () => {
     expect(
       isCurrentPlaybackSourceDevice({

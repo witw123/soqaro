@@ -1274,14 +1274,14 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             !Number.isFinite(audio.currentTime) ||
             Math.abs(audio.currentTime - targetSeconds) >= localAudioSeekToleranceSeconds
           ) {
-            if (shouldForceSync) {
+            if (shouldForceSync && activeRoomPlayback.status !== "playing") {
               audio.pause();
             }
             audio.currentTime = Math.max(0, targetSeconds);
           }
-          localAudioTimelineKeyRef.current = timelineKey;
 
           if (activeRoomPlayback.status !== "playing") {
+            localAudioTimelineKeyRef.current = timelineKey;
             // Pause the local timeline without tearing down the source's RTP
             // topology. The destination track remains live and carries
             // silence while the local element is paused, so resume/seek can
@@ -1452,6 +1452,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             return;
           }
 
+          localAudioTimelineKeyRef.current = timelineKey;
           // Decode/buffering can continue after play() is requested. Catch up
           // to the room clock, not the position captured before that wait.
           alignCurrentLocalAudio(false);
@@ -2066,6 +2067,9 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     let cancelled = false;
     void roomAudioOutput.resumeSharedAudioContext().then((resumed) => {
       if (cancelled || resumed) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
         return;
       }
       setAudioUnlocked(false);

@@ -27,6 +27,8 @@ function createSnapshot(input: {
   sourcePeerId?: string | null;
   sourceSessionId?: string | null;
   memberPeerId?: string | null;
+  hostPeerId?: string | null;
+  hostPresenceState?: "online" | "reconnecting" | "offline";
 }) {
   const sourceSessionId = input.sourceSessionId ?? "host";
   return {
@@ -44,7 +46,7 @@ function createSnapshot(input: {
         positionMs: 12_000,
         startedAt: "2026-07-06T00:00:01.000Z",
         sourceSessionId,
-        sourcePeerId: input.sourcePeerId ?? "peer_host",
+        sourcePeerId: input.sourcePeerId !== undefined ? input.sourcePeerId : "peer_host",
         sourceTrackId: "track_cached",
         queueVersion: 3,
         playbackRevision: 5,
@@ -53,11 +55,11 @@ function createSnapshot(input: {
       members: [
         {
           id: "host",
-          peerId: "peer_host",
+          peerId: input.hostPeerId !== undefined ? input.hostPeerId : "peer_host",
           nickname: "Host",
           role: "host",
           joinedAt: "2026-07-06T00:00:00.000Z",
-          presenceState: "online"
+          presenceState: input.hostPresenceState ?? "online"
         },
         ...(sourceSessionId === "member"
           ? [{
@@ -165,5 +167,36 @@ describe("room page derived state", () => {
     });
 
     expect(playback.isCurrentSourceOwner).toBe(true);
+  });
+
+  it("keeps the local source active during transient reconnecting snapshots and drops when offline", () => {
+    const reconnectingSnapshot = createSnapshot({
+      sourceSessionId: "host",
+      sourcePeerId: null,
+      hostPeerId: null,
+      hostPresenceState: "reconnecting"
+    });
+    const offlineSnapshot = createSnapshot({
+      sourceSessionId: "host",
+      sourcePeerId: null,
+      hostPeerId: null,
+      hostPresenceState: "offline"
+    });
+
+    expect(
+      resolveRoomPagePlaybackState({
+        roomSnapshot: reconnectingSnapshot,
+        peerId: "peer_host",
+        activeSessionId: "host"
+      }).isCurrentSourceOwner
+    ).toBe(true);
+
+    expect(
+      resolveRoomPagePlaybackState({
+        roomSnapshot: offlineSnapshot,
+        peerId: "peer_host",
+        activeSessionId: "host"
+      }).isCurrentSourceOwner
+    ).toBe(false);
   });
 });

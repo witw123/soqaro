@@ -110,6 +110,10 @@ export function resolveRoomPagePlaybackState(input: UseRoomPageDerivedInput) {
   const playbackSourceSessionId = roomPlayback?.sourceSessionId ?? null;
   const playbackStatus = roomPlayback?.status ?? null;
   const currentSourcePeerId = resolveCurrentSourcePeerId(input.roomSnapshot, roomPlayback);
+  const currentSourcePresenceState = resolveCurrentSourcePresenceState(
+    input.roomSnapshot,
+    roomPlayback
+  );
 
   return {
     roomPlayback,
@@ -124,7 +128,8 @@ export function resolveRoomPagePlaybackState(input: UseRoomPageDerivedInput) {
       playback: roomPlayback,
       peerId: input.peerId,
       activeSessionId: input.activeSessionId,
-      sourcePeerId: currentSourcePeerId
+      sourcePeerId: currentSourcePeerId,
+      sourcePresenceState: currentSourcePresenceState
     }),
     playbackSurfaceKey: resolvePlaybackSurfaceKey(roomPlayback),
     playbackTimelineKey: resolvePlaybackTimelineKey(roomPlayback),
@@ -153,6 +158,7 @@ export function useRoomPageDerived({
   const playbackSourceSessionId = roomPlayback?.sourceSessionId ?? null;
   const playbackStatus = roomPlayback?.status ?? null;
   const currentSourcePeerId = resolveCurrentSourcePeerId(roomSnapshot, roomPlayback);
+  const currentSourcePresenceState = resolveCurrentSourcePresenceState(roomSnapshot, roomPlayback);
 
   const isCurrentSourceOwner = useMemo(
     () =>
@@ -160,9 +166,10 @@ export function useRoomPageDerived({
         playback: roomPlayback,
         peerId,
         activeSessionId,
-        sourcePeerId: currentSourcePeerId
+        sourcePeerId: currentSourcePeerId,
+        sourcePresenceState: currentSourcePresenceState
       }),
-    [activeSessionId, currentSourcePeerId, peerId, roomPlayback]
+    [activeSessionId, currentSourcePeerId, currentSourcePresenceState, peerId, roomPlayback]
   );
   const playbackSurfaceKey = useMemo(
     () => {
@@ -239,4 +246,17 @@ export function resolveCurrentSourcePeerId(
     ? roomSnapshot?.room.members.find((member) => member.id === playback.sourceSessionId)?.peerId ?? null
     : null;
   return presencePeerId ?? playback.sourcePeerId;
+}
+
+export function resolveCurrentSourcePresenceState(
+  roomSnapshot: RoomSnapshot | null | undefined,
+  playback: RoomSnapshot["room"]["playback"] | null | undefined
+) {
+  if (!playback?.sourceSessionId) {
+    return null;
+  }
+  return (
+    roomSnapshot?.room.members.find((member) => member.id === playback.sourceSessionId)
+      ?.presenceState ?? null
+  );
 }

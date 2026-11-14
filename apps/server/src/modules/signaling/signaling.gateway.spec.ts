@@ -329,6 +329,7 @@ describe("SignalingGateway chat", () => {
         cancelPendingDisconnectCleanup: jest.fn(),
         unregisterSessionSocket: jest.fn(),
         registerSessionSocket: jest.fn(),
+        replaceExistingRoomSession: jest.fn().mockResolvedValue(undefined),
         updatePeerPresence: jest.fn().mockResolvedValue(true),
         rememberRecentRoom: jest.fn().mockResolvedValue(undefined),
         evictMemberSockets: jest.fn().mockResolvedValue(undefined),

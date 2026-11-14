@@ -1,10 +1,11 @@
-﻿import type { PlaybackSnapshot } from "@soqaro/shared";
+﻿import type { PlaybackSnapshot, RoomMember } from "@soqaro/shared";
 
 export function isCurrentPlaybackSourceDevice(input: {
   playback: PlaybackSnapshot | null | undefined;
   peerId: string | null | undefined;
   activeSessionId?: string | null | undefined;
   sourcePeerId?: string | null;
+  sourcePresenceState?: RoomMember["presenceState"] | null;
 }) {
   const playback = input.playback;
   if (!playback?.currentTrackId || !input.peerId) {
@@ -23,7 +24,13 @@ export function isCurrentPlaybackSourceDevice(input: {
   const snapshotSourcePeerId = playback.sourcePeerId ?? null;
 
   if (!explicitSourcePeerId && !snapshotSourcePeerId) {
-    return false;
+    return Boolean(
+      playback.status === "playing" &&
+      input.sourcePresenceState === "reconnecting" &&
+      input.activeSessionId &&
+      playback.sourceSessionId &&
+      input.activeSessionId === playback.sourceSessionId
+    );
   }
 
   // Only the specific physical client peer currently designated as the room's

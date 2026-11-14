@@ -561,6 +561,12 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
       }
 
       client.join(message.roomId);
+      await this.registry.replaceExistingRoomSession(
+        message.roomId,
+        message.sessionId,
+        message.peerId,
+        client.id
+      );
       recoveryGeneration = this.peerSignals.registerRecoveryGeneration(
         message.roomId,
         message.sessionId,
@@ -586,13 +592,6 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
         this.readiness.clearForSession(previousRoomId, previousSessionId, previousPeerId);
         await this.sessionLease.releasePeerId(previousRoomId, previousSessionId, previousPeerId);
       }
-
-      await this.registry.replaceExistingRoomSession(
-        message.roomId,
-        message.sessionId,
-        message.peerId,
-        client.id
-      );
 
       if (
         previousLease?.socketId &&

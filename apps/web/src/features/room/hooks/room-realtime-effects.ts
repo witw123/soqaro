@@ -18,8 +18,8 @@ import {
 } from "./room-realtime-policy";
 
 const presenceHeartbeatIntervalMs = 10_000;
-const presenceAckTimeoutMs = 5_000;
-const presenceResubscribeCooldownMs = 5_000;
+const presenceAckTimeoutMs = 15_000;
+const presenceResubscribeCooldownMs = 10_000;
 export function useRoomRealtimeConnectionEffects(input: {
   roomSnapshot: RoomSnapshot | null;
   initialRoomId: string | null;
@@ -175,8 +175,8 @@ export function useRoomRealtimeConnectionEffects(input: {
   ]);
 
   const startPresenceHeartbeat = useCallback(() => {
-    emitPresence();
     stopPresenceHeartbeat();
+    emitPresence();
     presenceIntervalRef.current = window.setInterval(
       emitPresence,
       presenceHeartbeatIntervalMs

@@ -260,7 +260,15 @@ export function useSegmentedOpusPlayback(input: {
           return;
         }
         const serverNowMs = getRoomPlaybackClockNowMs();
-        const audioContextState = roomAudioOutput.getSharedAudioContext()?.state ?? null;
+        let audioContextState = roomAudioOutput.getSharedAudioContext()?.state ?? null;
+
+        if (runtime.audioUnlocked && audioContextState !== "running") {
+          await roomAudioOutput.resumeSharedAudioContext();
+          if (cancelled || generation !== playbackGenerationRef.current) {
+            return;
+          }
+          audioContextState = roomAudioOutput.getSharedAudioContext()?.state ?? null;
+        }
 
         if (!runtime.audioUnlocked || audioContextState !== "running") {
           if (cancelled || generation !== playbackGenerationRef.current) {

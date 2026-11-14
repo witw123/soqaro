@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        boolean cacheCleared = WebViewCacheCleaner.clearIfInstallChanged(this);
         registerPlugin(DesktopLyricsPlugin.class);
         registerPlugin(SystemNotificationPlugin.class);
         registerPlugin(SystemMediaControlsPlugin.class);
@@ -46,6 +47,9 @@ public class MainActivity extends BridgeActivity {
 
         // Configure WebView for background media, keepalive, and font scaling stability
         if (bridge != null && bridge.getWebView() != null) {
+            if (cacheCleared) {
+                bridge.getWebView().clearCache(true);
+            }
             WebSettings settings = bridge.getWebView().getSettings();
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setTextZoom(100);

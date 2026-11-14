@@ -1,3 +1,4 @@
+mod cache_cleanup;
 mod system_media;
 mod local_storage;
 mod native_downloader;
@@ -238,6 +239,12 @@ async fn download_direct_native(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    cache_cleanup::clear_stale_webview_cache(
+        &context.config().identifier,
+        &context.package_info().version.to_string(),
+    );
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(
@@ -343,6 +350,6 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

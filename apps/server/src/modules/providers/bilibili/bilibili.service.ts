@@ -198,10 +198,20 @@ export class BilibiliService {
 
     const audioStreams = playData?.dash?.audio ?? [];
     if (audioStreams.length > 0) {
-      const bestAudio = [...audioStreams].sort((a, b) => b.bandwidth - a.bandwidth)[0]!;
-      const candidateUrls = sortBilibiliAudioUrls(bestAudio.baseUrl, bestAudio.backupUrl).map(
-        (url) => url.replace(/^http:\/\//i, "https://")
-      );
+      const sortedStreams = [...audioStreams].sort((a, b) => b.bandwidth - a.bandwidth);
+      const seenUrls = new Set<string>();
+      const candidateUrls: string[] = [];
+      for (const stream of sortedStreams) {
+        const urls = sortBilibiliAudioUrls(stream.baseUrl, stream.backupUrl).map((url) =>
+          url.replace(/^http:\/\//i, "https://")
+        );
+        for (const url of urls) {
+          if (!seenUrls.has(url)) {
+            seenUrls.add(url);
+            candidateUrls.push(url);
+          }
+        }
+      }
       if (candidateUrls.length > 0) {
         const result = {
           candidateUrls,

@@ -58,6 +58,13 @@ export class BilibiliWbiSigner {
   private static cachedSubKey: string | null = null;
   private static keysExpiresAt = 0;
 
+  /** Clear cached WBI signing keys so the next call fetches fresh keys. */
+  static invalidateCache(): void {
+    this.cachedImgKey = null;
+    this.cachedSubKey = null;
+    this.keysExpiresAt = 0;
+  }
+
   /**
    * 获取并缓存 WBI Key
    */

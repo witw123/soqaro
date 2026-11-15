@@ -11,7 +11,7 @@ import {
   getCachedLibraryTrackSummaryByProviderTrack,
   linkTrackAssets
 } from "@/features/library/indexeddb";
-import { soqaroApi } from "@/lib/network/soqaro-api";
+import { soqaroApi, SoqaroApiError } from "@/lib/network/soqaro-api";
 import { buildTrackMeta, type UploadedTrack } from "@/features/library/audio-utils";
 import {
   getReusableAudioAssets,
@@ -409,6 +409,7 @@ export async function importProviderTracks(input: {
   };
   fillPrefetchWindow(1);
   let pipelineError: unknown = null;
+  let consecutiveUnavailableFailures = 0;
   try {
     for (let index = 0; index < pendingCandidates.length; index += 1) {
       if (cancelSignal?.aborted) break;
@@ -578,6 +579,7 @@ export async function importProviderTracks(input: {
           lyrics
         });
         currentBatchHeldKeys.push(key);
+        consecutiveUnavailableFailures = 0;
       } catch (error) {
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         inFlightUploadHashesRef.current.delete(key);
@@ -587,6 +589,22 @@ export async function importProviderTracks(input: {
         failures.push(error);
         const errDetail = toProviderImportErrorMessage(error);
         importTaskStore.failItem(taskId, activeItemKey, errDetail, aliasKeys);
+        if (error instanceof SoqaroApiError && error.code === "RATE_LIMITED") {
+          break;
+        }
+        if (
+          error instanceof SoqaroApiError &&
+          (error.code === "BILIBILI_UNAVAILABLE" ||
+            error.code === "NETEASE_UNAVAILABLE" ||
+            error.code === "QQMUSIC_UNAVAILABLE")
+        ) {
+          consecutiveUnavailableFailures += 1;
+          if (consecutiveUnavailableFailures >= 3) {
+            break;
+          }
+        } else {
+          consecutiveUnavailableFailures = 0;
+        }
       }
 
       if (cancelSignal?.aborted) {

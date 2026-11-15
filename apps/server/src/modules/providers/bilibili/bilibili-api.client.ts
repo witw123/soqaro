@@ -24,7 +24,8 @@ const BILIBILI_AUDIO_HOST_SUFFIXES = [
   "akamaized.net",
   "biliapi.net",
   "acgvideo.com",
-  "szbdyd.com"
+  "szbdyd.com",
+  "mountaintoys.cn"
 ] as const;
 
 function matchesAllowedSuffix(hostname: string, suffixes: readonly string[]): boolean {
@@ -203,10 +204,23 @@ export function scoreBilibiliCdnUrl(url: string): number {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase();
-    if (host.includes("mcdn") || host.includes("szbdyd.com") || host.includes("ws.hw.biliapi.net")) {
+    if (
+      host.includes("mcdn") ||
+      host.includes("szbdyd.com") ||
+      host.includes("mountaintoys.cn") ||
+      host.includes("ws.hw.biliapi.net")
+    ) {
       return -10;
     }
-    if (host.endsWith("bilivideo.com") || host.endsWith("hdslb.com") || host.includes("akamaized.net")) {
+    if (host.startsWith("cn-") && (host.endsWith("bilivideo.com") || host.endsWith("bilivideo.cn"))) {
+      return 5;
+    }
+    if (
+      host.endsWith("bilivideo.com") ||
+      host.endsWith("bilivideo.cn") ||
+      host.endsWith("hdslb.com") ||
+      host.includes("akamaized.net")
+    ) {
       return 10;
     }
   } catch {
@@ -237,12 +251,17 @@ export class BilibiliApiClient {
   private cookiesExpiresAt = 0;
   private readonly videoViewCache = new Map<string, { data: BilibiliViewData; expiresAt: number }>();
 
+  invalidateGuestCookies(): void {
+    this.cachedCookies = null;
+    this.cookiesExpiresAt = 0;
+  }
+
   /**
    * 免登录获取完整访客 Cookie（b_nut, buvid3, buvid4 等），满足 B 站 WAF 反爬校验
    */
-  async getGuestCookies(): Promise<string> {
+  async getGuestCookies(forceRefresh = false): Promise<string> {
     const now = Date.now();
-    if (this.cachedCookies && now < this.cookiesExpiresAt) {
+    if (!forceRefresh && this.cachedCookies && now < this.cookiesExpiresAt) {
       return this.cachedCookies;
     }
 
@@ -349,45 +368,66 @@ export class BilibiliApiClient {
     return json.data;
   }
 
+  private async requestWbiPlayUrl(
+    bvid: string,
+    cid: number,
+    cookie: string
+  ): Promise<{ data?: BilibiliPlayUrlData; wafBlocked: boolean }> {
+    const signedQuery = await BilibiliWbiSigner.sign(
+      {
+        bvid,
+        cid,
+        qn: 64,
+        fnval: 4048,
+        fnver: 0,
+        fourk: 1
+      },
+      cookie
+    );
+    const url = `https://api.bilibili.com/x/player/wbi/playurl?${signedQuery}`;
+    const res = await fetchUpstream(url, {
+      headers: {
+        "User-Agent": BILIBILI_UA,
+        Referer: `https://www.bilibili.com/video/${bvid}`,
+        Origin: "https://www.bilibili.com",
+        Cookie: cookie
+      }
+    });
+    if (!res.ok) {
+      this.logger.warn(`Bilibili WBI playurl HTTP ${res.status}, trying fallback.`);
+      return { wafBlocked: res.status === 412 || res.status === 403 };
+    }
+    const json = (await res.json()) as { code: number; message: string; data?: BilibiliPlayUrlData };
+    if (json.code === 0 && json.data) {
+      return { data: json.data, wafBlocked: false };
+    }
+    this.logger.warn(`Bilibili WBI playurl returned code ${json.code} (${json.message}), trying fallback.`);
+    return { wafBlocked: json.code === -412 || json.code === -352 || json.code === -403 };
+  }
+
   /**
    * 获取视频播放流：三级容灾架构
-   * 1. 优先使用 Web 端 WBI 签名 playurl 接口（带 Origin 与完整视频 Referer）；
+   * 1. 优先使用 Web 端 WBI 签名 playurl 接口（带 Origin 与完整视频 Referer，遇风控自动刷新访客 Cookie 重试）；
    * 2. 次选 Web 端普通 playurl 接口；
    * 3. 终极兜底：TV 端 UGC playurl 接口（官方客户端 appkey 签名，免登录无 412 风控）。
    */
   async getPlayUrl(bvid: string, cid: number, aid?: number): Promise<BilibiliPlayUrlData> {
-    const cookie = await this.getGuestCookies();
+    let cookie = await this.getGuestCookies();
 
-    // 1. 尝试 Web WBI 接口
+    // 1. 尝试 Web WBI 接口（若触发 WAF 风控码则刷新访客 Cookie + WBI Key 重试一次）
     try {
-      const signedQuery = await BilibiliWbiSigner.sign(
-        {
-          bvid,
-          cid,
-          qn: 64,
-          fnval: 4048,
-          fnver: 0,
-          fourk: 1
-        },
-        cookie
-      );
-      const url = `https://api.bilibili.com/x/player/wbi/playurl?${signedQuery}`;
-      const res = await fetchUpstream(url, {
-        headers: {
-          "User-Agent": BILIBILI_UA,
-          Referer: `https://www.bilibili.com/video/${bvid}`,
-          Origin: "https://www.bilibili.com",
-          Cookie: cookie
+      const firstAttempt = await this.requestWbiPlayUrl(bvid, cid, cookie);
+      if (firstAttempt.data) {
+        return firstAttempt.data;
+      }
+      if (firstAttempt.wafBlocked) {
+        this.invalidateGuestCookies();
+        BilibiliWbiSigner.invalidateCache();
+        cookie = await this.getGuestCookies(true);
+        const retryAttempt = await this.requestWbiPlayUrl(bvid, cid, cookie);
+        if (retryAttempt.data) {
+          return retryAttempt.data;
         }
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { code: number; message: string; data?: BilibiliPlayUrlData };
-        if (json.code === 0 && json.data) {
-          return json.data;
-        }
-        this.logger.warn(`Bilibili WBI playurl returned code ${json.code} (${json.message}), trying fallback.`);
-      } else {
-        this.logger.warn(`Bilibili WBI playurl HTTP ${res.status}, trying fallback.`);
       }
     } catch (err) {
       this.logger.warn(`Bilibili WBI playurl error: ${err instanceof Error ? err.message : String(err)}, trying fallback.`);

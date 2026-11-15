@@ -442,5 +442,37 @@ describe("BilibiliService and Utilities", () => {
         undefined
       );
     });
+
+    it("includes fallback audio quality streams in candidateUrls when higher-bandwidth CDNs fail", async () => {
+      mockClient.getVideoView.mockResolvedValueOnce({
+        bvid: "BV1MultiStream",
+        aid: 99,
+        title: "多音质曲目",
+        pic: "",
+        desc: "",
+        duration: 200,
+        owner: { mid: 1, name: "UP", face: "" },
+        pages: [{ cid: 2002, page: 1, part: "P1", duration: 200 }]
+      });
+      mockClient.getPlayUrl.mockResolvedValueOnce({
+        dash: {
+          audio: [
+            { id: 30216, baseUrl: "https://upos-fallback.bilivideo.com/low.m4s", backupUrl: [], bandwidth: 64000, codecs: "mp4a" },
+            { id: 30280, baseUrl: "https://upos-primary.bilivideo.com/high.m4s", backupUrl: [], bandwidth: 192000, codecs: "mp4a" }
+          ]
+        }
+      });
+      mockClient.fetchAudioStream.mockResolvedValueOnce({ status: 200, headers: {}, body: null });
+
+      await service.openAudioStream("BV1MultiStream", 2002);
+
+      expect(mockClient.fetchAudioStream).toHaveBeenCalledWith(
+        [
+          "https://upos-primary.bilivideo.com/high.m4s",
+          "https://upos-fallback.bilivideo.com/low.m4s"
+        ],
+        undefined
+      );
+    });
   });
 });

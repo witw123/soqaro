@@ -5,6 +5,7 @@ import {
   Headers,
   HttpException,
   HttpStatus,
+  Logger,
   Optional,
   Param,
   Post,
@@ -35,6 +36,8 @@ const BYTE_RANGE_HEADER_PATTERN = /^bytes=(\d+-\d*|\d*-\d+)$/i;
 
 @Controller("v1/providers/bilibili")
 export class BilibiliController {
+  private readonly logger = new Logger(BilibiliController.name);
+
   constructor(
     private readonly service: BilibiliService,
     private readonly auth: AuthService,
@@ -195,10 +198,12 @@ export class BilibiliController {
       if (error instanceof HttpException && error.getStatus() < HttpStatus.INTERNAL_SERVER_ERROR) {
         throw error;
       }
+      const message = error instanceof Error ? error.message : "Bilibili audio could not be fetched.";
+      this.logger.warn(`Bilibili audio stream failed for ${bvid}:${cid ?? "default"}: ${message}`);
       throw new HttpException(
         createApiErrorResponse(
           errorCodes.bilibiliUnavailable,
-          error instanceof Error ? error.message : "Bilibili audio could not be fetched."
+          message
         ),
         HttpStatus.BAD_GATEWAY
       );
@@ -206,6 +211,9 @@ export class BilibiliController {
 
     if (streamResult.status !== 200 && streamResult.status !== 206) {
       await streamResult.body?.cancel().catch(() => {});
+      this.logger.warn(
+        `Bilibili audio stream returned unexpected status ${streamResult.status} for ${bvid}:${cid ?? "default"}.`
+      );
       throw new HttpException(
         createApiErrorResponse(
           errorCodes.bilibiliUnavailable,

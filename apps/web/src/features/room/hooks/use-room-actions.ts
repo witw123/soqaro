@@ -777,6 +777,7 @@ export function useRoomActions({
         const errMsg = toUserFacingError(error);
         setStatusMessage(errMsg);
         importTaskStore.finishTask(taskId, { error: errMsg });
+        throw error;
       }
     },
     [activeSession, roomSnapshot, setStatusMessage, syncRoomSnapshot]

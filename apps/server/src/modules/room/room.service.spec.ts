@@ -788,6 +788,55 @@ describe("RoomService", () => {
     });
   });
 
+  it("matches provider-prefixed and local-prefixed playlist trackIds when importing to queue", async () => {
+    const prisma = createPrismaMock();
+    const redis = createRedisMock();
+    const authService = new AuthService(prisma as never, {} as never);
+    const roomCore = createRoomCoreServices({ authService, prisma, redis });
+    const roomService = roomCore.roomService;
+
+    const host = await authService.createGuestSession("Host");
+    const snapshot = await roomService.createRoom(host.id, "public", { roomType: "request" });
+    await roomService.updatePeerPresence(snapshot.room.id, host.id, "peer-host");
+
+    const providerTrack = await roomService.registerTrack(snapshot.room.id, host.id, {
+      title: "Provider Song",
+      artist: "Artist",
+      album: null,
+      durationMs: 180000,
+      bitrate: 320000,
+      fileHash: "provider-hash-1",
+      artworkUrl: null,
+      ownerSessionId: host.id,
+      ownerNickname: host.nickname,
+      sourceType: "netease",
+      sourceRef: { provider: "netease", trackId: "123456" }
+    });
+    const localTrack = await roomService.registerTrack(snapshot.room.id, host.id, {
+      title: "Local Song",
+      artist: "Local Upload",
+      album: null,
+      durationMs: 150000,
+      bitrate: null,
+      fileHash: "local-hash-1",
+      artworkUrl: null,
+      ownerSessionId: host.id,
+      ownerNickname: host.nickname,
+      sourceType: "local_upload"
+    });
+
+    const queue = await roomService.importPlaylistToQueue(snapshot.room.id, host.id, [
+      "provider:netease:123456",
+      "local:local-hash-1"
+    ]);
+
+    expect(queue.map((item) => item.trackId)).toEqual([providerTrack.id, localTrack.id]);
+
+    await expect(
+      roomService.importPlaylistToQueue(snapshot.room.id, host.id, ["provider:netease:999999"])
+    ).rejects.toThrow("该歌单中暂无当前房间已导入的可播曲目。");
+  });
+
   it("keeps playback paused when the first track is only added to queue", async () => {
     const prisma = createPrismaMock();
     const redis = createRedisMock();

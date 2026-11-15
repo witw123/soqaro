@@ -22,8 +22,18 @@ import {
   TrashIcon
 } from "@/components/icons/DiscoverIcons";
 import { importTaskStore, useVisibleImportTasks, isCandidateImporting } from "@/features/upload/import-task-store";
-import { listLocalPlaylistTracks, type LocalPlaylistTrackRecord } from "@/features/library/indexeddb";
-import { toCachedProviderTrack } from "@/features/playlist/local-playlist-mappers";
+import {
+  listCachedLibraryTrackSummaries,
+  listLocalPlaylistTracks
+} from "@/features/library/indexeddb";
+import {
+  buildFallbackPlaylistTracks,
+  buildRoomTrackKeySet,
+  getRoomPlaylistSource,
+  isTrackInRoom,
+  type ResolvedPlaylistTrackEntry,
+  type RoomPlaylistSource
+} from "./room-library-playlist-utils";
 
 type ProviderTrack = ProviderTrackCandidate;
 
@@ -52,46 +62,9 @@ type PlaylistTrackItem = {
   durationMs: number;
   artworkUrl: string | null;
   providerTrack: ProviderTrack | null;
+  cachedTrack: CachedLibraryTrack | null;
   isInRoom: boolean;
 };
-
-type RoomPlaylistSource =
-  | { type: "playlist"; provider: "netease" | "qqmusic"; playlistId: string }
-  | { type: "album"; provider: "netease" | "qqmusic"; albumId: string }
-  | { type: "bilibili"; bvid: string };
-
-function getRoomPlaylistSource(playlist: Playlist): RoomPlaylistSource | null {
-  const albumTag = playlist.tags?.find((tag) => tag.startsWith("album:"));
-  if (albumTag) {
-    const parts = albumTag.split(":");
-    if (parts.length >= 3) {
-      const provider = parts[1];
-      const id = parts.slice(2).join(":");
-      if (provider === "bilibili") return { type: "bilibili", bvid: id };
-      if (provider === "netease" || provider === "qqmusic") return { type: "album", provider, albumId: id };
-    }
-  }
-
-  const networkTag = playlist.tags?.find((tag) => tag.startsWith("network:"));
-  if (networkTag) {
-    const [, provider, ...idParts] = networkTag.split(":");
-    const id = idParts.join(":");
-    if (provider === "bilibili") return { type: "bilibili", bvid: id };
-    if (provider === "netease" || provider === "qqmusic") return { type: "playlist", provider, playlistId: id };
-  }
-
-  const directTag = playlist.tags?.find((tag) =>
-    tag.startsWith("netease:") || tag.startsWith("qqmusic:") || tag.startsWith("bilibili:")
-  );
-  if (directTag) {
-    const [provider, ...idParts] = directTag.split(":");
-    const id = idParts.join(":");
-    if (provider === "bilibili") return { type: "bilibili", bvid: id };
-    if (provider === "netease" || provider === "qqmusic") return { type: "playlist", provider, playlistId: id };
-  }
-
-  return null;
-}
 
 async function fetchSourceTracks(source: RoomPlaylistSource): Promise<ProviderTrack[]> {
   try {
@@ -114,6 +87,95 @@ async function fetchSourceTracks(source: RoomPlaylistSource): Promise<ProviderTr
   } catch {
     return [];
   }
+}
+
+async function loadResolvedPlaylistEntries(
+  trackIds: readonly string[],
+  source: RoomPlaylistSource | null
+): Promise<ResolvedPlaylistTrackEntry[]> {
+  if (source) {
+    const remoteTracks = await fetchSourceTracks(source);
+    if (remoteTracks.length > 0) {
+      return remoteTracks.map((track) => ({
+        key: `${track.provider}:${track.providerTrackId}`,
+        rawId: `provider:${track.provider}:${track.providerTrackId}`,
+        title: track.title,
+        artist: track.artist,
+        album: track.album ?? null,
+        durationMs: track.durationMs,
+        artworkUrl: track.artworkUrl ?? null,
+        providerTrack: track,
+        cachedTrack: null
+      }));
+    }
+  }
+
+  const [localTracks, cachedSummaries] = await Promise.all([
+    listLocalPlaylistTracks().catch(() => []),
+    listCachedLibraryTrackSummaries().catch(() => [])
+  ]);
+  return buildFallbackPlaylistTracks(trackIds, localTracks, cachedSummaries);
+}
+
+type ImportHandlers = {
+  onImportNeteaseTracks?: (tracks: NeteaseTrackCandidate[]) => Promise<void>;
+  onImportQqMusicTracks?: (tracks: QqMusicTrackCandidate[]) => Promise<void>;
+  onImportBilibiliTracks?: (tracks: BilibiliTrackCandidate[]) => Promise<void>;
+  onImportCachedTrack?: (track: CachedLibraryTrack) => Promise<void>;
+};
+
+async function importMissingEntries(
+  entries: readonly { providerTrack: ProviderTrack | null; cachedTrack: CachedLibraryTrack | null }[],
+  handlers: ImportHandlers
+): Promise<{ importedGroups: number; failedMessages: string[] }> {
+  const netease: NeteaseTrackCandidate[] = [];
+  const qqmusic: QqMusicTrackCandidate[] = [];
+  const bilibili: BilibiliTrackCandidate[] = [];
+  const cached: CachedLibraryTrack[] = [];
+
+  for (const entry of entries) {
+    if (entry.providerTrack) {
+      if (entry.providerTrack.provider === "netease") {
+        netease.push(entry.providerTrack as NeteaseTrackCandidate);
+      } else if (entry.providerTrack.provider === "qqmusic") {
+        qqmusic.push(entry.providerTrack as QqMusicTrackCandidate);
+      } else if (entry.providerTrack.provider === "bilibili") {
+        bilibili.push(entry.providerTrack as BilibiliTrackCandidate);
+      }
+    } else if (entry.cachedTrack) {
+      cached.push(entry.cachedTrack);
+    }
+  }
+
+  let importedGroups = 0;
+  const failedMessages: string[] = [];
+
+  const runBatch = async (label: string, task: () => Promise<void>) => {
+    try {
+      await task();
+      importedGroups += 1;
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? error.message : `${label}导入失败`;
+      failedMessages.push(`${label}：${detail}`);
+    }
+  };
+
+  if (netease.length > 0 && handlers.onImportNeteaseTracks) {
+    await runBatch("网易云曲目", () => handlers.onImportNeteaseTracks!(netease));
+  }
+  if (qqmusic.length > 0 && handlers.onImportQqMusicTracks) {
+    await runBatch("QQ音乐曲目", () => handlers.onImportQqMusicTracks!(qqmusic));
+  }
+  if (bilibili.length > 0 && handlers.onImportBilibiliTracks) {
+    await runBatch("B站曲目", () => handlers.onImportBilibiliTracks!(bilibili));
+  }
+  if (cached.length > 0 && handlers.onImportCachedTrack) {
+    for (const track of cached) {
+      await runBatch(`本地缓存《${track.title}》`, () => handlers.onImportCachedTrack!(track));
+    }
+  }
+
+  return { importedGroups, failedMessages };
 }
 
 export function RoomLibraryPlaylistsSection({
@@ -144,31 +206,13 @@ export function RoomLibraryPlaylistsSection({
     [roomPlaylists, selectedPlaylistId]
   );
 
-  const roomTrackKeySet = useMemo(() => {
-    return new Set(
-      tracks.flatMap((t) => {
-        const keys = [t.id];
-        if (t.sourceRef) {
-          keys.push(`${t.sourceRef.provider}:${t.sourceRef.trackId}`);
-          keys.push(`provider:${t.sourceRef.provider}:${t.sourceRef.trackId}`);
-          keys.push(t.sourceRef.trackId);
-        }
-        if (t.fileHash) keys.push(t.fileHash);
-        return keys;
-      })
-    );
-  }, [tracks]);
+  const roomTrackKeySet = useMemo(() => buildRoomTrackKeySet(tracks), [tracks]);
 
   const playlistStats = useMemo(() => {
     const map = new Map<string, { total: number; imported: number; isAllImported: boolean }>();
     for (const playlist of roomPlaylists) {
       const total = playlist.trackIds.length;
-      const imported = playlist.trackIds.filter((id) => {
-        if (roomTrackKeySet.has(id)) return true;
-        const normalized = id.startsWith("provider:") ? id.slice("provider:".length) : id;
-        if (roomTrackKeySet.has(normalized)) return true;
-        return false;
-      }).length;
+      const imported = playlist.trackIds.filter((id) => isTrackInRoom(roomTrackKeySet, id)).length;
       map.set(playlist.id, { total, imported, isAllImported: total > 0 && imported >= total });
     }
     return map;
@@ -181,104 +225,48 @@ export function RoomLibraryPlaylistsSection({
       setStatusMessage(`正在准备将歌单《${playlist.title}》的全部歌曲加入节目单…`);
       try {
         const source = getRoomPlaylistSource(playlist);
-        let remoteTracks: ProviderTrack[] = [];
-        if (source) {
-          remoteTracks = await fetchSourceTracks(source);
-        }
+        const resolvedEntries = await loadResolvedPlaylistEntries(playlist.trackIds, source);
+        const missingEntries = resolvedEntries.filter(
+          (entry) =>
+            (entry.providerTrack !== null || entry.cachedTrack !== null) &&
+            !isTrackInRoom(roomTrackKeySet, entry.key) &&
+            !isTrackInRoom(roomTrackKeySet, entry.rawId)
+        );
 
-        if (remoteTracks.length === 0) {
-          const localTracks = await listLocalPlaylistTracks().catch(() => []);
-          const localMap = new Map<string, LocalPlaylistTrackRecord>();
-          for (const r of localTracks) {
-            localMap.set(r.id, r);
-            if (r.providerTrackId) {
-              localMap.set(`${r.provider}:${r.providerTrackId}`, r);
-              localMap.set(`provider:${r.provider}:${r.providerTrackId}`, r);
-              localMap.set(r.providerTrackId, r);
-            }
-          }
-          for (const rawId of playlist.trackIds) {
-            const foundRecord = localMap.get(rawId) || localMap.get(rawId.replace(/^provider:/, ""));
-            if (foundRecord) {
-              const candidate = toCachedProviderTrack(foundRecord);
-              if (candidate) remoteTracks.push(candidate);
-              continue;
-            }
-            const cleanId = rawId.startsWith("provider:") ? rawId.slice("provider:".length) : rawId;
-            const parts = cleanId.split(":");
-            if (parts.length >= 2 && (parts[0] === "netease" || parts[0] === "qqmusic" || parts[0] === "bilibili")) {
-              const provider = parts[0] as "netease" | "qqmusic" | "bilibili";
-              const trackId = parts.slice(1).join(":");
-              remoteTracks.push({
-                provider,
-                providerTrackId: trackId,
-                access: "unknown",
-                quality: null,
-                bvid: provider === "bilibili" ? trackId.split(":")[0] : undefined,
-                title: provider === "bilibili" ? `B站音频 ${trackId}` : `网络歌曲 ${trackId}`,
-                artist: provider === "bilibili" ? "哔哩哔哩" : "网络音乐",
-                album: null,
-                durationMs: 0,
-                artworkUrl: null
-              });
-            } else if (/^BV[a-zA-Z0-9]+/.test(cleanId)) {
-              remoteTracks.push({
-                provider: "bilibili",
-                providerTrackId: cleanId,
-                access: "unknown",
-                quality: null,
-                bvid: cleanId.split(":")[0],
-                title: `B站音频 ${cleanId}`,
-                artist: "哔哩哔哩",
-                album: null,
-                durationMs: 0,
-                artworkUrl: null
-              });
-            }
-          }
-        }
-
-        const missingNetease: NeteaseTrackCandidate[] = [];
-        const missingQqMusic: QqMusicTrackCandidate[] = [];
-        const missingBilibili: BilibiliTrackCandidate[] = [];
-
-        for (const track of remoteTracks) {
-          const inRoom = tracks.some(
-            (t) =>
-              (t.sourceRef?.provider === track.provider && t.sourceRef?.trackId === track.providerTrackId) ||
-              (t.id === track.providerTrackId) ||
-              (t.id === `${track.provider}:${track.providerTrackId}`)
-          );
-          if (!inRoom) {
-            if (track.provider === "netease") missingNetease.push(track as NeteaseTrackCandidate);
-            else if (track.provider === "qqmusic") missingQqMusic.push(track as QqMusicTrackCandidate);
-            else if (track.provider === "bilibili") missingBilibili.push(track as BilibiliTrackCandidate);
-          }
-        }
-
-        const totalMissing = missingNetease.length + missingQqMusic.length + missingBilibili.length;
-        if (totalMissing > 0) {
-          setStatusMessage(`正在导入剩余的 ${totalMissing} 首歌曲到曲库…`);
-          if (missingNetease.length > 0 && onImportNeteaseTracks) {
-            await onImportNeteaseTracks(missingNetease);
-          }
-          if (missingQqMusic.length > 0 && onImportQqMusicTracks) {
-            await onImportQqMusicTracks(missingQqMusic);
-          }
-          if (missingBilibili.length > 0 && onImportBilibiliTracks) {
-            await onImportBilibiliTracks(missingBilibili);
-          }
+        let failedMessages: string[] = [];
+        if (missingEntries.length > 0) {
+          setStatusMessage(`正在导入剩余的 ${missingEntries.length} 首歌曲到曲库…`);
+          const result = await importMissingEntries(missingEntries, {
+            onImportNeteaseTracks,
+            onImportQqMusicTracks,
+            onImportBilibiliTracks,
+            onImportCachedTrack
+          });
+          failedMessages = result.failedMessages;
         }
 
         await onLoadPlaylistIntoRoom(playlist.id);
-        setStatusMessage(`已将歌单《${playlist.title}》全部歌曲加入节目单。`);
+        setStatusMessage(
+          failedMessages.length > 0
+            ? `歌单《${playlist.title}》部分可播曲目已加入节目单（${failedMessages[0]}）。`
+            : `已将歌单《${playlist.title}》全部歌曲加入节目单。`
+        );
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : "加入节目单失败。");
       } finally {
         setIsQueueBusyId(null);
       }
     },
-    [canAddToQueue, isQueueBusyId, onLoadPlaylistIntoRoom, onImportNeteaseTracks, onImportQqMusicTracks, onImportBilibiliTracks, tracks]
+    [
+      canAddToQueue,
+      isQueueBusyId,
+      onImportBilibiliTracks,
+      onImportCachedTrack,
+      onImportNeteaseTracks,
+      onImportQqMusicTracks,
+      onLoadPlaylistIntoRoom,
+      roomTrackKeySet
+    ]
   );
 
   const handleDeletePlaylist = useCallback(
@@ -303,6 +291,7 @@ export function RoomLibraryPlaylistsSection({
   if (selectedPlaylist) {
     return (
       <RoomLibraryPlaylistDetail
+        key={selectedPlaylist.id}
         canAddToQueue={canAddToQueue}
         canManageLibrary={canManageLibrary}
         isQueueBusy={isQueueBusyId === selectedPlaylist.id}
@@ -464,7 +453,7 @@ function RoomLibraryPlaylistDetail({
   onImportNeteaseTracks,
   onImportQqMusicTracks,
   onImportBilibiliTracks,
-  onImportCachedTrack: _onImportCachedTrack
+  onImportCachedTrack
 }: {
   playlist: Playlist;
   roomTracks: TrackMeta[];
@@ -483,7 +472,7 @@ function RoomLibraryPlaylistDetail({
   onImportCachedTrack?: (track: CachedLibraryTrack) => Promise<void>;
 }) {
   useVisibleImportTasks();
-  const [remoteTracks, setRemoteTracks] = useState<ProviderTrack[]>([]);
+  const [resolvedEntries, setResolvedEntries] = useState<ResolvedPlaylistTrackEntry[]>([]);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [pendingTrackIds, setPendingTrackIds] = useState<Set<string>>(() => new Set());
@@ -496,77 +485,25 @@ function RoomLibraryPlaylistDetail({
     importTaskStore.isItemImporting(playlist.id) ||
     importTaskStore.isItemImporting(playlist.title);
 
-  const source = useMemo(() => getRoomPlaylistSource(playlist), [playlist]);
+  // Stabilize source and trackIds by primitive keys so roomSnapshot updates do not re-trigger loading.
+  const tagsKey = (playlist.tags ?? []).join("\u0000");
+  const trackIdsKey = playlist.trackIds.join("\u0000");
+  const source = useMemo(
+    () => getRoomPlaylistSource({ tags: tagsKey ? tagsKey.split("\u0000") : [] }),
+    [tagsKey]
+  );
+  const stableTrackIds = useMemo(
+    () => (trackIdsKey ? trackIdsKey.split("\u0000") : []),
+    [trackIdsKey]
+  );
 
   useEffect(() => {
     let cancelled = false;
     async function loadTracks() {
       setRemoteLoading(true);
-      let tracks: ProviderTrack[] = [];
-      if (source) {
-        try {
-          tracks = await fetchSourceTracks(source);
-        } catch {
-          tracks = [];
-        }
-      }
-
-      if (tracks.length === 0) {
-        const localTracks = await listLocalPlaylistTracks().catch(() => []);
-        const localMap = new Map<string, LocalPlaylistTrackRecord>();
-        for (const r of localTracks) {
-          localMap.set(r.id, r);
-          if (r.providerTrackId) {
-            localMap.set(`${r.provider}:${r.providerTrackId}`, r);
-            localMap.set(`provider:${r.provider}:${r.providerTrackId}`, r);
-            localMap.set(r.providerTrackId, r);
-          }
-        }
-        for (const rawId of playlist.trackIds) {
-          const found = localMap.get(rawId) || localMap.get(rawId.replace(/^provider:/, ""));
-          if (found) {
-            const candidate = toCachedProviderTrack(found);
-            if (candidate) {
-              tracks.push(candidate);
-              continue;
-            }
-          }
-          const cleanId = rawId.startsWith("provider:") ? rawId.slice("provider:".length) : rawId;
-          const parts = cleanId.split(":");
-          if (parts.length >= 2 && (parts[0] === "netease" || parts[0] === "qqmusic" || parts[0] === "bilibili")) {
-            const provider = parts[0] as "netease" | "qqmusic" | "bilibili";
-            const trackId = parts.slice(1).join(":");
-            tracks.push({
-              provider,
-              providerTrackId: trackId,
-              access: "unknown",
-              quality: null,
-              bvid: provider === "bilibili" ? trackId.split(":")[0] : undefined,
-              title: provider === "bilibili" ? `B站音频 ${trackId}` : `网络歌曲 ${trackId}`,
-              artist: provider === "bilibili" ? "哔哩哔哩" : "网络音乐",
-              album: null,
-              durationMs: 0,
-              artworkUrl: null
-            });
-          } else if (/^BV[a-zA-Z0-9]+/.test(cleanId)) {
-            tracks.push({
-              provider: "bilibili",
-              providerTrackId: cleanId,
-              access: "unknown",
-              quality: null,
-              bvid: cleanId.split(":")[0],
-              title: `B站音频 ${cleanId}`,
-              artist: "哔哩哔哩",
-              album: null,
-              durationMs: 0,
-              artworkUrl: null
-            });
-          }
-        }
-      }
-
+      const entries = await loadResolvedPlaylistEntries(stableTrackIds, source);
       if (!cancelled) {
-        setRemoteTracks(tracks);
+        setResolvedEntries(entries);
         setRemoteLoading(false);
       }
     }
@@ -575,69 +512,61 @@ function RoomLibraryPlaylistDetail({
     return () => {
       cancelled = true;
     };
-  }, [playlist.trackIds, source]);
+  }, [source, stableTrackIds]);
 
-  const roomProviderTrackKeys = useMemo(() => {
-    return new Set(
-      roomTracks.flatMap((track) => {
-        const keys = [track.id];
-        if (track.fileHash) keys.push(track.fileHash);
-        const s = track.sourceRef;
-        if (s) {
-          keys.push(`${s.provider}:${s.trackId}`);
-          keys.push(`provider:${s.provider}:${s.trackId}`);
-          keys.push(s.trackId);
-        }
-        return keys;
-      })
-    );
+  const roomProviderTrackKeys = useMemo(() => buildRoomTrackKeySet(roomTracks), [roomTracks]);
+  const roomTrackByKey = useMemo(() => {
+    const map = new Map<string, TrackMeta>();
+    for (const track of roomTracks) {
+      map.set(track.id, track);
+      if (track.fileHash) {
+        map.set(track.fileHash, track);
+        map.set(`local:${track.fileHash}`, track);
+      }
+      if (track.sourceRef) {
+        map.set(`${track.sourceRef.provider}:${track.sourceRef.trackId}`, track);
+        map.set(`provider:${track.sourceRef.provider}:${track.sourceRef.trackId}`, track);
+        map.set(track.sourceRef.trackId, track);
+      }
+    }
+    return map;
   }, [roomTracks]);
 
   const displayTracks: PlaylistTrackItem[] = useMemo(() => {
-    if (remoteTracks.length > 0) {
-      return remoteTracks.map((t) => {
-        const key = `${t.provider}:${t.providerTrackId}`;
-        const inRoom =
-          roomProviderTrackKeys.has(key) ||
-          roomProviderTrackKeys.has(`provider:${key}`) ||
-          roomProviderTrackKeys.has(t.providerTrackId);
-        return {
-          id: key,
-          title: t.title,
-          artist: t.artist,
-          album: t.album ?? null,
-          durationMs: t.durationMs,
-          artworkUrl: t.artworkUrl ?? null,
-          providerTrack: t,
-          isInRoom: inRoom
-        };
-      });
-    }
+    return resolvedEntries.map((entry) => {
+      const inRoom =
+        isTrackInRoom(roomProviderTrackKeys, entry.key) ||
+        isTrackInRoom(roomProviderTrackKeys, entry.rawId);
+      const roomMatch = inRoom
+        ? (roomTrackByKey.get(entry.key) ??
+            roomTrackByKey.get(entry.rawId) ??
+            roomTrackByKey.get(entry.rawId.replace(/^(?:provider|local):/, "")))
+        : undefined;
+      const useRoomMeta = roomMatch && !entry.providerTrack && !entry.cachedTrack;
 
-    return playlist.trackIds.map((trackId, index) => {
-      const roomMatch = roomTracks.find(
-        (t) =>
-          t.id === trackId ||
-          (t.sourceRef && `${t.sourceRef.provider}:${t.sourceRef.trackId}` === trackId) ||
-          (t.sourceRef && `provider:${t.sourceRef.provider}:${t.sourceRef.trackId}` === trackId) ||
-          (t.fileHash && t.fileHash === trackId)
-      );
       return {
-        id: trackId,
-        title: roomMatch?.title ?? `曲目 ${index + 1}`,
-        artist: roomMatch?.artist ?? "未知艺术家",
-        album: roomMatch?.album ?? null,
-        durationMs: roomMatch?.durationMs ?? 0,
-        artworkUrl: roomMatch?.artworkUrl ?? null,
-        providerTrack: null,
-        isInRoom: Boolean(roomMatch)
+        id: entry.key,
+        title: useRoomMeta ? roomMatch.title : entry.title,
+        artist: useRoomMeta ? roomMatch.artist : entry.artist,
+        album: useRoomMeta ? roomMatch.album : entry.album,
+        durationMs: useRoomMeta ? roomMatch.durationMs : entry.durationMs,
+        artworkUrl: useRoomMeta ? roomMatch.artworkUrl : entry.artworkUrl,
+        providerTrack: entry.providerTrack,
+        cachedTrack: entry.cachedTrack,
+        isInRoom: inRoom
       };
     });
-  }, [playlist.trackIds, remoteTracks, roomProviderTrackKeys, roomTracks]);
+  }, [resolvedEntries, roomProviderTrackKeys, roomTrackByKey]);
+
+  const canImportItem = useCallback(
+    (item: PlaylistTrackItem) =>
+      Boolean(item.providerTrack || (item.cachedTrack && onImportCachedTrack)),
+    [onImportCachedTrack]
+  );
 
   const selectableTracks = useMemo(
-    () => displayTracks.filter((t) => !t.isInRoom && t.providerTrack),
-    [displayTracks]
+    () => displayTracks.filter((t) => !t.isInRoom && canImportItem(t)),
+    [canImportItem, displayTracks]
   );
   const selectableKeys = useMemo(() => selectableTracks.map((t) => t.id), [selectableTracks]);
   const allSelectableSelected = selectableKeys.length > 0 && selectedKeys.length >= selectableKeys.length;
@@ -647,6 +576,7 @@ function RoomLibraryPlaylistDetail({
     (item: PlaylistTrackItem) => {
       if (pendingTrackIds.has(item.id)) return true;
       if (item.providerTrack && isCandidateImporting(item.providerTrack)) return true;
+      if (item.cachedTrack && importTaskStore.isItemImporting(item.cachedTrack.fileHash)) return true;
       return importTaskStore.isItemImporting(item.id);
     },
     [pendingTrackIds]
@@ -654,7 +584,13 @@ function RoomLibraryPlaylistDetail({
 
   const isImportBusy =
     isImportingSelected ||
-    selectableTracks.some((t) => (t.providerTrack ? isCandidateImporting(t.providerTrack) : importTaskStore.isItemImporting(t.id)));
+    selectableTracks.some((t) =>
+      t.providerTrack
+        ? isCandidateImporting(t.providerTrack)
+        : t.cachedTrack
+          ? importTaskStore.isItemImporting(t.cachedTrack.fileHash)
+          : importTaskStore.isItemImporting(t.id)
+    );
 
   const toggleSelectAll = () => {
     setSelectedKeys(allSelectableSelected ? [] : selectableKeys);
@@ -668,17 +604,28 @@ function RoomLibraryPlaylistDetail({
 
   const importSingleTrack = useCallback(
     async (item: PlaylistTrackItem) => {
-      if (!canManageLibrary || !item.providerTrack || item.isInRoom || pendingTrackIdsRef.current.has(item.id)) return;
+      if (
+        !canManageLibrary ||
+        !canImportItem(item) ||
+        item.isInRoom ||
+        pendingTrackIdsRef.current.has(item.id)
+      ) {
+        return;
+      }
       pendingTrackIdsRef.current.add(item.id);
       setPendingTrackIds((c) => new Set(c).add(item.id));
       setDetailStatus(`正在导入《${item.title}》…`);
       try {
-        if (item.providerTrack.provider === "netease" && onImportNeteaseTrack) {
-          await onImportNeteaseTrack(item.providerTrack as NeteaseTrackCandidate);
-        } else if (item.providerTrack.provider === "qqmusic" && onImportQqMusicTrack) {
-          await onImportQqMusicTrack(item.providerTrack as QqMusicTrackCandidate);
-        } else if (item.providerTrack.provider === "bilibili" && onImportBilibiliTrack) {
-          await onImportBilibiliTrack(item.providerTrack as BilibiliTrackCandidate);
+        if (item.providerTrack) {
+          if (item.providerTrack.provider === "netease" && onImportNeteaseTrack) {
+            await onImportNeteaseTrack(item.providerTrack as NeteaseTrackCandidate);
+          } else if (item.providerTrack.provider === "qqmusic" && onImportQqMusicTrack) {
+            await onImportQqMusicTrack(item.providerTrack as QqMusicTrackCandidate);
+          } else if (item.providerTrack.provider === "bilibili" && onImportBilibiliTrack) {
+            await onImportBilibiliTrack(item.providerTrack as BilibiliTrackCandidate);
+          }
+        } else if (item.cachedTrack && onImportCachedTrack) {
+          await onImportCachedTrack(item.cachedTrack);
         }
         setSelectedKeys((c) => c.filter((k) => k !== item.id));
         setDetailStatus(`《${item.title}》导入完成。`);
@@ -693,38 +640,39 @@ function RoomLibraryPlaylistDetail({
         });
       }
     },
-    [canManageLibrary, onImportBilibiliTrack, onImportNeteaseTrack, onImportQqMusicTrack]
+    [
+      canImportItem,
+      canManageLibrary,
+      onImportBilibiliTrack,
+      onImportCachedTrack,
+      onImportNeteaseTrack,
+      onImportQqMusicTrack
+    ]
   );
 
   const importSelectedTracks = async () => {
     if (!canManageLibrary || isImportingSelected || selectedKeys.length === 0) return;
     setIsImportingSelected(true);
-    const selectedItems = displayTracks.filter((t) => selectedKeys.includes(t.id) && !t.isInRoom && t.providerTrack);
-    const netease = selectedItems
-      .filter((t) => t.providerTrack?.provider === "netease")
-      .map((t) => t.providerTrack) as NeteaseTrackCandidate[];
-    const qqmusic = selectedItems
-      .filter((t) => t.providerTrack?.provider === "qqmusic")
-      .map((t) => t.providerTrack) as QqMusicTrackCandidate[];
-    const bilibili = selectedItems
-      .filter((t) => t.providerTrack?.provider === "bilibili")
-      .map((t) => t.providerTrack) as BilibiliTrackCandidate[];
+    const selectedItems = displayTracks.filter(
+      (t) => selectedKeys.includes(t.id) && !t.isInRoom && canImportItem(t)
+    );
 
     setDetailStatus(`正在批量导入 ${selectedItems.length} 首歌曲…`);
     try {
-      if (netease.length > 0 && onImportNeteaseTracks) {
-        await onImportNeteaseTracks(netease);
-      }
-      if (qqmusic.length > 0 && onImportQqMusicTracks) {
-        await onImportQqMusicTracks(qqmusic);
-      }
-      if (bilibili.length > 0 && onImportBilibiliTracks) {
-        await onImportBilibiliTracks(bilibili);
-      }
+      const { importedGroups, failedMessages } = await importMissingEntries(selectedItems, {
+        onImportNeteaseTracks,
+        onImportQqMusicTracks,
+        onImportBilibiliTracks,
+        onImportCachedTrack
+      });
       setSelectedKeys([]);
-      setDetailStatus("批量导入完成。");
-    } catch (error) {
-      setDetailStatus(error instanceof Error ? error.message : "批量导入失败。");
+      if (failedMessages.length === 0) {
+        setDetailStatus("批量导入完成。");
+      } else if (importedGroups > 0) {
+        setDetailStatus(`部分曲目导入完成（${failedMessages[0]}）。`);
+      } else {
+        setDetailStatus(failedMessages[0]);
+      }
     } finally {
       setIsImportingSelected(false);
     }
@@ -854,7 +802,7 @@ function RoomLibraryPlaylistDetail({
                 className="group flex min-w-0 items-center justify-between gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-surface-hover/60"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                  {!item.isInRoom && canManageLibrary && item.providerTrack ? (
+                  {!item.isInRoom && canManageLibrary && canImportItem(item) ? (
                     <input
                       checked={isSelected}
                       className="h-3.5 w-3.5 accent-accent rounded shrink-0 cursor-pointer"
@@ -887,7 +835,7 @@ function RoomLibraryPlaylistDetail({
                       <CheckIcon className="h-3 w-3" />
                       <span>已在曲库</span>
                     </span>
-                  ) : canManageLibrary && item.providerTrack ? (
+                  ) : canManageLibrary && canImportItem(item) ? (
                     <button
                       className="h-7 rounded-md px-2.5 text-xs font-medium border border-accent/30 bg-accent/5 text-accent hover:bg-accent/15 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isImporting || isImportBusy}

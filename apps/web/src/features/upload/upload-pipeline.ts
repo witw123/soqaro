@@ -11,6 +11,16 @@ type TrackRegistrationDraft = Omit<TrackMeta, "id"> & {
 // limit, so never send an oversized local representation to the server.
 const maxRegisterArtworkUrlLength = 4096;
 
+const MAX_LYRICS_LENGTH = 100_000;
+
+function normalizeLyricsField(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.length > MAX_LYRICS_LENGTH ? trimmed.slice(0, MAX_LYRICS_LENGTH) : trimmed;
+}
+
 export function buildRegisterTrackPayload(track: Omit<TrackMeta, "id"> & { id?: string }) {
   const artworkUrl = track.artworkUrl?.trim() || null;
   return {
@@ -18,9 +28,9 @@ export function buildRegisterTrackPayload(track: Omit<TrackMeta, "id"> & { id?: 
     title: track.title,
     artist: track.artist,
     album: track.album,
-    lyrics: track.lyrics ?? null,
-    translatedLyrics: track.translatedLyrics ?? null,
-    romanizedLyrics: track.romanizedLyrics ?? null,
+    lyrics: normalizeLyricsField(track.lyrics),
+    translatedLyrics: normalizeLyricsField(track.translatedLyrics),
+    romanizedLyrics: normalizeLyricsField(track.romanizedLyrics),
     durationMs: track.durationMs,
     bitrate: track.bitrate,
     sizeBytes: track.sizeBytes,

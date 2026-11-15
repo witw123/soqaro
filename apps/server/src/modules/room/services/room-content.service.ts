@@ -436,20 +436,11 @@ export class RoomContentService {
     assertPermission(record, sessionId, "queue");
 
     const validTrackIds = trackIds
-      .map((targetId) => {
-        const direct = record.tracks.find((track) => track.id === targetId);
-        if (direct) return direct.id;
-        const matched = record.tracks.find((track) => {
-          if (track.sourceRef && `${track.sourceRef.provider}:${track.sourceRef.trackId}` === targetId) return true;
-          if (track.fileHash && track.fileHash === targetId) return true;
-          return false;
-        });
-        return matched?.id ?? null;
-      })
+      .map((targetId) => resolvePlaylistTrackIdInRoom(record.tracks, targetId))
       .filter((id): id is string => !!id);
 
     if (validTrackIds.length === 0) {
-      throw new Error("No tracks from this playlist are available in the current room.");
+      throw new BadRequestException("该歌单中暂无当前房间已导入的可播曲目。");
     }
     if (record.queue.length + validTrackIds.length > maxQueueItemsPerRoom) {
       throw new BadRequestException("播放队列数量已达到上限。");
@@ -785,4 +776,29 @@ export class RoomContentService {
 
 function getProviderTrackKey(track: TrackMeta | undefined) {
   return track?.sourceRef ? `${track.sourceRef.provider}:${track.sourceRef.trackId}` : null;
+}
+
+function resolvePlaylistTrackIdInRoom(tracks: readonly TrackMeta[], targetId: string): string | null {
+  const direct = tracks.find((track) => track.id === targetId);
+  if (direct) return direct.id;
+
+  const normalizedProviderKey = targetId.startsWith("provider:")
+    ? targetId.slice("provider:".length)
+    : targetId;
+  const normalizedLocalHash = targetId.startsWith("local:")
+    ? targetId.slice("local:".length)
+    : targetId;
+
+  const matched = tracks.find((track) => {
+    const providerKey = getProviderTrackKey(track);
+    if (providerKey && providerKey === normalizedProviderKey) {
+      return true;
+    }
+    if (track.fileHash && track.fileHash === normalizedLocalHash) {
+      return true;
+    }
+    return false;
+  });
+
+  return matched?.id ?? null;
 }

@@ -27,6 +27,7 @@ import { useBackHandler } from "@/lib/desktop/use-back-handler";
 
 import { CheckIcon } from "@/components/icons/DiscoverIcons";
 import { importTaskStore, useVisibleImportTasks } from "@/features/upload/import-task-store";
+import { parsePlaylistProviderTrack } from "./room-library-playlist-utils";
 
 type ProviderTrack = ProviderTrackCandidate;
 type NetworkPlaylistSource = { provider: "netease" | "qqmusic" | "bilibili"; playlistId: string };
@@ -384,6 +385,8 @@ export function PlaylistPanel({
     setLoadingPlaylistId(playlistId);
     try {
       await onLoadPlaylistIntoRoom(playlistId);
+    } catch {
+      // 错误已由 loadPlaylistIntoRoom 写入状态与导入任务条
     } finally {
       setLoadingPlaylistId(null);
     }
@@ -576,23 +579,22 @@ function PlaylistDetail({
 
   // Convert PlaylistTrackInfo[] to ProviderTrack[] to seamlessly feed ProviderAlbumTrackTable
   const displayTracks: ProviderTrack[] = useMemo(() => {
-    return tracks.map((track, index) => {
-      if (track?.providerTrack) return track.providerTrack;
-      const rawId = playlist.trackIds[index] || `network:${index}`;
-      const parts = rawId.split(":");
-      const provider = (parts[1] === "qqmusic" ? "qqmusic" : parts[1] === "bilibili" ? "bilibili" : "netease") as "netease" | "qqmusic" | "bilibili";
-      const providerTrackId = parts[2] || parts[1] || String(index);
-      return {
-        provider,
-        providerTrackId,
-        title: track?.title ?? `曲目 ${index + 1}`,
-        artist: track?.artist ?? "未知歌手",
-        album: track?.album ?? null,
-        durationMs: track?.durationMs ?? 0,
-        artworkUrl: track?.artworkUrl ?? null,
-        access: "free" as const,
-        quality: "standard" as const
-      };
+    return tracks.flatMap((track, index) => {
+      if (track?.providerTrack) return [track.providerTrack];
+      const rawId = playlist.trackIds[index];
+      if (!rawId) return [];
+      const parsed = parsePlaylistProviderTrack(rawId);
+      if (!parsed) return [];
+      return [
+        {
+          ...parsed,
+          title: track?.title ?? parsed.title,
+          artist: track?.artist ?? parsed.artist,
+          album: track?.album ?? parsed.album,
+          durationMs: track?.durationMs ?? parsed.durationMs,
+          artworkUrl: track?.artworkUrl ?? parsed.artworkUrl
+        } as ProviderTrack
+      ];
     });
   }, [tracks, playlist.trackIds]);
 

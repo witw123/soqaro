@@ -136,7 +136,10 @@ export class PlaylistController {
     const userId = await this.getCurrentUserId(sessionToken);
     await this.limitPlaylistWrite(userId, ipAddress);
     const payload = parseRequestBody(importPlaylistToRoomRequestSchema, body);
-    const playlist = await this.playlistService.getPlaylistForOwner(playlistId, userId);
+    const playlistRoomId = await this.playlistService.getRoomIdForPlaylist(playlistId);
+    const playlist = playlistRoomId === payload.roomId
+      ? await this.playlistService.getPlaylist(playlistId)
+      : await this.playlistService.getPlaylistForOwner(playlistId, userId);
     await this.roomService.importPlaylistToQueue(payload.roomId, userId, playlist.trackIds);
     const snapshot = await this.roomRealtimePublisher.emitQueueSnapshot(
       payload.roomId,

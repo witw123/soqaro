@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import type { Playlist } from "@soqaro/shared";
 import { PrismaService } from "../../infra/prisma/prisma.service";
+import { stripNullBytes } from "../../common/validation/strip-null-bytes";
 import { RoomService } from "../room/room.service";
 
 type PersistedPlaylistRecord = {
@@ -111,7 +112,7 @@ export class PlaylistService {
       }
     }
 
-    const playlist: Playlist = {
+    const playlist: Playlist = stripNullBytes({
       id: `playlist_${randomUUID()}`,
       ownerId: input.ownerId,
       title: input.title,
@@ -122,7 +123,7 @@ export class PlaylistService {
       trackIds: input.trackIds ?? [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    };
+    });
 
     if (this.prisma.isAvailable()) {
       await this.prisma.playlist.upsert({
@@ -193,7 +194,7 @@ export class PlaylistService {
       throw new Error("Only the playlist owner can update this playlist.");
     }
 
-    const updated: Playlist = {
+    const updated: Playlist = stripNullBytes({
       ...current,
       title: input.title !== undefined ? input.title : current.title,
       description: input.description !== undefined ? input.description : current.description,
@@ -201,7 +202,7 @@ export class PlaylistService {
       tags: input.tags !== undefined ? input.tags : current.tags,
       trackIds: input.trackIds !== undefined ? input.trackIds : current.trackIds,
       updatedAt: new Date().toISOString()
-    };
+    });
 
     if (this.prisma.isAvailable()) {
       await this.prisma.playlist.update({

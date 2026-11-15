@@ -1,4 +1,5 @@
-import { HttpException, UnauthorizedException } from "@nestjs/common";
+import { HttpException, HttpStatus, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { createApiErrorResponse, errorCodes } from "@soqaro/shared";
 import { EventEmitter } from "node:events";
 import type { Request, Response } from "express";
 import type { AbuseProtectionService } from "../../../common/security/abuse-protection.service";
@@ -137,5 +138,31 @@ describe("BilibiliController", () => {
     expect(headers["access-control-allow-origin"]).toBeUndefined();
     expect(headers["x-content-type-options"]).toBe("nosniff");
     expect(headers["content-type"]).toBe("audio/mp4");
+  });
+
+  it("tags upstream audio stream failures with BILIBILI_UNAVAILABLE and preserves 404s", async () => {
+    const { controller, service } = createController();
+    const { res } = createResponse();
+
+    (service.openAudioStream as jest.Mock).mockRejectedValueOnce(new Error("CDN rejected with 403"));
+    let capturedError: unknown;
+    try {
+      await controller.getAudioStream("BV1xx411c7mD", {}, "valid-token", undefined, createRequest(), res);
+    } catch (error) {
+      capturedError = error;
+    }
+    expect(capturedError).toBeInstanceOf(HttpException);
+    expect((capturedError as HttpException).getStatus()).toBe(HttpStatus.BAD_GATEWAY);
+    expect((capturedError as HttpException).getResponse()).toEqual(
+      createApiErrorResponse(errorCodes.bilibiliUnavailable, "CDN rejected with 403")
+    );
+
+    const notFound = new NotFoundException(
+      createApiErrorResponse(errorCodes.bilibiliTrackNotFound, "missing audio stream")
+    );
+    (service.openAudioStream as jest.Mock).mockRejectedValueOnce(notFound);
+    await expect(
+      controller.getAudioStream("BV1xx411c7mD", {}, "valid-token", undefined, createRequest(), res)
+    ).rejects.toBe(notFound);
   });
 });

@@ -14,6 +14,7 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { createApiErrorResponse, errorCodes } from "@soqaro/shared";
 import { AbuseProtectionService } from "../../../common/security/abuse-protection.service";
 import { resolveClientIp } from "../../../common/security/client-ip";
 import { parseRequestBody } from "../../../common/validation/zod-validation";
@@ -191,8 +192,14 @@ export class BilibiliController {
         normalizedRange
       );
     } catch (error) {
+      if (error instanceof HttpException && error.getStatus() < HttpStatus.INTERNAL_SERVER_ERROR) {
+        throw error;
+      }
       throw new HttpException(
-        error instanceof Error ? error.message : "获取 B 站音频流失败",
+        createApiErrorResponse(
+          errorCodes.bilibiliUnavailable,
+          error instanceof Error ? error.message : "Bilibili audio could not be fetched."
+        ),
         HttpStatus.BAD_GATEWAY
       );
     }
@@ -200,7 +207,10 @@ export class BilibiliController {
     if (streamResult.status !== 200 && streamResult.status !== 206) {
       await streamResult.body?.cancel().catch(() => {});
       throw new HttpException(
-        `B 站音频流上游返回异常状态 (${streamResult.status})`,
+        createApiErrorResponse(
+          errorCodes.bilibiliUnavailable,
+          `Bilibili audio stream returned status ${streamResult.status}.`
+        ),
         HttpStatus.BAD_GATEWAY
       );
     }

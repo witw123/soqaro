@@ -29,7 +29,8 @@ import {
   requestProviderLyricsPayload,
   resolveImportedAudioMimeType,
   sanitizeFileName,
-  sourceTypeLabel
+  sourceTypeLabel,
+  toProviderImportErrorMessage
 } from "./upload-import-helpers";
 
 export type { ProviderTrackCandidate };
@@ -268,7 +269,7 @@ export async function importProviderTracks(input: {
           importTaskStore.failItem(
             taskId,
             itemKey,
-            singleError instanceof Error ? singleError.message : "注册到房间曲库失败",
+            toProviderImportErrorMessage(singleError),
             [item.candidate.providerTrackId]
           );
         }
@@ -332,7 +333,7 @@ export async function importProviderTracks(input: {
         importTaskStore.failItem(
           taskId,
           itemKey,
-          failure.error instanceof Error ? failure.error.message : "写入本地缓存失败",
+          toProviderImportErrorMessage(failure.error),
           [failure.item.candidate.providerTrackId]
         );
       }
@@ -584,7 +585,7 @@ export async function importProviderTracks(input: {
           break;
         }
         failures.push(error);
-        const errDetail = error instanceof Error ? error.message : "获取音频失败";
+        const errDetail = toProviderImportErrorMessage(error);
         importTaskStore.failItem(taskId, activeItemKey, errDetail, aliasKeys);
       }
 
@@ -641,7 +642,7 @@ export async function importProviderTracks(input: {
     if (cancelSignal?.aborted) {
       importTaskStore.cancelTask(taskId);
     } else {
-      const errorMsg = pipelineError instanceof Error ? pipelineError.message : pipelineError ? String(pipelineError) : undefined;
+      const errorMsg = pipelineError ? toProviderImportErrorMessage(pipelineError) : undefined;
       importTaskStore.finishTask(taskId, {
         error: errorMsg
       });

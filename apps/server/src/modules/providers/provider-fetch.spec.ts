@@ -208,4 +208,34 @@ describe("provider URL safeguards", () => {
 
     expect(spy).toHaveBeenCalledTimes(1);
   });
+
+  it("allows non-standard HTTPS ports only when explicitly opted in", async () => {
+    const { spy } = mockHttpsSequence([
+      {
+        statusCode: 200,
+        headers: { "content-type": "audio/mp4" }
+      }
+    ]);
+
+    await expect(
+      fetchProviderUrl(
+        new URL("https://mcdn.bilivideo.cn:4483/upgcxcode/audio.m4s"),
+        {},
+        1_000,
+        (hostname) => hostname.endsWith(".bilivideo.cn")
+      )
+    ).rejects.toThrow("unsupported URL");
+
+    await expect(
+      fetchProviderUrl(
+        new URL("https://mcdn.bilivideo.cn:4483/upgcxcode/audio.m4s"),
+        {},
+        1_000,
+        (hostname) => hostname.endsWith(".bilivideo.cn"),
+        { allowNonStandardPorts: true }
+      )
+    ).resolves.toMatchObject({ status: 200 });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

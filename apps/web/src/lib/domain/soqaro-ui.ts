@@ -296,6 +296,25 @@ export function toUserFacingError(error: unknown) {
         return "当前登录状态已失效，请重新登录。";
       case errorCodes.validationFailed:
         return "请求参数不正确，请检查输入内容。";
+      case errorCodes.bilibiliTrackNotFound:
+        return "未找到可播放的 B 站音频流，请换一首重试。";
+      case errorCodes.bilibiliUnavailable:
+        return "B 站音频服务暂时不可用，请稍后重试。";
+      case errorCodes.neteaseTrackNotFound:
+      case errorCodes.qqMusicTrackNotFound:
+        return "该歌曲没有可用的公开音频，可能受限于 VIP 或版权。";
+      case errorCodes.neteaseAudioUnsupported:
+      case errorCodes.qqMusicAudioUnsupported:
+        return "平台返回了当前播放器不支持的音频格式。";
+      case errorCodes.neteaseImportTooLarge:
+      case errorCodes.qqMusicImportTooLarge:
+        return "歌曲文件过大，无法导入。";
+      case errorCodes.neteaseUnavailable:
+        return "网易云音乐服务暂时不可用，请稍后重试。";
+      case errorCodes.qqMusicUnavailable:
+        return "QQ 音乐服务暂时不可用，请稍后重试。";
+      case errorCodes.internal:
+        return "服务器处理请求失败，请稍后重试。";
       default:
         // Unknown code — let the message fall through to string matching below.
         break;
@@ -363,6 +382,9 @@ export function toUserFacingError(error: unknown) {
   }
   if (lowerMessage.includes("unauthorized")) {
     return "当前登录状态已失效，请重新登录。";
+  }
+  if (lowerMessage.includes("internal server error")) {
+    return "服务器处理请求失败，请稍后重试。";
   }
 
   return message;

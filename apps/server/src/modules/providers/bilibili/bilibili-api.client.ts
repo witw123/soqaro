@@ -736,7 +736,7 @@ export class BilibiliApiClient {
         { headers },
         UPSTREAM_HEADER_TIMEOUT_MS,
         isAllowedBilibiliAudioHost,
-        { maxRedirects: 3 }
+        { maxRedirects: 3, allowNonStandardPorts: true }
       )
     );
   }

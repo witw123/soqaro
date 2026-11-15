@@ -3,6 +3,7 @@ import { RoomTerminationStore } from "./room-termination.store";
 import { RoomTrackDeletionStore } from "./room-track-deletion.store";
 import type { RoomTrackDeletion } from "@soqaro/shared";
 import { PrismaService } from "../../../infra/prisma/prisma.service";
+import { stripNullBytes } from "../../../common/validation/strip-null-bytes";
 import {
   deserializeRoomRecord,
   normalizeRoomRecord,
@@ -543,7 +544,7 @@ export class RoomRecordRepository {
   }
 
   private async persistRecordToDatabase(record: RoomRecord) {
-    const payload = {
+    const payload = stripNullBytes({
       hostId: record.room.hostId,
       joinCode: record.room.joinCode,
       name: record.room.name ?? "未命名房间",
@@ -563,7 +564,7 @@ export class RoomRecordRepository {
       members: record.room.members,
       tracks: record.tracks,
       queue: record.queue
-    };
+    });
 
     const updateResult = await this.prisma.roomState.updateMany({
       where: {

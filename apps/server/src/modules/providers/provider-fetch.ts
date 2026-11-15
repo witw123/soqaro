@@ -11,6 +11,7 @@ const maxRedirects = 3;
 export type ProviderFetchOptions = {
   allowSyntheticDns?: boolean;
   allowHttp?: boolean;
+  allowNonStandardPorts?: boolean;
   maxRedirects?: number;
 };
 
@@ -96,7 +97,7 @@ async function assertSafeProviderUrl(
 ): Promise<ResolvedAddress[]> {
   const protocolAllowed = options.allowHttp
     ? url.protocol === "https:" || url.protocol === "http:"
-    : url.protocol === "https:" && (url.port === "" || url.port === "443");
+    : url.protocol === "https:" && (options.allowNonStandardPorts || url.port === "" || url.port === "443");
 
   if (
     !protocolAllowed ||

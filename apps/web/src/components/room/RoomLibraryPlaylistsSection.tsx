@@ -13,6 +13,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/domain/soqaro-ui";
 import { soqaroApi } from "@/lib/network/soqaro-api";
+import { toProviderImportErrorMessage } from "@/features/upload/upload-import-helpers";
 import type { CachedLibraryTrack } from "@/features/library/audio-utils";
 import { getArtworkSourceUrl } from "@/components/bottom-player/artwork-colors";
 import {
@@ -155,7 +156,7 @@ async function importMissingEntries(
       await task();
       importedGroups += 1;
     } catch (error) {
-      const detail = error instanceof Error && error.message ? error.message : `${label}导入失败`;
+      const detail = toProviderImportErrorMessage(error);
       failedMessages.push(`${label}：${detail}`);
     }
   };
@@ -252,7 +253,7 @@ export function RoomLibraryPlaylistsSection({
             : `已将歌单《${playlist.title}》全部歌曲加入节目单。`
         );
       } catch (error) {
-        setStatusMessage(error instanceof Error ? error.message : "加入节目单失败。");
+        setStatusMessage(toProviderImportErrorMessage(error));
       } finally {
         setIsQueueBusyId(null);
       }
@@ -306,6 +307,7 @@ export function RoomLibraryPlaylistsSection({
         onImportBilibiliTrack={onImportBilibiliTrack}
         onImportBilibiliTracks={onImportBilibiliTracks}
         playlist={selectedPlaylist}
+        queueStatusMessage={statusMessage}
         roomTracks={tracks}
       />
     );
@@ -444,6 +446,7 @@ function RoomLibraryPlaylistDetail({
   canManageLibrary,
   canAddToQueue,
   isQueueBusy,
+  queueStatusMessage,
   onBack,
   onAddAllToQueue,
   onDelete,
@@ -460,6 +463,7 @@ function RoomLibraryPlaylistDetail({
   canManageLibrary: boolean;
   canAddToQueue: boolean;
   isQueueBusy: boolean;
+  queueStatusMessage?: string | null;
   onBack: () => void;
   onAddAllToQueue: () => void;
   onDelete: () => void;
@@ -630,7 +634,7 @@ function RoomLibraryPlaylistDetail({
         setSelectedKeys((c) => c.filter((k) => k !== item.id));
         setDetailStatus(`《${item.title}》导入完成。`);
       } catch (error) {
-        setDetailStatus(error instanceof Error ? error.message : `导入《${item.title}》失败。`);
+        setDetailStatus(toProviderImportErrorMessage(error));
       } finally {
         pendingTrackIdsRef.current.delete(item.id);
         setPendingTrackIds((c) => {
@@ -678,12 +682,14 @@ function RoomLibraryPlaylistDetail({
     }
   };
 
+  const visibleStatus = detailStatus ?? queueStatusMessage ?? null;
+
   return (
     <div className="flex w-full flex-col gap-3" data-testid="room-library-playlist-detail">
-      {detailStatus ? (
+      {visibleStatus ? (
         <div className="flex items-center justify-end">
           <p className="truncate text-xs text-accent" role="status">
-            {detailStatus}
+            {visibleStatus}
           </p>
         </div>
       ) : null}
@@ -704,7 +710,10 @@ function RoomLibraryPlaylistDetail({
             <Button
               className="gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-white shadow-xs hover:bg-accent-hover active:scale-95 disabled:cursor-wait"
               disabled={isQueueBusyComputed}
-              onClick={onAddAllToQueue}
+              onClick={() => {
+                setDetailStatus(null);
+                onAddAllToQueue();
+              }}
               size="sm"
               type="button"
             >

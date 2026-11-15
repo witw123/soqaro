@@ -119,6 +119,8 @@ function sanitizePlainErrorMessage(message: string, code: ErrorCode) {
       return "NetEase service unavailable.";
     case errorCodes.qqMusicUnavailable:
       return "QQ Music service unavailable.";
+    case errorCodes.bilibiliUnavailable:
+      return "Bilibili service unavailable.";
     case errorCodes.rateLimited:
       return "Too many requests.";
     case errorCodes.unauthorized:
@@ -163,6 +165,17 @@ export function mapErrorCode(message: string, status?: number): ErrorCode {
   if (message.includes("QQ Music audio") && message.includes("too large")) return errorCodes.qqMusicImportTooLarge;
   if (message.includes("QQ Music") && message.includes("unsupported audio")) return errorCodes.qqMusicAudioUnsupported;
   if (message.includes("QQ Music")) return errorCodes.qqMusicUnavailable;
+  if (
+    message.includes("Bilibili video not found") ||
+    message.includes("未能解析到 B 站音频流直链") ||
+    message.includes("Bilibili 视频") ||
+    message.includes("未提取到有效的 B 站收藏夹 ID")
+  ) {
+    return errorCodes.bilibiliTrackNotFound;
+  }
+  if (message.includes("Bilibili") || message.includes("B站") || message.includes("B 站")) {
+    return errorCodes.bilibiliUnavailable;
+  }
 
   if (message.includes("Realtime sync unavailable") || message.includes("Redis unavailable")) {
     return errorCodes.realtimeUnavailable;
@@ -292,6 +305,10 @@ export function mapErrorStatus(code: ErrorCode): number {
       return HttpStatus.UNSUPPORTED_MEDIA_TYPE;
     case errorCodes.qqMusicImportTooLarge:
       return HttpStatus.PAYLOAD_TOO_LARGE;
+    case errorCodes.bilibiliTrackNotFound:
+      return HttpStatus.NOT_FOUND;
+    case errorCodes.bilibiliUnavailable:
+      return HttpStatus.BAD_GATEWAY;
     default:
       return HttpStatus.INTERNAL_SERVER_ERROR;
   }

@@ -31,7 +31,9 @@ export const errorCodes = {
   qqMusicTrackNotFound: "QQMUSIC_TRACK_NOT_FOUND",
   qqMusicAudioUnsupported: "QQMUSIC_AUDIO_UNSUPPORTED",
   qqMusicImportTooLarge: "QQMUSIC_IMPORT_TOO_LARGE",
-  qqMusicUnavailable: "QQMUSIC_UNAVAILABLE"
+  qqMusicUnavailable: "QQMUSIC_UNAVAILABLE",
+  bilibiliTrackNotFound: "BILIBILI_TRACK_NOT_FOUND",
+  bilibiliUnavailable: "BILIBILI_UNAVAILABLE"
 } as const;
 
 export const apiErrorResponseSchema = z.object({
@@ -66,7 +68,9 @@ export const apiErrorResponseSchema = z.object({
     errorCodes.qqMusicTrackNotFound,
     errorCodes.qqMusicAudioUnsupported,
     errorCodes.qqMusicImportTooLarge,
-    errorCodes.qqMusicUnavailable
+    errorCodes.qqMusicUnavailable,
+    errorCodes.bilibiliTrackNotFound,
+    errorCodes.bilibiliUnavailable
   ]),
   message: z.string(),
   details: z.unknown().optional()

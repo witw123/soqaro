@@ -15,5 +15,14 @@ describe("api error responses", () => {
       code: "REALTIME_UNAVAILABLE",
       message: "Realtime sync unavailable."
     });
+
+    expect(
+      apiErrorResponseSchema.parse(
+        createApiErrorResponse(errorCodes.bilibiliUnavailable, "Bilibili service unavailable.")
+      )
+    ).toEqual({
+      code: "BILIBILI_UNAVAILABLE",
+      message: "Bilibili service unavailable."
+    });
   });
 });

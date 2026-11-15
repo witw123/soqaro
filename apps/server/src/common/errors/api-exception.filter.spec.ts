@@ -127,4 +127,22 @@ describe("toHttpApiError", () => {
       }
     });
   });
+
+  it("maps Bilibili upstream and not-found errors without falling back to Internal server error", () => {
+    expect(toHttpApiError(new Error("未能获取 B 站视频播放流: BV1xx411c7mD"))).toEqual({
+      status: HttpStatus.BAD_GATEWAY,
+      body: {
+        code: errorCodes.bilibiliUnavailable,
+        message: "Bilibili service unavailable."
+      }
+    });
+
+    expect(toHttpApiError(new Error("Bilibili video not found: nothing matched"))).toEqual({
+      status: HttpStatus.NOT_FOUND,
+      body: {
+        code: errorCodes.bilibiliTrackNotFound,
+        message: "Bilibili video not found: nothing matched"
+      }
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import type { RemoteTrackSourceRef, TrackMeta, TrackSourceType } from "@soqaro/shared";
 import { SoqaroApiError, soqaroApi, resolveDownloadedAudioMimeType } from "@/lib/network/soqaro-api";
+import { toUserFacingError } from "@/lib/domain/soqaro-ui";
 import { fetchProviderLyricsCached } from "@/features/playback/lyrics";
 import { getAssetUnitIndexes } from "@/features/library/indexeddb";
 import { playbackProfileId } from "@/features/library/audio-asset-builder";
@@ -183,21 +184,40 @@ export function normalizeLyricsMatchText(value: string) {
 
 export function toProviderImportErrorMessage(error: unknown) {
   if (error instanceof SoqaroApiError) {
-    if (error.code === "QQMUSIC_TRACK_NOT_FOUND") {
+    if (error.code === "NETEASE_TRACK_NOT_FOUND" || error.code === "QQMUSIC_TRACK_NOT_FOUND") {
       return "该歌曲没有可用的公开音频，可能受付费、VIP 或版权限制。";
     }
-    if (error.code === "QQMUSIC_AUDIO_UNSUPPORTED") {
+    if (error.code === "NETEASE_AUDIO_UNSUPPORTED" || error.code === "QQMUSIC_AUDIO_UNSUPPORTED") {
       return "平台返回了当前播放器不支持的音频格式。";
     }
-    if (error.code === "QQMUSIC_IMPORT_TOO_LARGE") {
+    if (error.code === "NETEASE_IMPORT_TOO_LARGE" || error.code === "QQMUSIC_IMPORT_TOO_LARGE") {
       return "歌曲文件过大，无法导入。";
     }
-    if (error.code === "QQMUSIC_UNAVAILABLE") {
+    if (error.code === "NETEASE_ACCOUNT_REQUIRED" || error.code === "NETEASE_AUTH_EXPIRED") {
+      return "请先绑定或重新登录网易云音乐账号。";
+    }
+    if (error.code === "QQMUSIC_ACCOUNT_REQUIRED" || error.code === "QQMUSIC_AUTH_EXPIRED") {
+      return "请先绑定或重新登录 QQ 音乐账号。";
+    }
+    if (error.code === "BILIBILI_TRACK_NOT_FOUND") {
+      return "未找到可播放的 B 站音频流，可能受限于视频状态或分 P 权限。";
+    }
+    if (error.code === "BILIBILI_UNAVAILABLE") {
+      return "B 站音频服务暂时不可用，请稍后重试。";
+    }
+    if (error.code === "NETEASE_UNAVAILABLE" || error.code === "QQMUSIC_UNAVAILABLE") {
       return "平台接口暂时不可用，请稍后重试或切换平台。";
     }
     if (error.code === "RATE_LIMITED") {
       return "请求过于频繁，请稍后再试。";
     }
+    if (error.code === "INTERNAL_ERROR") {
+      return "服务器处理歌曲导入时出现异常，请稍后重试。";
+    }
   }
-  return error instanceof Error ? error.message : "音乐平台导入失败，请稍后重试。";
+  if (error instanceof Error) {
+    const translated = toUserFacingError(error);
+    return translated || "音乐平台导入失败，请稍后重试。";
+  }
+  return "音乐平台导入失败，请稍后重试。";
 }

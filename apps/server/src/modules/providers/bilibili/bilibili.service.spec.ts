@@ -403,4 +403,44 @@ describe("BilibiliService and Utilities", () => {
       expect(signed).toMatch(/&w_rid=[a-f0-9]{32}/);
     });
   });
+
+  describe("openAudioStream cache invalidation", () => {
+    it("evicts stale cached CDN URLs and retries once with a fresh playurl", async () => {
+      mockClient.getVideoView.mockResolvedValue({
+        bvid: "BV1Cache1234",
+        aid: 42,
+        title: "测试曲目",
+        pic: "",
+        desc: "",
+        duration: 180,
+        owner: { mid: 1, name: "UP", face: "" },
+        pages: [{ cid: 1001, page: 1, part: "P1", duration: 180 }]
+      });
+      mockClient.getPlayUrl
+        .mockResolvedValueOnce({
+          dash: {
+            audio: [{ id: 30280, baseUrl: "https://upos-stale.bilivideo.com/1.m4s", backupUrl: [], bandwidth: 192000, codecs: "mp4a" }]
+          }
+        })
+        .mockResolvedValueOnce({
+          dash: {
+            audio: [{ id: 30280, baseUrl: "https://upos-fresh.bilivideo.com/2.m4s", backupUrl: [], bandwidth: 192000, codecs: "mp4a" }]
+          }
+        });
+      mockClient.fetchAudioStream
+        .mockResolvedValueOnce({ status: 200, headers: {}, body: null })
+        .mockRejectedValueOnce(new Error("All Bilibili audio stream CDNs returned non-200/206 status (last HTTP 403)"))
+        .mockResolvedValueOnce({ status: 200, headers: {}, body: null });
+
+      await service.openAudioStream("BV1Cache1234", 1001);
+      const retried = await service.openAudioStream("BV1Cache1234", 1001);
+
+      expect(retried.status).toBe(200);
+      expect(mockClient.getPlayUrl).toHaveBeenCalledTimes(2);
+      expect(mockClient.fetchAudioStream).toHaveBeenLastCalledWith(
+        ["https://upos-fresh.bilivideo.com/2.m4s"],
+        undefined
+      );
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, Optional } from "@nestjs/common";
-import type { BilibiliSearchResponse, BilibiliTrackCandidate, BilibiliVideoDetail, ProviderLyrics } from "@soqaro/shared";
+import { createApiErrorResponse, errorCodes, type BilibiliSearchResponse, type BilibiliTrackCandidate, type BilibiliVideoDetail, type ProviderLyrics } from "@soqaro/shared";
 import { NeteaseApiClient } from "../netease/netease-api.client";
 import { QqMusicApiClient } from "../qqmusic/qqmusic-api.client";
 import { BilibiliApiClient, sortBilibiliAudioUrls } from "./bilibili-api.client";
@@ -61,7 +61,9 @@ export class BilibiliService {
       : detail.pages[0];
 
     if (!targetPage) {
-      throw new NotFoundException(`Bilibili 视频分P未找到: ${bvid}`);
+      throw new NotFoundException(
+        createApiErrorResponse(errorCodes.bilibiliTrackNotFound, `Bilibili 视频分P未找到: ${bvid}`)
+      );
     }
 
     const cleaned = cleanBilibiliTitle(detail.title, detail.ownerName);
@@ -162,6 +164,7 @@ export class BilibiliService {
     mimeType: string;
     fileType: string;
     cid: number;
+    fromCache: boolean;
   }> {
     const now = Date.now();
     let viewData = null;
@@ -180,7 +183,8 @@ export class BilibiliService {
         candidateUrls: cached.candidateUrls,
         mimeType: cached.mimeType,
         fileType: cached.fileType,
-        cid: resolvedCid
+        cid: resolvedCid,
+        fromCache: true
       };
     }
 
@@ -211,7 +215,8 @@ export class BilibiliService {
           candidateUrls,
           mimeType: result.mimeType,
           fileType: result.fileType,
-          cid: resolvedCid
+          cid: resolvedCid,
+          fromCache: false
         };
       }
     }
@@ -243,11 +248,17 @@ export class BilibiliService {
         candidateUrls: [fallbackUrl],
         mimeType: result.mimeType,
         fileType: result.fileType,
-        cid: resolvedCid
+        cid: resolvedCid,
+        fromCache: false
       };
     }
 
-    throw new NotFoundException(`未能解析到 B 站音频流直链: ${bvid} (cid: ${resolvedCid})`);
+    throw new NotFoundException(
+      createApiErrorResponse(
+        errorCodes.bilibiliTrackNotFound,
+        `未能解析到 B 站音频流直链: ${bvid} (cid: ${resolvedCid})`
+      )
+    );
   }
 
   async resolveAudio(
@@ -265,7 +276,9 @@ export class BilibiliService {
     const { candidateUrls, mimeType, fileType, cid: resolvedCid } = await this.getResolvedAudioCandidates(bvid, cid);
     const primaryUrl = candidateUrls[0] || "";
     if (!primaryUrl) {
-      throw new NotFoundException(`未能解析到 B 站音频流直链: ${bvid}`);
+      throw new NotFoundException(
+        createApiErrorResponse(errorCodes.bilibiliTrackNotFound, `未能解析到 B 站音频流直链: ${bvid}`)
+      );
     }
 
     return {
@@ -284,8 +297,18 @@ export class BilibiliService {
     _quality?: "standard" | "high" | "exhigh",
     range?: string
   ) {
-    const { candidateUrls } = await this.getResolvedAudioCandidates(bvid, cid);
-    return this.client.fetchAudioStream(candidateUrls, range);
+    const resolved = await this.getResolvedAudioCandidates(bvid, cid);
+    try {
+      return await this.client.fetchAudioStream(resolved.candidateUrls, range);
+    } catch (error) {
+      if (!resolved.fromCache) {
+        throw error;
+      }
+      // Cached Bilibili CDN signatures/hosts can expire before the 30m TTL; evict and re-resolve once.
+      this.audioStreamCache.delete(`${bvid}:${resolved.cid}`);
+      const refreshed = await this.getResolvedAudioCandidates(bvid, resolved.cid);
+      return this.client.fetchAudioStream(refreshed.candidateUrls, range);
+    }
   }
 
   async getLyrics(bvid: string, cid?: number): Promise<ProviderLyrics> {
@@ -377,7 +400,9 @@ export class BilibiliService {
   }> {
     const mediaId = extractBilibiliMediaId(urlOrId);
     if (!mediaId) {
-      throw new NotFoundException("未提取到有效的 B 站收藏夹 ID");
+      throw new NotFoundException(
+        createApiErrorResponse(errorCodes.bilibiliTrackNotFound, "未提取到有效的 B 站收藏夹 ID")
+      );
     }
 
     const res = await this.client.getFavoriteResources(mediaId, page, pageSize);
@@ -402,7 +427,9 @@ export class BilibiliService {
     const detail = await this.getVideoDetail(bvid);
     const firstCid = detail.pages[0]?.cid;
     if (!firstCid) {
-      throw new NotFoundException(`Bilibili 视频不存在有效分P: ${bvid}`);
+      throw new NotFoundException(
+        createApiErrorResponse(errorCodes.bilibiliTrackNotFound, `Bilibili 视频不存在有效分P: ${bvid}`)
+      );
     }
     return firstCid;
   }

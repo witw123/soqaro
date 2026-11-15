@@ -14,6 +14,7 @@ import { SearchSuggestions, type SearchSuggestionItem } from "@/components/provi
 import { SearchBar } from "@/components/ui/search-bar";
 import { formatDuration } from "@/lib/domain/soqaro-ui";
 import { soqaroApi } from "@/lib/network/soqaro-api";
+import { toProviderImportErrorMessage } from "@/features/upload/upload-import-helpers";
 import { isBilibiliCollection, bilibiliTrackToPlaylistSummary } from "@/features/library/bilibili-collection";
 import { importTaskStore, useVisibleImportTasks } from "@/features/upload/import-task-store";
 import { useActiveSession } from "@/features/session/use-session-identity";
@@ -812,6 +813,5 @@ export function RoomProviderTrackSearch({
 }
 
 function toSearchErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  return "音乐平台暂时不可用，请稍后重试。";
+  return toProviderImportErrorMessage(error);
 }

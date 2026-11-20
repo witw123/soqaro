@@ -1158,6 +1158,12 @@
     view-transition-name: app-sidebar;
   }
 
+  html[data-room-transition] body *,
+  html[data-room-transition] body *::before,
+  html[data-room-transition] body *::after {
+    animation-play-state: paused !important;
+  }
+
   html[data-room-transition] [data-custom-layout-room-host="true"] .animate-in,
   html[data-room-transition] [data-custom-layout-room-host="true"] .animate-fade-in,
   html[data-room-transition] .mobile-app-route-view {
@@ -1225,6 +1231,7 @@
     z-index: 880 !important;
     animation-duration: 250ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, width, height;
   }
   html[data-room-transition="card-open"]::view-transition-group(active-room-shell),
   html[data-room-transition="card-close"]::view-transition-group(active-room-shell) {
@@ -1233,19 +1240,10 @@
   html[data-room-transition]::view-transition-image-pair(active-room-shell) {
     overflow: hidden;
     border-radius: 0;
+    isolation: isolate;
   }
-  html[data-room-transition="card-open"]::view-transition-image-pair(active-room-shell) {
-    animation: room-vt-radius-to-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  html[data-room-transition="card-close"]::view-transition-image-pair(active-room-shell) {
-    animation: room-vt-radius-from-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  html[data-room-transition="room-enter"][data-room-transition-origin="sheet"]::view-transition-image-pair(active-room-shell),
-  html[data-room-transition="room-enter"][data-room-transition-origin="pill"]::view-transition-image-pair(active-room-shell) {
-    animation: room-vt-radius-from-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  html[data-room-transition="room-exit"][data-room-transition-target="pill"]::view-transition-image-pair(active-room-shell) {
-    animation: room-vt-radius-to-sheet 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  html:is([data-room-transition="card-open"], [data-room-transition="card-close"])::view-transition-image-pair(active-room-shell) {
+    border-radius: 12px;
   }
   html[data-room-transition]::view-transition-old(active-room-shell),
   html[data-room-transition]::view-transition-new(active-room-shell) {
@@ -1273,6 +1271,8 @@
   /* Modal Backdrop Overlay Isolation */
   html[data-room-transition] [data-dialog-backdrop="room-threshold"] {
     animation: none !important;
+  }
+  html:is([data-room-transition="card-open"], [data-room-transition="card-close"]) [data-dialog-backdrop="room-threshold"] {
     view-transition-name: room-dialog-backdrop;
   }
   html[data-room-transition]::view-transition-group(room-dialog-backdrop) {
@@ -1362,24 +1362,6 @@
     75%,
     100% {
       opacity: 1;
-    }
-  }
-
-  @keyframes room-vt-radius-to-sheet {
-    from {
-      border-radius: 0;
-    }
-    to {
-      border-radius: 12px;
-    }
-  }
-
-  @keyframes room-vt-radius-from-sheet {
-    from {
-      border-radius: 12px;
-    }
-    to {
-      border-radius: 0;
     }
   }
 
@@ -1751,6 +1733,28 @@
 
   .mobile-app-navigation__item:active {
     transform: scale(0.92);
+  }
+
+  .spa-view-inactive {
+    content-visibility: hidden;
+    pointer-events: none !important;
+    user-select: none !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    z-index: -1 !important;
+    contain: layout style paint;
+  }
+
+  @supports not (content-visibility: hidden) {
+    .spa-view-inactive {
+      display: none !important;
+    }
   }
 
   .mobile-app-route-view {

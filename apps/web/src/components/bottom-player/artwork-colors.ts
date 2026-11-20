@@ -46,11 +46,30 @@ const fallbackPalette: ArtworkPalette = {
   accentGlow: "rgba(0, 122, 255, 0.28)"
 };
 
+const MAX_ARTWORK_PALETTE_CACHE = 64;
+const artworkPaletteCache = new Map<string, ArtworkPalette>();
+
+function cacheArtworkPalette(sourceUrl: string, palette: ArtworkPalette) {
+  if (artworkPaletteCache.has(sourceUrl)) {
+    artworkPaletteCache.delete(sourceUrl);
+  } else if (artworkPaletteCache.size >= MAX_ARTWORK_PALETTE_CACHE) {
+    const oldestKey = artworkPaletteCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      artworkPaletteCache.delete(oldestKey);
+    }
+  }
+  artworkPaletteCache.set(sourceUrl, palette);
+}
+
 export function useArtworkPalette(artworkUrl: string | null | undefined) {
-  const [palette, setPalette] = useState<ArtworkPalette>(fallbackPalette);
   const [artworkColorEnabled, setArtworkColorEnabled] = useState(
     () => !getDefaultAppSettings().playback.disableArtworkColor
   );
+  const [palette, setPalette] = useState<ArtworkPalette>(() => {
+    if (!artworkColorEnabled || !artworkUrl) return fallbackPalette;
+    const sourceUrl = getArtworkSourceUrl(artworkUrl);
+    return (sourceUrl && artworkPaletteCache.get(sourceUrl)) || fallbackPalette;
+  });
 
   useEffect(() => {
     const syncArtworkColorPreference = () => {
@@ -71,16 +90,31 @@ export function useArtworkPalette(artworkUrl: string | null | undefined) {
       return;
     }
 
+    const sourceUrl = getArtworkSourceUrl(artworkUrl);
+    if (!sourceUrl) {
+      setPalette(fallbackPalette);
+      return;
+    }
+
+    const cached = artworkPaletteCache.get(sourceUrl);
+    if (cached) {
+      artworkPaletteCache.delete(sourceUrl);
+      artworkPaletteCache.set(sourceUrl, cached);
+      setPalette(cached);
+      return;
+    }
+
     let cancelled = false;
     const image = new Image();
     image.decoding = "async";
     image.onload = () => {
-      if (!cancelled) setPalette(extractArtworkPalette(image));
+      const nextPalette = extractArtworkPalette(image);
+      cacheArtworkPalette(sourceUrl, nextPalette);
+      if (!cancelled) setPalette(nextPalette);
     };
     image.onerror = () => {
       if (!cancelled) setPalette(fallbackPalette);
     };
-    const sourceUrl = getArtworkSourceUrl(artworkUrl);
     // CORS mode is needed for remote pixel sampling, but local data/blob
     // artwork must stay in the browser's normal same-origin loading path.
     if (/^https?:\/\//i.test(sourceUrl)) {

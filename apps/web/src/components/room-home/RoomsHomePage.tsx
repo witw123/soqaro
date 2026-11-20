@@ -33,6 +33,7 @@ import {
 } from "./room-gallery-layout";
 import {
   awaitRoomRuntimePrewarm,
+  isRoomViewTransitionActive,
   prewarmRoomRuntimeChunk,
   runRoomViewTransition
 } from "./room-view-transition";
@@ -78,13 +79,29 @@ export function RoomsHomePage({
     initialStatusMessage: ""
   });
   const pageActive = useWorkspacePageActive();
+  const [queryActive, setQueryActive] = useState(pageActive);
+
+  useEffect(() => {
+    if (!pageActive) {
+      setQueryActive(false);
+      return;
+    }
+    if (isRoomViewTransitionActive()) {
+      const timer = window.setTimeout(() => {
+        setQueryActive(true);
+      }, 280);
+      return () => window.clearTimeout(timer);
+    }
+    setQueryActive(true);
+  }, [pageActive]);
+
   const queryClient = useQueryClient();
   const roomsQuery = useQuery({
     queryKey: ["rooms", activeSession?.userId ?? null],
     queryFn: ({ signal }) => soqaroApi.listRooms(signal),
-    enabled: hydrated && pageActive,
+    enabled: hydrated && queryActive,
     staleTime: 10_000,
-    refetchInterval: pageActive ? 10_000 : false
+    refetchInterval: queryActive ? 10_000 : false
   });
   const rawAvailableRooms = roomsQuery.data ?? emptyRooms;
   const availableRoomsRef = useRef<RoomDirectoryItem[]>(emptyRooms);
@@ -165,6 +182,9 @@ export function RoomsHomePage({
 
   useEffect(() => {
     if (!pageActive) {
+      setSelectedRoom(null);
+      setJoinDialogOpen(false);
+      setCreateDialogOpen(false);
       void queryClient.cancelQueries({
         queryKey: ["rooms", activeSession?.userId ?? null],
         type: "inactive"
@@ -236,10 +256,14 @@ export function RoomsHomePage({
       runRoomViewTransition(
         "room-enter",
         () => {
-          setCreateDialogOpen(false);
           router.push(buildRoomHref(snapshot.room.id) as Route);
         },
-        { roomId: snapshot.room.id }
+        {
+          roomId: snapshot.room.id,
+          onFinished: () => {
+            setCreateDialogOpen(false);
+          }
+        }
       );
     } catch (error) {
       setDialogError(toUserFacingError(error));
@@ -267,11 +291,15 @@ export function RoomsHomePage({
       runRoomViewTransition(
         "room-enter",
         () => {
-          setSelectedRoom(null);
-          setJoinDialogOpen(false);
           router.push(buildRoomHref(joined.roomId) as Route);
         },
-        { roomId: joined.roomId }
+        {
+          roomId: joined.roomId,
+          onFinished: () => {
+            setSelectedRoom(null);
+            setJoinDialogOpen(false);
+          }
+        }
       );
     } catch (error) {
       if (selectedRoom) {
@@ -296,14 +324,18 @@ export function RoomsHomePage({
         return;
       }
 
-      handlePrewarmRoom(room.room.id);
       runRoomViewTransition(
         "card-open",
         () => {
           setSelectedRoom(room);
           setDialogError(null);
         },
-        { roomId: room.room.id }
+        {
+          roomId: room.room.id,
+          onFinished: () => {
+            handlePrewarmRoom(room.room.id);
+          }
+        }
       );
     },
     [activeSession, authEntryHref, effectiveAwayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]

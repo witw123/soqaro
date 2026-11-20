@@ -151,6 +151,7 @@ export function DiscoverPage() {
 
   useEffect(() => {
     if (!pageActive) {
+      setSelectedRoom(null);
       void queryClient.cancelQueries({
         queryKey: ["rooms", userId],
         type: "inactive"
@@ -205,14 +206,18 @@ export function DiscoverPage() {
         return;
       }
 
-      handlePrewarmRoom(room.room.id);
       runRoomViewTransition(
         "card-open",
         () => {
           setSelectedRoom(room);
           setDialogError(null);
         },
-        { roomId: room.room.id }
+        {
+          roomId: room.room.id,
+          onFinished: () => {
+            handlePrewarmRoom(room.room.id);
+          }
+        }
       );
     },
     [activeSession, authEntryHref, awayRoomId, handlePrewarmRoom, handleResumeAwayRoom, router, setStatusMessage]
@@ -246,10 +251,14 @@ export function DiscoverPage() {
       runRoomViewTransition(
         "room-enter",
         () => {
-          setSelectedRoom(null);
           router.push(`/room/${joined.roomId}` as Route);
         },
-        { roomId: joined.roomId }
+        {
+          roomId: joined.roomId,
+          onFinished: () => {
+            setSelectedRoom(null);
+          }
+        }
       );
     } catch (error) {
       if (selectedRoom) {

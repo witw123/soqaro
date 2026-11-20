@@ -20,33 +20,50 @@ export function useCustomLayoutRuntime(pathname: string | null) {
     const root = document.documentElement;
     const pageId = getCustomLayoutPageId(pathname);
     const isWorkspaceRoute = pathname === "/rooms" || pathname?.startsWith("/app") === true || pathname?.startsWith("/room/") === true;
+    let hadAppliedCustomVars = root.dataset.customLayoutEnabled === "true";
 
     const clearLayoutVariables = () => {
+      if (!hadAppliedCustomVars) return;
       for (const itemId of layoutItemIds) {
         for (const property of ["x", "y", "width", "height"]) {
           root.style.removeProperty(`--custom-${itemId}-${property}`);
         }
+        delete root.dataset[getVisibilityDatasetKey(itemId)];
       }
+      hadAppliedCustomVars = false;
     };
 
     const syncLayout = () => {
       const settings = getAppSettings();
       const enabled = isWorkspaceRoute && settings.layout.customLayout.enabled;
-      root.dataset.customLayoutEnabled = String(enabled);
-      root.dataset.customLayoutPage = pageId;
-      clearLayoutVariables();
-      for (const itemId of layoutItemIds) {
-        delete root.dataset[getVisibilityDatasetKey(itemId)];
+      const enabledStr = String(enabled);
+      if (root.dataset.customLayoutEnabled !== enabledStr) {
+        root.dataset.customLayoutEnabled = enabledStr;
+      }
+      if (root.dataset.customLayoutPage !== pageId) {
+        root.dataset.customLayoutPage = pageId;
       }
 
-      if (!enabled) return;
+      if (!enabled) {
+        clearLayoutVariables();
+        return;
+      }
+
+      hadAppliedCustomVars = true;
       const page = settings.layout.customLayout.pages[pageId];
       for (const itemId of layoutItemIds) {
         const item = page[itemId];
-        root.dataset[getVisibilityDatasetKey(itemId)] = String(item.visible);
+        const visKey = getVisibilityDatasetKey(itemId);
+        const visStr = String(item.visible);
+        if (root.dataset[visKey] !== visStr) {
+          root.dataset[visKey] = visStr;
+        }
         for (const property of ["x", "y", "width", "height"] as const) {
           const base = property === "x" || property === "width" ? customLayoutCanvas.width : customLayoutCanvas.height;
-          root.style.setProperty(`--custom-${itemId}-${property}`, `${(item[property] / base) * 100}%`);
+          const nextValue = `${(item[property] / base) * 100}%`;
+          if (root.style.getPropertyValue(`--custom-${itemId}-${property}`) !== nextValue) {
+            root.style.setProperty(`--custom-${itemId}-${property}`, nextValue);
+          }
         }
       }
     };
@@ -57,10 +74,11 @@ export function useCustomLayoutRuntime(pathname: string | null) {
     return () => {
       window.removeEventListener(appSettingsChangeEvent, syncLayout);
       window.removeEventListener("storage", syncLayout);
-      clearLayoutVariables();
-      for (const itemId of layoutItemIds) delete root.dataset[getVisibilityDatasetKey(itemId)];
-      root.dataset.customLayoutEnabled = "false";
-      delete root.dataset.customLayoutPage;
+      if (hadAppliedCustomVars) {
+        clearLayoutVariables();
+        root.dataset.customLayoutEnabled = "false";
+        delete root.dataset.customLayoutPage;
+      }
     };
   }, [pathname]);
 }

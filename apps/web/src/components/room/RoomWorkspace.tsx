@@ -24,7 +24,6 @@ import type { CachedLibraryTrack, UploadedTrack } from "@/features/library/audio
 import type { LocalStorageSummary } from "@/features/upload/use-track-uploads";
 import { AppSidebar } from "@/components/shell";
 import type { LocalMemberPanelState } from "@/components/room/MembersPanel";
-import { useCustomLayoutRuntime } from "@/features/settings/use-custom-layout-runtime";
 import type { RoomPlaybackBarrierClock } from "@/features/playback/room-playback-clock";
 
 type RoomWorkspaceProps = {
@@ -178,7 +177,6 @@ function RoomWorkspaceBase({
   socket,
   playerSlot
 }: RoomWorkspaceProps) {
-  useCustomLayoutRuntime("/room/current");
   const playback = roomSnapshot?.room.playback;
   const host = roomSnapshot?.room.members.find((member) => member.role === "host");
   const isPlaying = playback?.status === "playing" && playbackBarrier?.blocked !== true;

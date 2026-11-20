@@ -61,7 +61,7 @@ export function AppRouteShell({
     event.preventDefault();
     const candidates = Array.from(document.querySelectorAll<HTMLElement>("main"));
     const activeMain = candidates.find(
-      (el) => !el.closest('.hidden, [aria-hidden="true"]:not([data-aria-hidden="true"])')
+      (el) => !el.closest('.hidden, .spa-view-inactive, [aria-hidden="true"]:not([data-aria-hidden="true"])')
     );
     if (!activeMain) return;
     if (!activeMain.hasAttribute("tabindex")) {
@@ -76,8 +76,9 @@ export function AppRouteShell({
         className={
           active
             ? "min-h-[calc(100*var(--app-dvh))] overflow-x-hidden bg-background text-foreground"
-            : "hidden"
+            : "spa-view-inactive"
         }
+        inert={!active}
       >
         {active ? (
           <a
@@ -165,16 +166,18 @@ function PersistentAppRouteViews({
   return (
     <div className="contents">
       {[...routeCache.current.entries()].map(([cachedRoute, page]) => {
-        const isVisible = active && cachedRoute === visibleRoute.current;
+        const isCurrentRoute = cachedRoute === visibleRoute.current;
+        const isVisible = active && isCurrentRoute;
         const isEntering = isVisible && animatingRouteKey === cachedRoute;
         return (
           <div
             aria-hidden={!isVisible}
             className={
-              isVisible
+              isCurrentRoute
                 ? `mobile-app-route-view${isEntering ? " mobile-app-route-view--enter" : ""} custom-layout-content-region md:contents`
-                : "hidden"
+                : "spa-view-inactive"
             }
+            inert={!isCurrentRoute}
             key={cachedRoute}
             onAnimationEnd={
               isEntering

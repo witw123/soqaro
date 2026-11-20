@@ -426,7 +426,18 @@ export function useTrackUploads(options: {
   }, [refreshCacheLibrary, setStatusMessage]);
 
   useEffect(() => {
-    void refreshCacheLibrary();
+    let initialRefreshTimer: number | null = null;
+    if (
+      typeof document !== "undefined" &&
+      document.documentElement.dataset?.roomTransition
+    ) {
+      initialRefreshTimer = window.setTimeout(() => {
+        initialRefreshTimer = null;
+        void refreshCacheLibrary();
+      }, 260);
+    } else {
+      void refreshCacheLibrary();
+    }
     const refreshWhenActive = () => {
       if (inFlightUploadHashesRef.current.size > 0) {
         return;
@@ -453,6 +464,9 @@ export function useTrackUploads(options: {
     window.addEventListener("storage", refreshWhenPlaylistStorageChanges);
     document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
+      if (initialRefreshTimer !== null) {
+        window.clearTimeout(initialRefreshTimer);
+      }
       window.clearInterval(refreshInterval);
       window.removeEventListener("focus", refreshWhenActive);
       window.removeEventListener(playlistsChangedEventName, refreshWhenPlaylistsChange);

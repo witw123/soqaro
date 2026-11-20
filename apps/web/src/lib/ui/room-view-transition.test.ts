@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findRoomCardElement, runRoomViewTransition } from "./room-view-transition";
+import { findRoomCardElement, isRoomViewTransitionActive, runRoomViewTransition } from "./room-view-transition";
 
 function createMockElement(id: string, options?: { hidden?: boolean; visibleRect?: boolean }): HTMLElement {
   return {
@@ -524,5 +524,76 @@ describe("room-view-transition", () => {
 
     resolveFinished();
     await finished;
+  });
+
+  it("skips .spa-view-inactive cached routes when locating room cards", () => {
+    const inactiveRouteCard = {
+      ...createMockElement("inactive-route-card", { visibleRect: true }),
+      closest: (selector: string) =>
+        selector.includes(".spa-view-inactive") ? ({} as Element) : null
+    } as unknown as HTMLElement;
+    const activeRouteCard = createMockElement("active-route-card", { hidden: false, visibleRect: true });
+
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {} },
+      querySelectorAll: (selector: string) => {
+        if (selector.includes("data-mosaic-slot-id")) return [inactiveRouteCard, activeRouteCard];
+        return [];
+      }
+    });
+
+    expect(findRoomCardElement("room_spa_cached")?.id).toBe("active-route-card");
+  });
+
+  it("clears RoomThresholdSheet transition name and visibility on room-enter while tracking active state", async () => {
+    const dataset: Record<string, string | undefined> = {};
+    const sheetSurface = {
+      style: { viewTransitionName: "active-room-shell", visibility: "", pointerEvents: "" }
+    } as unknown as HTMLElement;
+    const sheetBackdrop = {
+      style: { visibility: "", pointerEvents: "" }
+    } as unknown as HTMLElement;
+
+    let resolveFinished!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      resolveFinished = resolve;
+    });
+
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false }),
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis)
+    });
+
+    vi.stubGlobal("document", {
+      documentElement: { dataset },
+      querySelector: (selector: string) => {
+        if (selector === '[data-dialog-backdrop="room-threshold"]') return sheetBackdrop;
+        if (selector === '[data-dialog-surface="room-threshold"]') return sheetSurface;
+        if (selector === '[data-custom-layout-room-host="true"]') return {} as Element;
+        return null;
+      },
+      querySelectorAll: () => [],
+      startViewTransition: vi.fn((cb: () => void | Promise<void>) => {
+        expect(isRoomViewTransitionActive()).toBe(true);
+        cb();
+        return { finished };
+      })
+    });
+
+    runRoomViewTransition("room-enter", () => {}, { roomId: "room_sheet_enter" });
+
+    expect(dataset.roomTransitionOrigin).toBe("sheet");
+    expect(sheetSurface.style.viewTransitionName).toBe("none");
+    expect(sheetSurface.style.visibility).toBe("hidden");
+    expect(sheetSurface.style.pointerEvents).toBe("none");
+    expect(sheetBackdrop.style.visibility).toBe("hidden");
+    expect(sheetBackdrop.style.pointerEvents).toBe("none");
+    expect(isRoomViewTransitionActive()).toBe(true);
+
+    resolveFinished();
+    await finished;
+    await Promise.resolve();
+    expect(isRoomViewTransitionActive()).toBe(false);
   });
 });

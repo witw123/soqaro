@@ -22,6 +22,7 @@ import { RoomImportProgressBar } from "./RoomImportProgressBar";
 import { RoomStage } from "./RoomStage";
 import { RoomPanelSkeleton } from "./RoomPanelSkeleton";
 import { RoomTabPanelPlaceholder, preloadRoomPanelChunks } from "./RoomTabPanelPlaceholder";
+import { LibraryTabPanel } from "./LibraryTabPanel";
 import { useProgressiveRoomLoading } from "./hooks/use-progressive-room-loading";
 import type { CachedLibraryTrack, UploadedTrack } from "@/features/library/audio-utils";
 import type { LocalStorageSummary } from "@/features/upload/use-track-uploads";
@@ -121,9 +122,6 @@ const tabConfigs: Array<{ id: ManagementTabId; label: string; icon: React.Compon
   { id: "members", label: "成员", icon: UsersIcon }
 ];
 
-const LibraryTabPanel = dynamic(() => import("./LibraryTabPanel").then((mod) => mod.LibraryTabPanel), {
-  loading: RoomTabPanelPlaceholder
-});
 const SearchTabPanel = dynamic(() => import("./SearchTabPanel").then((mod) => mod.SearchTabPanel), {
   loading: RoomTabPanelPlaceholder
 });
@@ -157,11 +155,10 @@ function InteractiveRoomLayout(props: RoomLayoutProps) {
   const [activeTab, setActiveTab] = useState<ManagementTabId>("library");
   const { onDiagnosticsVisibilityChange, onTabChange } = props;
 
-  // 四个 tab 面板迟早都会被点到:空闲时预取 chunk,让首次切换无需加载占位。
+  // 非默认 tab 面板迟早会被点到:空闲时预取 chunk,让首次切换无需加载占位。
   useEffect(
     () =>
       preloadRoomPanelChunks([
-        () => import("./LibraryTabPanel"),
         () => import("./SearchTabPanel"),
         () => import("./LocalStorageTabPanel"),
         () => import("./MembersTabPanel")

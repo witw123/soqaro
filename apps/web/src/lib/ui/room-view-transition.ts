@@ -29,6 +29,7 @@ type ViewTransitionCapableDocument = Document & {
 };
 
 const MAX_ASYNC_ROUTE_WAIT_MS = 1500;
+const HIDDEN_ANCESTOR_SELECTOR = '[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden, .spa-view-inactive';
 
 let activeTaggedElement: HTMLElement | null = null;
 
@@ -68,14 +69,14 @@ function hasVisibleDomMatch(selector: string): boolean {
   const candidates = document.querySelectorAll<HTMLElement>(selector);
   if (candidates.length > 0) {
     for (const candidate of candidates) {
-      if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
+      if (candidate.closest(HIDDEN_ANCESTOR_SELECTOR)) continue;
       return true;
     }
     return false;
   }
   const single = document.querySelector<HTMLElement>(selector);
   if (!single) return false;
-  return !single.closest?.('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden');
+  return !single.closest?.(HIDDEN_ANCESTOR_SELECTOR);
 }
 
 function isHomeDirectorySettled(): boolean {
@@ -132,7 +133,7 @@ function findFirstVisibleCandidate(selector: string): HTMLElement | null {
   for (const candidate of candidates) {
     // Ignore hidden cached routes in PersistentAppRouteViews, but do not skip
     // visible routes whose Radix `data-aria-hidden="true"` cleanup runs passively.
-    if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
+    if (candidate.closest(HIDDEN_ANCESTOR_SELECTOR)) continue;
     if (isElementVisibleInViewport(candidate)) {
       return candidate;
     }
@@ -152,7 +153,7 @@ function findNonHiddenCardElement(roomId: string | null | undefined): HTMLElemen
   for (const selector of cardSelectors) {
     const candidates = document.querySelectorAll<HTMLElement>(selector);
     for (const candidate of candidates) {
-      if (candidate.closest('[aria-hidden="true"]:not([data-aria-hidden="true"]), .hidden')) continue;
+      if (candidate.closest(HIDDEN_ANCESTOR_SELECTOR)) continue;
       if (candidate.getClientRects().length > 0) {
         return candidate;
       }
@@ -194,6 +195,7 @@ function waitForDomCondition(
   return new Promise<void>((resolve) => {
     let settled = false;
     let pollTimerId: number | null = null;
+    let rafId: number | null = null;
     let mutationCheckQueued = false;
 
     const finish = () => {
@@ -203,6 +205,10 @@ function waitForDomCondition(
       window.clearTimeout(timerId);
       if (pollTimerId !== null) {
         window.clearTimeout(pollTimerId);
+      }
+      if (rafId !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
       }
       resolve();
     };
@@ -215,11 +221,16 @@ function waitForDomCondition(
     };
 
     // Coalesce bursts of React commit / unmount mutations into a single check
-    // instead of querying the DOM and calling `getClientRects()` per mutation record.
+    // before layout instead of querying the DOM and calling `getClientRects()` per mutation record.
     const scheduleMutationCheck = () => {
       if (settled || mutationCheckQueued) return;
       mutationCheckQueued = true;
-      if (typeof queueMicrotask === "function") {
+      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        rafId = window.requestAnimationFrame(() => {
+          rafId = null;
+          runCheck();
+        });
+      } else if (typeof queueMicrotask === "function") {
         queueMicrotask(runCheck);
       } else {
         runCheck();
@@ -275,7 +286,7 @@ function restoreRoomTransitionFocus(kind: RoomTransitionKind): void {
     active.isConnected === false ||
     Boolean(
       typeof active.closest === "function" &&
-      active.closest('.hidden, [aria-hidden="true"], [data-morphed-to-modal="true"]')
+      active.closest('.hidden, .spa-view-inactive, [aria-hidden="true"], [data-morphed-to-modal="true"]')
     );
 
   if (!activeLost) {
@@ -286,7 +297,7 @@ function restoreRoomTransitionFocus(kind: RoomTransitionKind): void {
   const visibleMain = mains.find(
     (main) =>
       typeof main.closest !== "function" ||
-      !main.closest('.hidden, [aria-hidden="true"]:not([data-aria-hidden="true"])')
+      !main.closest(HIDDEN_ANCESTOR_SELECTOR)
   );
   if (!visibleMain) {
     return;
@@ -305,6 +316,11 @@ function restoreRoomTransitionFocus(kind: RoomTransitionKind): void {
     target.setAttribute("tabindex", "-1");
   }
   target.focus({ preventScroll: true });
+}
+
+export function isRoomViewTransitionActive(): boolean {
+  if (typeof document === "undefined") return false;
+  return Boolean(document.documentElement.dataset?.roomTransition);
 }
 
 export function isRoomMotionReduced(): boolean {
@@ -412,9 +428,27 @@ export function runRoomViewTransition(
         clearActiveTaggedElement();
       }
 
-      flushSync(() => {
+      if (kind === "room-enter") {
+        const sheetSurface = document.querySelector<HTMLElement>('[data-dialog-surface="room-threshold"]');
+        if (sheetSurface?.style) {
+          sheetSurface.style.viewTransitionName = "none";
+          sheetSurface.style.visibility = "hidden";
+          sheetSurface.style.pointerEvents = "none";
+        }
+        const sheetBackdrop = document.querySelector<HTMLElement>('[data-dialog-backdrop="room-threshold"]');
+        if (sheetBackdrop?.style) {
+          sheetBackdrop.style.visibility = "hidden";
+          sheetBackdrop.style.pointerEvents = "none";
+        }
+      }
+
+      if (kind === "room-enter" || kind === "room-exit") {
         commitUpdate();
-      });
+      } else {
+        flushSync(() => {
+          commitUpdate();
+        });
+      }
 
       if (kind === "card-close") {
         if (options.roomId) {
@@ -427,6 +461,7 @@ export function runRoomViewTransition(
         if (isRoomHostMounted()) {
           return;
         }
+        flushSync(() => {});
         return waitForDomCondition(() => isRoomHostMounted());
       }
 
@@ -448,6 +483,7 @@ export function runRoomViewTransition(
           tagRoomExitTarget(targetRoomId);
           return;
         }
+        flushSync(() => {});
         return waitForDomCondition(canResolveExitTarget, MAX_ASYNC_ROUTE_WAIT_MS).then(() => {
           if (!isRoomHostMounted()) {
             tagRoomExitTarget(targetRoomId);

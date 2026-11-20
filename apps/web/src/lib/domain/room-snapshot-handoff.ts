@@ -14,6 +14,8 @@ type RoomSnapshotHandoffPayload = {
   savedAt: number;
 };
 
+let memoryHandoffPayload: RoomSnapshotHandoffPayload | null = null;
+
 export function buildRoomJoinBootstrapSnapshot(joined: RoomJoinResponse): RoomSnapshot {
   return {
     room: {
@@ -78,6 +80,8 @@ export function storeRoomSnapshotHandoff(snapshot: RoomSnapshot) {
     savedAt: Date.now()
   };
 
+  memoryHandoffPayload = payload;
+
   try {
     window.sessionStorage.setItem(roomSnapshotHandoffStorageKey, JSON.stringify(payload));
   } catch {
@@ -87,6 +91,23 @@ export function storeRoomSnapshotHandoff(snapshot: RoomSnapshot) {
 
 export function peekRoomSnapshotHandoff(roomId: string): RoomSnapshot | null {
   if (typeof window === "undefined" || !roomId) {
+    return null;
+  }
+
+  if (memoryHandoffPayload) {
+    const isExpired = Date.now() - memoryHandoffPayload.savedAt > roomSnapshotHandoffTtlMs;
+    if (isExpired) {
+      memoryHandoffPayload = null;
+      try {
+        window.sessionStorage.removeItem(roomSnapshotHandoffStorageKey);
+      } catch {
+        // Ignore storage errors
+      }
+      return null;
+    }
+    if (memoryHandoffPayload.roomId === roomId) {
+      return memoryHandoffPayload.snapshot;
+    }
     return null;
   }
 
@@ -110,6 +131,11 @@ export function peekRoomSnapshotHandoff(roomId: string): RoomSnapshot | null {
       return null;
     }
 
+    memoryHandoffPayload = {
+      roomId: payload.roomId,
+      snapshot: payload.snapshot,
+      savedAt: typeof payload.savedAt === "number" ? payload.savedAt : Date.now()
+    };
     return payload.snapshot;
   } catch {
     return null;
@@ -119,6 +145,23 @@ export function peekRoomSnapshotHandoff(roomId: string): RoomSnapshot | null {
 export function consumeRoomSnapshotHandoff(roomId: string) {
   if (typeof window === "undefined") {
     return null;
+  }
+
+  if (memoryHandoffPayload) {
+    const payload = memoryHandoffPayload;
+    memoryHandoffPayload = null;
+    try {
+      window.sessionStorage.removeItem(roomSnapshotHandoffStorageKey);
+    } catch {
+      // Ignore storage errors
+    }
+
+    const isExpired = Date.now() - payload.savedAt > roomSnapshotHandoffTtlMs;
+    if (isExpired || payload.roomId !== roomId || !payload.snapshot) {
+      return null;
+    }
+
+    return payload.snapshot;
   }
 
   try {

@@ -109,6 +109,7 @@ export class RoomAudioActivationManager {
       if (
         !options.force &&
         !element.paused &&
+        !element.ended &&
         this.playedElementSourceKeys.get(element) === sourceKey
       ) {
         this.activated = true;

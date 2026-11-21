@@ -247,6 +247,10 @@ export class RoomPresenceOrchestratorService {
     ) {
       if (presenceState === "online" && peerId) {
         await this.roomPresenceService.setOnline(roomId, sessionId, peerId);
+        if (this.roomPlaybackService.handleSourcePeerOnline(record, sessionId, peerId)) {
+          incrementRoomRevision(record.room);
+          await this.roomRecordRepository.persistRecord(record);
+        }
         await this.roomActivityService.startOrTouch(
           sessionId,
           record.room

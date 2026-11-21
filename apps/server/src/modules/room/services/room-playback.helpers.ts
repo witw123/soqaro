@@ -1,5 +1,6 @@
 ﻿import {
   hasCompleteRoomAsset,
+  isProviderTrackMeta,
   type GaplessTransition,
   type PlaybackSnapshot,
   type TrackMeta
@@ -12,15 +13,10 @@ export type SourceCandidate = {
 };
 
 export function isProviderTrack(track: TrackMeta | undefined): track is TrackMeta & {
-  sourceType: "netease" | "qqmusic";
+  sourceType: Exclude<TrackMeta["sourceType"], "local_upload">;
   sourceRef: NonNullable<TrackMeta["sourceRef"]>;
 } {
-  return !!(
-    track &&
-    (track.sourceType === "netease" || track.sourceType === "qqmusic") &&
-    track.sourceRef &&
-    track.sourceRef.provider === track.sourceType
-  );
+  return isProviderTrackMeta(track);
 }
 
 export function clampPositionMs(record: RoomRecord, trackId: string | null, positionMs: number): number {
@@ -46,15 +42,16 @@ export function getTrackDurationMs(record: RoomRecord, trackId: string | null): 
 }
 
 export function getEffectivePlaybackPositionMs(record: RoomRecord, playback: PlaybackSnapshot): number {
+  const anchor = playback.startedAt ?? playback.startAt;
   if (
     playback.status !== "playing" ||
     !playback.currentTrackId ||
-    !playback.startedAt
+    !anchor
   ) {
     return clampPositionMs(record, playback.currentTrackId, playback.positionMs);
   }
 
-  const startedAtMs = new Date(playback.startedAt).getTime();
+  const startedAtMs = new Date(anchor).getTime();
   if (!Number.isFinite(startedAtMs)) {
     return clampPositionMs(record, playback.currentTrackId, playback.positionMs);
   }
@@ -159,8 +156,8 @@ export function pickTrackSourceCandidate(
     excludedSessionIds?: Set<string>;
   }
 ): SourceCandidate | null {
-  // Provider tracks must have a complete room distribution asset to be broadcast.
-  if (isProviderTrack(track) && !hasCompleteRoomAsset(track)) {
+  // Tracks must have a complete room distribution asset to be broadcast.
+  if (!hasCompleteRoomAsset(track)) {
     return null;
   }
 

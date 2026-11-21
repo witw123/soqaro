@@ -190,6 +190,12 @@ describe("playback mutation conflict retry", () => {
     expect(
       hasPlaybackTimelineAdvanced(previous, {
         ...previous,
+        playbackRevision: 5
+      })
+    ).toBe(false);
+    expect(
+      hasPlaybackTimelineAdvanced(previous, {
+        ...previous,
         startAt: "2026-07-22T00:03:00.000Z",
         startedAt: "2026-07-22T00:03:00.000Z",
         playbackRevision: 5

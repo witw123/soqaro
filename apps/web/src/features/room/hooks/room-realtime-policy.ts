@@ -2,6 +2,7 @@
 
 import type { PeerSignalMessage, PlaybackSnapshot, RoomSnapshot } from "@soqaro/shared";
 import { shouldReplacePlaybackSnapshot } from "@/lib/domain/soqaro-ui";
+import { resolveRoomPlaybackPositionMs } from "@/features/playback/room-playback-clock";
 
 export function createRoomRealtimeEventGate(initialSnapshot?: RoomSnapshot | null) {
   let latestRoomRevision = initialSnapshot?.room.roomRevision ?? 0;
@@ -231,6 +232,24 @@ export function resolveRoomSnapshotWatchdogAction(input: {
     resyncRoomId: input.snapshotRoomId,
     shouldRequestResync: true
   };
+}
+
+export function isSoloRoomPlaybackOverdue(input: {
+  roomSnapshot: RoomSnapshot | null | undefined;
+  nowMs: number;
+  graceMs?: number;
+}) {
+  const snapshot = input.roomSnapshot;
+  const playback = snapshot?.room.playback;
+  if (!snapshot || playback?.status !== "playing" || !playback.currentTrackId) {
+    return false;
+  }
+  const track = snapshot.tracks.find((item) => item.id === playback.currentTrackId);
+  if (!track || track.durationMs <= 0) {
+    return false;
+  }
+  const positionMs = resolveRoomPlaybackPositionMs(playback, 0, input.nowMs);
+  return positionMs >= track.durationMs + (input.graceMs ?? 2_000);
 }
 
 export function shouldResubscribeAfterPresenceOutcome(input: {

@@ -199,9 +199,14 @@ export class SegmentedOpusEngine {
       // Playback-order changes only bump the room revision, so keep audio
       // already scheduled for the current timeline intact.
       const pendingTransition = this.pendingTransition;
+      const promotedPrefix = `${input.manifest.assetId}:${timelineId}:`;
       const canPromoteGapless = pendingTransition?.assetId === input.manifest.assetId &&
-        pendingTransition.transitionAt === timelineId;
-      if (canPromoteGapless) {
+        pendingTransition.transitionAt === timelineId &&
+        (
+          [...this.scheduled.keys()].some((key) => key.startsWith(promotedPrefix)) ||
+          [...this.completed].some((key) => key.startsWith(promotedPrefix))
+        );
+      if (canPromoteGapless && pendingTransition) {
         this.prunePromotedTimelineState(input.manifest.assetId, timelineId, timelineKey);
         this.timelineKey = timelineKey;
         this.contextAnchorTime = pendingTransition.contextTime;
@@ -243,9 +248,13 @@ export class SegmentedOpusEngine {
     let roomPositionMs = currentRoomClock.positionMs;
     let currentIndex = playbackUnitIndexAt(input.manifest, roomPositionMs);
     this.pruneDecodedCache(input.manifest.assetId, currentIndex, input.manifest.segmentDurationMs);
+    const currentTimelinePrefix = `${input.manifest.assetId}:${timelineId}:`;
+    const hasScheduledCurrentTimeline = [...this.scheduled.keys()].some((key) =>
+      key.startsWith(currentTimelinePrefix)
+    );
     if (
       roomPositionMs >= input.manifest.durationMs &&
-      this.scheduled.size === 0 &&
+      !hasScheduledCurrentTimeline &&
       this.completed.has(timelineUnitKey(
         input.manifest.assetId,
         timelineId,
@@ -317,6 +326,13 @@ export class SegmentedOpusEngine {
       context
     );
     if (contiguousUnits.length < requiredUnits) {
+      const hasScheduledCurrentNow = [...this.scheduled.keys()].some((key) =>
+        key.startsWith(currentTimelinePrefix)
+      );
+      if (roomPositionMs >= input.manifest.durationMs && !hasScheduledCurrentNow) {
+        this.sourceHealth = "source-ended";
+        return { state: "ended" as const, bufferedUnits: 0 };
+      }
       if (this.timelineStarted && hasSafeScheduledAudio) {
         this.updateSourceHealth();
         return {

@@ -7,6 +7,7 @@ import {
   buildRoomSubscribePayload,
   createRoomRealtimeEventGate,
   createRoomRealtimeRuntime,
+  isSoloRoomPlaybackOverdue,
   isSocketDisconnectGraceActive,
   shouldExitRoomOnSnapshotMissing,
   resolvePresenceRepairAction,
@@ -481,5 +482,44 @@ describe("shouldResubscribeAfterPresenceOutcome", () => {
         cooldownMs: 5_000
       })
     ).toBe(false);
+  });
+});
+
+describe("isSoloRoomPlaybackOverdue", () => {
+  it("returns true only when playing track has exceeded duration plus grace window", () => {
+    const startMs = Date.parse("2026-07-22T00:00:00.000Z");
+    const snapshot = createSnapshot({
+      tracks: [{ id: "track_1", durationMs: 10_000 }] as never,
+      playback: {
+        status: "playing",
+        currentTrackId: "track_1",
+        positionMs: 0,
+        startedAt: "2026-07-22T00:00:00.000Z",
+        startAt: "2026-07-22T00:00:00.000Z"
+      }
+    });
+
+    expect(isSoloRoomPlaybackOverdue({
+      roomSnapshot: snapshot,
+      nowMs: startMs + 9_500
+    })).toBe(false);
+
+    expect(isSoloRoomPlaybackOverdue({
+      roomSnapshot: snapshot,
+      nowMs: startMs + 11_000
+    })).toBe(false);
+
+    expect(isSoloRoomPlaybackOverdue({
+      roomSnapshot: snapshot,
+      nowMs: startMs + 12_000
+    })).toBe(true);
+
+    expect(isSoloRoomPlaybackOverdue({
+      roomSnapshot: {
+        ...snapshot,
+        room: { ...snapshot.room, playback: { ...snapshot.room.playback, status: "paused" } }
+      },
+      nowMs: startMs + 20_000
+    })).toBe(false);
   });
 });

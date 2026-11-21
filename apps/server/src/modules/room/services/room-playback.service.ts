@@ -1,4 +1,4 @@
-import type { GaplessTransition, PlaybackMode, PlaybackSnapshot } from "@soqaro/shared";
+import type { GaplessTransition, PlaybackMode, PlaybackSnapshot, TrackMeta } from "@soqaro/shared";
 import { hasCompleteRoomAsset, synchronizeShuffleBagTrackIds } from "@soqaro/shared";
 import type { RoomRecord } from "../room.types";
 import { RoomPresenceService } from "./room-presence.service";
@@ -28,6 +28,7 @@ export class RoomPlaybackService {
       playbackAssetId?: string;
       positionMs?: number;
       playbackMode?: PlaybackMode;
+      actorSessionId?: string;
     }
   ): Promise<PlaybackSnapshot> {
     const playback = record.room.playback;
@@ -74,11 +75,15 @@ export class RoomPlaybackService {
     }
 
     if (input.action === "next") {
-      await this.advanceByPlaybackMode(record, "next", input.positionMs ?? 0);
+      await this.advanceByPlaybackMode(record, "next", input.positionMs ?? 0, {
+        actorSessionId: input.actorSessionId
+      });
     }
 
     if (input.action === "prev") {
-      await this.advanceByPlaybackMode(record, "prev", input.positionMs ?? 0);
+      await this.advanceByPlaybackMode(record, "prev", input.positionMs ?? 0, {
+        actorSessionId: input.actorSessionId
+      });
     }
 
     if (input.action === "play") {
@@ -114,10 +119,17 @@ export class RoomPlaybackService {
           nextQueueItemId !== null && nextQueueItemId !== playback.currentQueueItemId;
         const isTrackSwitch = nextTrackId !== playback.currentTrackId;
         const shouldRestart = isTrackSwitch || isQueueItemSwitch;
+        const effectivePositionMs = getEffectivePlaybackPositionMs(record, playback);
+        const durationMs = getTrackDurationMs(record, nextTrackId);
+        const shouldRestartFromEnd =
+          !shouldRestart &&
+          playback.status === "paused" &&
+          durationMs > 0 &&
+          effectivePositionMs >= durationMs;
         // Prefer client-supplied position; only derive from wall clock when omitted.
         const startPositionMs =
           input.positionMs ??
-          (shouldRestart ? 0 : getEffectivePlaybackPositionMs(record, playback));
+          (shouldRestart || shouldRestartFromEnd ? 0 : effectivePositionMs);
         await this.applyTrackPlayback(
           record,
           nextTrackId,
@@ -193,12 +205,14 @@ export class RoomPlaybackService {
       activePresence ??
       (await this.roomPresenceService.getActivePresence(record.room.id, record.room.members));
     const storedSourcePeerId = record.room.playback.sourcePeerId;
+    const resolvedPeerId =
+      record.room.playback.sourceSessionId &&
+      (storedSourcePeerId || record.room.playback.status === "playing")
+        ? resolvedPresence.get(record.room.playback.sourceSessionId) ?? null
+        : null;
     return {
       ...record.room.playback,
-      sourcePeerId:
-        record.room.playback.sourceSessionId && storedSourcePeerId
-          ? resolvedPresence.get(record.room.playback.sourceSessionId) ?? null
-          : null,
+      sourcePeerId: resolvedPeerId,
       gaplessNext: await this.resolveGaplessTransition(record, resolvedPresence)
     };
   }
@@ -263,14 +277,31 @@ export class RoomPlaybackService {
     options?: {
       positionMs?: number;
       wrap?: boolean;
+      activePresence?: Map<string, string>;
+      hasActiveAudience?: boolean;
     }
   ): Promise<"advanced" | "paused-at-end" | "cleared"> {
     const playback = record.room.playback;
+    const activePresence =
+      options?.activePresence ??
+      (await this.roomPresenceService.getActivePresence(record.room.id, record.room.members));
+    const hasActiveAudience = options?.hasActiveAudience ?? activePresence.size > 0;
     const currentIndex = getCurrentQueueIndex(record);
     const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
-    const candidate = await this.findPlayableQueueItem(record, startIndex, 1, {
-      wrap: options?.wrap === true
+    const wrap = options?.wrap === true;
+
+    let candidate = await this.findPlayableQueueItem(record, startIndex, 1, {
+      wrap,
+      activePresence,
+      predicate: (track) => this.canAdvanceToTrack(track, activePresence, hasActiveAudience)
     });
+    if (!candidate && hasActiveAudience) {
+      candidate = await this.findPlayableQueueItem(record, startIndex, 1, {
+        wrap,
+        activePresence,
+        predicate: (track) => this.canFallbackAdvanceToCompleteTrack(track, hasActiveAudience)
+      });
+    }
 
     if (candidate) {
       await this.applyTrackPlayback(
@@ -299,12 +330,14 @@ export class RoomPlaybackService {
   private async advanceByPlaybackMode(
     record: RoomRecord,
     direction: "next" | "prev",
-    positionMs: number
+    positionMs: number,
+    options?: { actorSessionId?: string }
   ) {
     const activePresence = await this.roomPresenceService.getActivePresence(
       record.room.id,
       record.room.members
     );
+    const hasActiveAudience = activePresence.size > 0 || Boolean(options?.actorSessionId);
     const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
 
     if (direction === "next") {
@@ -315,11 +348,16 @@ export class RoomPlaybackService {
         // or offline item must not block the normal playback mode forever.
         playback.nextQueueItemId = null;
         const queuedNext = record.queue.find((item) => item.id === queuedNextId);
-        if (
+        const queuedNextTrack = queuedNext ? trackById.get(queuedNext.trackId) : undefined;
+        const canPlayQueuedNext =
           queuedNext &&
           queuedNext.id !== playback.currentQueueItemId &&
-          this.canAdvanceToTrack(trackById.get(queuedNext.trackId), activePresence)
-        ) {
+          (this.canAdvanceToTrack(queuedNextTrack, activePresence, hasActiveAudience) ||
+            (this.canFallbackAdvanceToCompleteTrack(queuedNextTrack, hasActiveAudience) &&
+              !record.queue.some((item) =>
+                this.canAdvanceToTrack(trackById.get(item.trackId), activePresence, hasActiveAudience)
+              )));
+        if (queuedNext && canPlayQueuedNext) {
           await this.applyTrackPlayback(
             record,
             queuedNext.trackId,
@@ -338,7 +376,8 @@ export class RoomPlaybackService {
       const currentTrackId = playback.currentTrackId;
       if (currentTrackId) {
         const currentQueueItemId = playback.currentQueueItemId;
-        if (this.canAdvanceToTrack(trackById.get(currentTrackId), activePresence)) {
+        const currentTrack = trackById.get(currentTrackId);
+        if (this.canAdvanceToTrack(currentTrack, activePresence, hasActiveAudience)) {
           await this.applyTrackPlayback(
             record,
             currentTrackId,
@@ -348,18 +387,48 @@ export class RoomPlaybackService {
           return "advanced" as const;
         }
 
-        pausePlaybackAt(record, getTrackDurationMs(record, currentTrackId), {
-          sourceCandidate: null,
-          bumpMediaEpoch: true,
-          clearSourcePeer: true
+        const primaryAlternative = await this.advanceToNextPlayable(record, {
+          positionMs,
+          wrap: true,
+          activePresence,
+          hasActiveAudience: false
         });
-        return "paused-at-end" as const;
+        if (primaryAlternative === "advanced") {
+          return "advanced" as const;
+        }
+
+        if (this.canFallbackAdvanceToCompleteTrack(currentTrack, hasActiveAudience)) {
+          await this.applyTrackPlayback(
+            record,
+            currentTrackId,
+            positionMs,
+            currentQueueItemId
+          );
+          return "advanced" as const;
+        }
+
+        return this.advanceToNextPlayable(record, {
+          positionMs,
+          wrap: true,
+          activePresence,
+          hasActiveAudience
+        });
       }
-      return this.advanceToNextPlayable(record, { positionMs, wrap: false });
+      return this.advanceToNextPlayable(record, {
+        positionMs,
+        wrap: true,
+        activePresence,
+        hasActiveAudience
+      });
     }
 
     if (mode === "shuffle") {
-      const randomized = await this.advanceToRandomPlayable(record, positionMs, activePresence);
+      const randomized = await this.advanceToRandomPlayable(
+        record,
+        positionMs,
+        activePresence,
+        hasActiveAudience
+      );
       if (randomized) {
         return "advanced" as const;
       }
@@ -378,14 +447,24 @@ export class RoomPlaybackService {
     }
 
     return direction === "next"
-      ? this.advanceToNextPlayable(record, { positionMs, wrap: true })
-      : this.advanceToPreviousPlayable(record, { positionMs });
+      ? this.advanceToNextPlayable(record, {
+          positionMs,
+          wrap: true,
+          activePresence,
+          hasActiveAudience
+        })
+      : this.advanceToPreviousPlayable(record, {
+          positionMs,
+          activePresence,
+          hasActiveAudience
+        });
   }
 
   private async advanceToRandomPlayable(
     record: RoomRecord,
     positionMs: number,
-    resolvedPresence?: Map<string, string>
+    resolvedPresence?: Map<string, string>,
+    resolvedHasActiveAudience?: boolean
   ) {
     const playback = record.room.playback;
     const trackIds = [...new Set(record.queue.map((item) => item.trackId))];
@@ -396,6 +475,7 @@ export class RoomPlaybackService {
     const activePresence =
       resolvedPresence ??
       (await this.roomPresenceService.getActivePresence(record.room.id, record.room.members));
+    const hasActiveAudience = resolvedHasActiveAudience ?? activePresence.size > 0;
     const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
 
     const bag = synchronizeShuffleBagTrackIds(
@@ -406,54 +486,67 @@ export class RoomPlaybackService {
     );
     playback.shuffleBagTrackIds = bag;
 
-    let nextBag = bag;
-    let candidateTrackId = bag.find(
-      (trackId) =>
-        trackId !== playback.currentTrackId &&
-        this.canAdvanceToTrack(trackById.get(trackId), activePresence)
-    ) ?? null;
-
-    // If the remaining bag only held unplayable tracks, start a fresh cycle
-    // across all queued tracks before giving up on advancing.
-    if (!candidateTrackId && bag.length < trackIds.length) {
-      const refilledBag = synchronizeShuffleBagTrackIds(
-        [],
-        trackIds,
-        playback.currentTrackId,
-        []
-      );
-      const refilledCandidate = refilledBag.find(
+    const pickRandomCandidate = (predicate: (track: TrackMeta | undefined) => boolean) => {
+      let nextBag = bag;
+      let candidateTrackId = bag.find(
         (trackId) =>
           trackId !== playback.currentTrackId &&
-          this.canAdvanceToTrack(trackById.get(trackId), activePresence)
+          predicate(trackById.get(trackId))
       ) ?? null;
-      if (refilledCandidate) {
-        nextBag = refilledBag;
-        candidateTrackId = refilledCandidate;
+
+      // If the remaining bag only held unplayable tracks, start a fresh cycle
+      // across all queued tracks before giving up on advancing.
+      if (!candidateTrackId && bag.length < trackIds.length) {
+        const refilledBag = synchronizeShuffleBagTrackIds(
+          [],
+          trackIds,
+          playback.currentTrackId,
+          []
+        );
+        const refilledCandidate = refilledBag.find(
+          (trackId) =>
+            trackId !== playback.currentTrackId &&
+            predicate(trackById.get(trackId))
+        ) ?? null;
+        if (refilledCandidate) {
+          nextBag = refilledBag;
+          candidateTrackId = refilledCandidate;
+        }
       }
+
+      // Loop the current track in shuffle mode when no other queued track is playable.
+      if (
+        !candidateTrackId &&
+        playback.currentTrackId &&
+        trackIds.includes(playback.currentTrackId) &&
+        predicate(trackById.get(playback.currentTrackId))
+      ) {
+        candidateTrackId = playback.currentTrackId;
+        nextBag = [];
+      }
+
+      return candidateTrackId ? { candidateTrackId, nextBag } : null;
+    };
+
+    let selected = pickRandomCandidate((track) =>
+      this.canAdvanceToTrack(track, activePresence, hasActiveAudience)
+    );
+    if (!selected && hasActiveAudience) {
+      selected = pickRandomCandidate((track) =>
+        this.canFallbackAdvanceToCompleteTrack(track, hasActiveAudience)
+      );
     }
 
-    // Loop the current track in shuffle mode when no other queued track is playable.
-    if (
-      !candidateTrackId &&
-      playback.currentTrackId &&
-      trackIds.includes(playback.currentTrackId) &&
-      this.canAdvanceToTrack(trackById.get(playback.currentTrackId), activePresence)
-    ) {
-      candidateTrackId = playback.currentTrackId;
-      nextBag = [];
-    }
-
-    if (!candidateTrackId) {
+    if (!selected) {
       return false;
     }
 
-    const candidate = record.queue.find((item) => item.trackId === candidateTrackId);
+    const candidate = record.queue.find((item) => item.trackId === selected.candidateTrackId);
     if (!candidate) {
       return false;
     }
 
-    playback.shuffleBagTrackIds = nextBag.filter((trackId) => trackId !== candidateTrackId);
+    playback.shuffleBagTrackIds = selected.nextBag.filter((trackId) => trackId !== selected.candidateTrackId);
     await this.applyTrackPlayback(record, candidate.trackId, positionMs, candidate.id);
     return true;
   }
@@ -487,15 +580,30 @@ export class RoomPlaybackService {
     record: RoomRecord,
     options?: {
       positionMs?: number;
+      activePresence?: Map<string, string>;
+      hasActiveAudience?: boolean;
     }
   ): Promise<"advanced" | "restarted" | "cleared"> {
     const playback = record.room.playback;
+    const activePresence =
+      options?.activePresence ??
+      (await this.roomPresenceService.getActivePresence(record.room.id, record.room.members));
+    const hasActiveAudience = options?.hasActiveAudience ?? activePresence.size > 0;
     const currentIndex = getCurrentQueueIndex(record);
     const startIndex = currentIndex > 0 ? currentIndex - 1 : record.queue.length - 1;
 
-    const candidate = await this.findPlayableQueueItem(record, startIndex, -1, {
-      wrap: true
+    let candidate = await this.findPlayableQueueItem(record, startIndex, -1, {
+      wrap: true,
+      activePresence,
+      predicate: (track) => this.canAdvanceToTrack(track, activePresence, hasActiveAudience)
     });
+    if (!candidate && hasActiveAudience) {
+      candidate = await this.findPlayableQueueItem(record, startIndex, -1, {
+        wrap: true,
+        activePresence,
+        predicate: (track) => this.canFallbackAdvanceToCompleteTrack(track, hasActiveAudience)
+      });
+    }
     if (candidate) {
       await this.applyTrackPlayback(
         record,
@@ -506,7 +614,10 @@ export class RoomPlaybackService {
       return "advanced";
     }
 
-    if (playback.currentTrackId) {
+    const currentTrack = playback.currentTrackId
+      ? record.tracks.find((track) => track.id === playback.currentTrackId)
+      : undefined;
+    if (playback.currentTrackId && hasCompleteRoomAsset(currentTrack)) {
       // Stay on the first / current track and restart from the requested position.
       await this.applyTrackPlayback(
         record,
@@ -518,7 +629,18 @@ export class RoomPlaybackService {
     }
 
     if (record.queue[0]) {
-      const fallback = await this.findPlayableQueueItem(record, 0, 1, { wrap: true });
+      let fallback = await this.findPlayableQueueItem(record, 0, 1, {
+        wrap: true,
+        activePresence,
+        predicate: (track) => this.canAdvanceToTrack(track, activePresence, hasActiveAudience)
+      });
+      if (!fallback && hasActiveAudience) {
+        fallback = await this.findPlayableQueueItem(record, 0, 1, {
+          wrap: true,
+          activePresence,
+          predicate: (track) => this.canFallbackAdvanceToCompleteTrack(track, hasActiveAudience)
+        });
+      }
       if (fallback) {
         await this.applyTrackPlayback(
           record,
@@ -658,6 +780,9 @@ export class RoomPlaybackService {
       return false;
     }
 
+    const startAt = Date.now() - transitionAtMs > 2_000
+      ? new Date().toISOString()
+      : transition.transitionAt;
     await this.applyTrackPlayback(
       record,
       transition.trackId,
@@ -665,7 +790,7 @@ export class RoomPlaybackService {
       transition.queueItemId,
       transition.playbackAssetId,
       {
-        startAt: transition.transitionAt,
+        startAt,
         preserveMediaEpoch: canPreserveMediaEpoch(playback, transition)
       }
     );
@@ -762,9 +887,10 @@ export class RoomPlaybackService {
 
   private canAdvanceToTrack(
     track: RoomRecord["tracks"][number] | undefined,
-    activePresence: Map<string, string>
+    activePresence: Map<string, string>,
+    hasActiveAudience = activePresence.size > 0
   ): boolean {
-    if (!track) {
+    if (!track || !hasCompleteRoomAsset(track)) {
       return false;
     }
     if (pickTrackSourceCandidate(track, activePresence)) {
@@ -772,11 +898,14 @@ export class RoomPlaybackService {
     }
     // Complete provider-backed tracks can continue advancing as long as at
     // least one member remains online in the room, matching handleSourceDeparture.
-    return (
-      isProviderTrack(track) &&
-      hasCompleteRoomAsset(track) &&
-      activePresence.size > 0
-    );
+    return isProviderTrack(track) && hasActiveAudience;
+  }
+
+  private canFallbackAdvanceToCompleteTrack(
+    track: RoomRecord["tracks"][number] | undefined,
+    hasActiveAudience: boolean
+  ): boolean {
+    return Boolean(hasActiveAudience && track && hasCompleteRoomAsset(track));
   }
 
   private async shouldDeferTrackEndForReconnectingSource(record: RoomRecord): Promise<boolean> {
@@ -790,6 +919,7 @@ export class RoomPlaybackService {
       record.room.id,
       record.room.members
     );
+    const hasActiveAudience = activePresence.size > 0;
     const trackById = new Map(record.tracks.map((track) => [track.id, track]));
 
     const candidateTrackIds = new Set<string>();
@@ -815,7 +945,10 @@ export class RoomPlaybackService {
       if (isProviderTrack(track) && hasCompleteRoomAsset(track)) {
         hasCompleteProviderCandidate = true;
       }
-      if (this.canAdvanceToTrack(track, activePresence)) {
+      if (
+        this.canAdvanceToTrack(track, activePresence, hasActiveAudience) ||
+        this.canFallbackAdvanceToCompleteTrack(track, hasActiveAudience)
+      ) {
         return false;
       }
     }
@@ -845,16 +978,23 @@ export class RoomPlaybackService {
     record: RoomRecord,
     startIndex: number,
     direction: 1 | -1,
-    options: { wrap: boolean; excludedTrackIds?: Set<string> }
+    options: {
+      wrap: boolean;
+      excludedTrackIds?: Set<string>;
+      activePresence?: Map<string, string>;
+      predicate?: (track: TrackMeta | undefined) => boolean;
+    }
   ) {
     if (record.queue.length === 0) {
       return null;
     }
 
-    const activePresence = await this.roomPresenceService.getActivePresence(
-      record.room.id,
-      record.room.members
-    );
+    const activePresence =
+      options.activePresence ??
+      (await this.roomPresenceService.getActivePresence(record.room.id, record.room.members));
+    const canPick =
+      options.predicate ??
+      ((track: TrackMeta | undefined) => this.canAdvanceToTrack(track, activePresence));
     const trackById = new Map(record.tracks.map((track) => [track.id, track] as const));
     const excludedTrackIds = options.excludedTrackIds;
     const visited = new Set<number>();
@@ -865,7 +1005,7 @@ export class RoomPlaybackService {
       const item = record.queue[index]!;
       if (
         !excludedTrackIds?.has(item.trackId) &&
-        this.canAdvanceToTrack(trackById.get(item.trackId), activePresence)
+        canPick(trackById.get(item.trackId))
       ) {
         return item;
       }
@@ -881,7 +1021,7 @@ export class RoomPlaybackService {
         if (visited.has(i)) continue;
         const item = record.queue[i]!;
         if (excludedTrackIds?.has(item.trackId)) continue;
-        if (this.canAdvanceToTrack(trackById.get(item.trackId), activePresence)) {
+        if (canPick(trackById.get(item.trackId))) {
           return item;
         }
       }
@@ -890,7 +1030,7 @@ export class RoomPlaybackService {
         if (visited.has(i)) continue;
         const item = record.queue[i]!;
         if (excludedTrackIds?.has(item.trackId)) continue;
-        if (this.canAdvanceToTrack(trackById.get(item.trackId), activePresence)) {
+        if (canPick(trackById.get(item.trackId))) {
           return item;
         }
       }

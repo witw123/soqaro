@@ -9,8 +9,10 @@ import {
 import type { AuthSession, RoomSnapshot } from "@soqaro/shared";
 import type { RoomSocket } from "@/lib/network/ws-client";
 import type { RoomSnapshotResyncReason } from "@/features/room/room-snapshot-resync";
+import { getRoomPlaybackClockNowMs } from "@/features/playback/room-playback-clock";
 import type { RoomRecoveryMode } from "./room-runtime-types";
 import {
+  isSoloRoomPlaybackOverdue,
   resolvePresenceRepairAction,
   resolveRoomRealtimeSnapshotInputs,
   resolveRoomSnapshotWatchdogAction,
@@ -217,13 +219,16 @@ export function useRoomRealtimeConnectionEffects(input: {
     stopPresenceHeartbeat
   ]);
 
+  const snapshotPlaybackStatus = roomSnapshot?.room.playback.status ?? null;
+
   useEffect(() => {
+    const shouldWatchdogRun = snapshotMembersCount > 1 || snapshotPlaybackStatus === "playing";
     if (
       !snapshotRoomId ||
       !hydrated ||
       !activeSession?.userId ||
       isNavigatingRoomExit ||
-      snapshotMembersCount <= 1
+      !shouldWatchdogRun
     ) {
       stopRoomSnapshotWatchdog();
       return;
@@ -232,6 +237,15 @@ export function useRoomRealtimeConnectionEffects(input: {
     lastRealtimeRoomEventAtRef.current = Date.now();
     stopRoomSnapshotWatchdog();
     roomSnapshotWatchdogIntervalRef.current = window.setInterval(() => {
+      if (
+        snapshotMembersCount <= 1 &&
+        !isSoloRoomPlaybackOverdue({
+          roomSnapshot: currentRoomRef.current,
+          nowMs: getRoomPlaybackClockNowMs()
+        })
+      ) {
+        return;
+      }
       const activeRoomId = activeRouteRoomIdRef.current;
       const socket = socketRef.current;
       const watchdogAction = resolveRoomSnapshotWatchdogAction({
@@ -252,11 +266,13 @@ export function useRoomRealtimeConnectionEffects(input: {
   }, [
     activeRouteRoomIdRef,
     activeSession?.userId,
+    currentRoomRef,
     hydrated,
     isNavigatingRoomExit,
     lastRealtimeRoomEventAtRef,
     requestRoomSnapshotResync,
     snapshotMembersCount,
+    snapshotPlaybackStatus,
     snapshotRoomId,
     socketRef,
     stopRoomSnapshotWatchdog

@@ -4,6 +4,7 @@ import {
   getNewMemberPermissions,
   getRoomMemberPermissions,
   hasCompleteRoomAsset,
+  isProviderTrackMeta,
   resolveTrackDistributionStatus,
   roomSnapshotSchema
 } from "./models";
@@ -106,6 +107,66 @@ describe("roomSnapshotSchema", () => {
           totalSegments: 10,
           segments: []
         } as unknown as TrackMeta["playbackAsset"]
+      })).toBe(true);
+    });
+
+    it("recognizes bilibili and alist tracks as provider tracks requiring complete assets", () => {
+      const bilibiliTrack = {
+        id: "t-bili",
+        title: "Bili Track",
+        artist: "UP",
+        durationMs: 1000,
+        sourceType: "bilibili",
+        sourceRef: { provider: "bilibili", trackId: "BV1xx411c7mD" },
+        ownerSessionId: "u1",
+        ownerNickname: "User"
+      } as unknown as TrackMeta;
+      const alistTrack = {
+        id: "t-alist",
+        title: "Alist Track",
+        artist: "Singer",
+        durationMs: 1000,
+        sourceType: "alist",
+        sourceRef: { provider: "alist", trackId: "/music/song.flac" },
+        ownerSessionId: "u1",
+        ownerNickname: "User"
+      } as unknown as TrackMeta;
+      const localTrack = {
+        id: "t-local",
+        title: "Local Track",
+        artist: "Artist",
+        durationMs: 1000,
+        sourceType: "local_upload",
+        fileHash: "hash-local",
+        ownerSessionId: "u1",
+        ownerNickname: "User"
+      } as unknown as TrackMeta;
+
+      expect(isProviderTrackMeta(bilibiliTrack)).toBe(true);
+      expect(isProviderTrackMeta(alistTrack)).toBe(true);
+      expect(isProviderTrackMeta(localTrack)).toBe(false);
+      expect(hasCompleteRoomAsset(bilibiliTrack)).toBe(false);
+      expect(hasCompleteRoomAsset(alistTrack)).toBe(false);
+
+      const completePlaybackAsset = {
+        assetId: "asset-provider-1",
+        codec: "opus",
+        sampleRate: 48000,
+        channels: 2,
+        segmentDurationMs: 2000,
+        totalSegments: 10,
+        segments: []
+      } as unknown as TrackMeta["playbackAsset"];
+
+      expect(hasCompleteRoomAsset({
+        ...bilibiliTrack,
+        fileHash: "hash-bili",
+        playbackAsset: completePlaybackAsset
+      })).toBe(true);
+      expect(hasCompleteRoomAsset({
+        ...alistTrack,
+        fileHash: "hash-alist",
+        playbackAsset: completePlaybackAsset
       })).toBe(true);
     });
 

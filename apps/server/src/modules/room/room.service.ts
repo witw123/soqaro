@@ -1,4 +1,4 @@
-﻿import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+﻿import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import {
   createApiErrorResponse,
@@ -35,6 +35,8 @@ import { RoomLifecycleService } from "./services/room-lifecycle.service";
  */
 @Injectable()
 export class RoomService {
+  private readonly logger = new Logger(RoomService.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
@@ -584,8 +586,16 @@ export class RoomService {
         await this.roomRecordRepository.persistRecord(record);
         const playback = await this.roomPlaybackService.buildPlaybackForSnapshot(record);
         advanced.push({ roomId: record.room.id, playback, roomRevision: record.room.roomRevision ?? 0 });
-      } catch {
-        // Conflict or missing room under concurrent updates: skip this tick.
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          !message.includes("conflict") &&
+          !message.includes("Room not found")
+        ) {
+          this.logger.warn(
+            `Watchdog failed to advance playback for room ${listed.room.id}: ${message}`
+          );
+        }
         continue;
       }
     }

@@ -49,8 +49,10 @@ import {
 } from "@/features/room/playback/receiver-audio-health";
 import {
   alignLocalAudioToRoom,
+  canClientAdvanceAtTrackEnd,
   isAudioPlaybackBlockedError,
   hasCurrentLocalAudio,
+  isNativeLocalAudioAtNaturalEnd,
   isRecoverableLocalAudioError,
   localAudioSeekToleranceSeconds,
   playbackEndedRetryCooldownMs,
@@ -119,7 +121,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   const playbackStrategy = resolveRoomPlaybackStrategy(input.roomSnapshot?.room.roomType);
   const setStatusMessage = input.setStatusMessage;
   const onPlaybackEnded = input.onPlaybackEnded;
-  const localPeerId = input.peerId;
   const roomSnapshot = input.roomSnapshot;
   const setLastSourceStartError = input.setLastSourceStartError;
   const setMediaConnectionState = input.setMediaConnectionState;
@@ -243,12 +244,19 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     localAudioTrackKey
   );
   const usesNativeLocalAudio = !streamingOnlyPlayback && currentLocalAudioAvailable;
+  const canAdvanceAtTrackEnd = canClientAdvanceAtTrackEnd({
+    isCurrentSource: input.isCurrentSource,
+    isSourceMemberOffline: providerCachePlan.isSourceMemberOffline,
+    roomSnapshot: input.roomSnapshot,
+    activeSessionId: input.activeSessionId
+  });
   const runtimeInputRef = useRef({
     ...input,
     playbackAsset: null as TrackMeta["playbackAsset"] | null,
     streamingOnlyPlayback: false,
     usesNativeLocalAudio: false,
     isSourceMemberOffline: false,
+    canAdvanceAtTrackEnd: false,
     cacheBarrierEnabled: false,
     playbackBarrier,
     loudnessGainDb: 0,
@@ -265,12 +273,13 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     streamingOnlyPlayback,
     usesNativeLocalAudio,
     isSourceMemberOffline: providerCachePlan.isSourceMemberOffline,
+    canAdvanceAtTrackEnd,
     localAudioResolution,
     cacheBarrierEnabled,
     playbackBarrier,
     loudnessGainDb
   };
-  const { audioRef, isCurrentSource, peerId: runtimePeerId } = input;
+  const { audioRef, isCurrentSource } = input;
   const audioUnlocked = input.audioUnlocked;
   const missingMediaSinceRef = useRef<number | null>(null);
   const mediaEnsureKeyRef = useRef<string | null>(null);
@@ -1308,17 +1317,28 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           const elementDurationSeconds = Number.isFinite(audio.duration) && audio.duration > 0
             ? audio.duration
             : Math.max(0, (activeRuntime.currentTrack?.durationMs ?? 0) / 1000);
+          const targetPositionSeconds = targetPositionMs / 1000;
           const targetSeconds = elementDurationSeconds > 0
-            ? Math.min(targetPositionMs / 1000, Math.max(0, elementDurationSeconds - 0.05))
-            : targetPositionMs / 1000;
+            ? Math.min(targetPositionSeconds, Math.max(0, elementDurationSeconds - 0.05))
+            : targetPositionSeconds;
           const shouldForceSync = localAudioTimelineKeyRef.current !== timelineKey;
+          const wasEnded = Boolean(audio.ended);
+          const atNaturalEnd = isNativeLocalAudioAtNaturalEnd({
+            status: activeRoomPlayback.status,
+            audioEnded: wasEnded,
+            shouldForceSync,
+            elementDurationSeconds,
+            targetPositionSeconds
+          });
           const needsSeek =
-            !Number.isFinite(audio.currentTime) ||
-            Math.abs(audio.currentTime - targetSeconds) >= localAudioSeekToleranceSeconds ||
-            (audio.ended && elementDurationSeconds > 0 && targetSeconds < elementDurationSeconds - 0.1);
+            !atNaturalEnd &&
+            (!Number.isFinite(audio.currentTime) ||
+              Math.abs(audio.currentTime - targetSeconds) >= localAudioSeekToleranceSeconds ||
+              (wasEnded && elementDurationSeconds > 0 && targetSeconds < elementDurationSeconds - 0.1));
           if (
-            needsSeek ||
-            (shouldForceSync && (activeRoomPlayback.status !== "playing" || audio.paused || audio.ended))
+            !atNaturalEnd &&
+            (needsSeek ||
+              (shouldForceSync && (activeRoomPlayback.status !== "playing" || audio.paused || wasEnded)))
           ) {
             if (shouldForceSync && activeRoomPlayback.status !== "playing") {
               audio.pause();
@@ -1424,8 +1444,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             return;
           }
 
-          if (audio.ended && elementDurationSeconds > 0 && targetSeconds >= elementDurationSeconds - 0.1) {
-            if (activeRuntime.isCurrentSource || activeRuntime.isSourceMemberOffline) {
+          if (atNaturalEnd) {
+            if (activeRuntime.canAdvanceAtTrackEnd) {
               void triggerPlaybackEndedRef.current(activeRoomPlayback);
             }
             if (!cancelled) {
@@ -1451,6 +1471,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             });
           };
           const result = await roomAudioOutput.playElement(audio, {
+            force: shouldForceSync || wasEnded,
             // AudioContext resume can be asynchronous. Check again directly
             // before element.play() so a pause or seek cannot revive this old
             // local-cache request after the room timeline has moved on.
@@ -2073,7 +2094,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || (!input.isCurrentSource && !providerCachePlan.isSourceMemberOffline)) {
+    if (!audio || !usesNativeLocalAudio) {
       return;
     }
 
@@ -2081,23 +2102,32 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       const runtime = runtimeInputRef.current;
       const roomPlayback = runtime.roomSnapshot?.room.playback;
       if (
-        (!runtime.isCurrentSource && !runtime.isSourceMemberOffline) ||
         !runtime.usesNativeLocalAudio ||
         roomPlayback?.status !== "playing" ||
         roomPlayback.currentTrackId !== runtime.currentTrack?.id
       ) {
         return;
       }
-      void triggerPlaybackEnded(roomPlayback);
+      setMediaPlayback((current) => ({
+        ...current,
+        state: "ended",
+        bufferedMs: 0,
+        ownedUnitCount: 0,
+        audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? current.audioContextState,
+        lastError: null
+      }));
+      if (runtime.canAdvanceAtTrackEnd) {
+        void triggerPlaybackEnded(roomPlayback);
+      }
     };
 
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
   }, [
     audioRef,
-    input.isCurrentSource,
-    providerCachePlan.isSourceMemberOffline,
-    triggerPlaybackEnded
+    setMediaPlayback,
+    triggerPlaybackEnded,
+    usesNativeLocalAudio
   ]);
 
   useEffect(() => {
@@ -2227,11 +2257,10 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   ]);
 
   useEffect(() => {
-    if (playback.state !== "ended" || !isCurrentSource) return;
+    if (visiblePlayback.state !== "ended" || !canAdvanceAtTrackEnd) return;
     const room = roomSnapshot?.room;
     const activePlayback = room?.playback;
     if (!room || !activePlayback?.currentTrackId || activePlayback.status !== "playing") return;
-    if (localPeerId !== runtimePeerId) return;
 
     let cancelled = false;
     let retryTimer: number | null = null;
@@ -2263,12 +2292,10 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       }
     };
   }, [
-    isCurrentSource,
-    localPeerId,
-    playback.state,
+    canAdvanceAtTrackEnd,
     roomSnapshot,
-    runtimePeerId,
-    triggerPlaybackEnded
+    triggerPlaybackEnded,
+    visiblePlayback.state
   ]);
 
   const audioPath = resolveRoomAudioPath({

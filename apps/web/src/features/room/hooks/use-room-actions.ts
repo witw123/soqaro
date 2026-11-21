@@ -192,7 +192,7 @@ export function useRoomActions({
           latestPlaybackStateRef.current.revision ?? 0
         );
 
-        for (let attempt = 0; attempt < 2; attempt += 1) {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
             const playback = await requestPlayback(nextExpectedVersion);
             if (latestPlaybackStateRef.current.roomId === roomId) {
@@ -220,14 +220,14 @@ export function useRoomActions({
               // remain on a stale track after a successful cut.
               try {
                 const snapshot = await syncRoomSnapshot(roomId);
-                if (
-                  snapshot.room.playback.playbackRevision > nextExpectedVersion ||
-                  (retryTarget &&
-                    shouldRetryPlaybackMutationAfterConflict(
+                const alreadyMovedOn = retryTarget
+                  ? !shouldRetryPlaybackMutationAfterConflict(
                       retryTarget,
-                      snapshot.room.playback
-                    ))
-                ) {
+                      snapshot.room.playback,
+                      options
+                    )
+                  : snapshot.room.playback.playbackRevision > nextExpectedVersion;
+                if (alreadyMovedOn) {
                   return snapshot.room.playback;
                 }
                 // The mutation never committed: roll the optimistic pending
@@ -252,7 +252,7 @@ export function useRoomActions({
               return null;
             }
 
-            if (attempt === 1) {
+            if (attempt === 2) {
               setStatusMessage(toUserFacingError(error));
               return null;
             }

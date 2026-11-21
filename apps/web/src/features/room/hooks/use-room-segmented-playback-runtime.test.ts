@@ -10,8 +10,10 @@ import {
 } from "@/features/room/playback/playback-barrier";
 import {
   alignLocalAudioToRoom,
+  canClientAdvanceAtTrackEnd,
   resolveCacheReadinessReport,
   hasCurrentLocalAudio,
+  isNativeLocalAudioAtNaturalEnd,
   resolveLocalAudioTimelineKey,
   resolvePlaybackEndedTimelineKey,
   resolveRoomAudioPath,
@@ -733,5 +735,78 @@ describe("playback ended advance retry", () => {
         10_000
       )
     ).toBe(true);
+  });
+});
+
+describe("native local audio natural end and advance permission", () => {
+  it("detects natural track end with VBR metadata tolerance and ignores timeline switches", () => {
+    expect(isNativeLocalAudioAtNaturalEnd({
+      status: "playing",
+      audioEnded: true,
+      shouldForceSync: false,
+      elementDurationSeconds: 180,
+      targetPositionSeconds: 178.5
+    })).toBe(true);
+
+    expect(isNativeLocalAudioAtNaturalEnd({
+      status: "playing",
+      audioEnded: true,
+      shouldForceSync: true,
+      elementDurationSeconds: 180,
+      targetPositionSeconds: 0
+    })).toBe(false);
+
+    expect(isNativeLocalAudioAtNaturalEnd({
+      status: "playing",
+      audioEnded: true,
+      shouldForceSync: false,
+      elementDurationSeconds: 180,
+      targetPositionSeconds: 175
+    })).toBe(false);
+
+    expect(isNativeLocalAudioAtNaturalEnd({
+      status: "playing",
+      audioEnded: true,
+      shouldForceSync: false,
+      elementDurationSeconds: 0,
+      targetPositionSeconds: 0
+    })).toBe(true);
+  });
+
+  it("allows track-end client advance for source or offline fallback except non-host members in request/radio rooms", () => {
+    expect(canClientAdvanceAtTrackEnd({
+      isCurrentSource: true,
+      isSourceMemberOffline: false,
+      roomSnapshot: { room: { roomType: "interactive", hostId: "host-1" } } as never,
+      activeSessionId: "member-1"
+    })).toBe(true);
+
+    expect(canClientAdvanceAtTrackEnd({
+      isCurrentSource: false,
+      isSourceMemberOffline: true,
+      roomSnapshot: { room: { roomType: "interactive", hostId: "host-1" } } as never,
+      activeSessionId: "member-1"
+    })).toBe(true);
+
+    expect(canClientAdvanceAtTrackEnd({
+      isCurrentSource: false,
+      isSourceMemberOffline: true,
+      roomSnapshot: { room: { roomType: "radio", hostId: "host-1" } } as never,
+      activeSessionId: "member-1"
+    })).toBe(false);
+
+    expect(canClientAdvanceAtTrackEnd({
+      isCurrentSource: true,
+      isSourceMemberOffline: false,
+      roomSnapshot: { room: { roomType: "request", hostId: "host-1" } } as never,
+      activeSessionId: "host-1"
+    })).toBe(true);
+
+    expect(canClientAdvanceAtTrackEnd({
+      isCurrentSource: false,
+      isSourceMemberOffline: false,
+      roomSnapshot: { room: { roomType: "interactive", hostId: "host-1" } } as never,
+      activeSessionId: "host-1"
+    })).toBe(false);
   });
 });

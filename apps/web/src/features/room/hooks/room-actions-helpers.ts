@@ -102,7 +102,6 @@ export function hasPlaybackTimelineAdvanced(
     | "status"
     | "startAt"
     | "startedAt"
-    | "playbackRevision"
   >,
   nextPlayback: PlaybackSnapshot | null | undefined
 ) {
@@ -115,8 +114,7 @@ export function hasPlaybackTimelineAdvanced(
     nextPlayback.currentQueueItemId !== previousPlayback.currentQueueItemId ||
     nextPlayback.status !== previousPlayback.status ||
     (nextPlayback.startAt ?? nextPlayback.startedAt ?? null) !==
-      (previousPlayback.startAt ?? previousPlayback.startedAt ?? null) ||
-    nextPlayback.playbackRevision > previousPlayback.playbackRevision
+      (previousPlayback.startAt ?? previousPlayback.startedAt ?? null)
   );
 }
 

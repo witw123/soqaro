@@ -1090,4 +1090,127 @@ describe("SegmentedOpusEngine", () => {
     expect(internals.aheadQueues.has(`${manifest.assetId}:1:${initialPlayback.startAt}`)).toBe(false);
     engine.destroy();
   });
+
+  it("transitions to ended when current track finishes even while gaplessNext units remain scheduled", async () => {
+    const { context, sources } = createContext();
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext").mockReturnValue(context);
+    const engine = new SegmentedOpusEngine();
+    const serverNowMs = Date.now();
+    const roomPlayback = playback(serverNowMs);
+    const nextManifest = {
+      ...manifest,
+      assetId: "e".repeat(64)
+    } as PlaybackAssetManifest;
+    const transitionAt = new Date(serverNowMs + 11_000).toISOString();
+
+    await engine.sync({
+      manifest,
+      playback: roomPlayback,
+      serverNowMs,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex),
+      gaplessNext: {
+        transition: {
+          trackId: "track_2",
+          queueItemId: "queue_2",
+          playbackAssetId: nextManifest.assetId,
+          durationMs: nextManifest.durationMs,
+          transitionAt,
+          sourceSessionId: "user_a",
+          sourcePeerId: "peer_a"
+        },
+        manifest: nextManifest,
+        getUnit: async (unitIndex) => ({
+          ...unit(unitIndex),
+          assetId: nextManifest.assetId,
+          unitId: `${nextManifest.assetId}:${unitIndex}`
+        })
+      }
+    });
+
+    // Only mark current track sources as ended; gaplessNext sources stay scheduled.
+    sources.slice(0, manifest.unitCount).forEach((source) => source.onended?.());
+    const ended = await engine.sync({
+      manifest,
+      playback: roomPlayback,
+      serverNowMs: serverNowMs + 11_500,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex)
+    });
+
+    expect(ended.state).toBe("ended");
+    engine.destroy();
+  });
+
+  it("falls back to timeline reset instead of promoting an empty pendingTransition", async () => {
+    const { context } = createContext();
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext").mockReturnValue(context);
+    const engine = new SegmentedOpusEngine();
+    const serverNowMs = Date.now();
+    const initialPlayback = playback(serverNowMs);
+    const transitionAt = new Date(serverNowMs + 11_000).toISOString();
+
+    await engine.sync({
+      manifest,
+      playback: initialPlayback,
+      serverNowMs,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex),
+      gaplessNext: {
+        transition: {
+          trackId: "track_1",
+          queueItemId: "queue_1",
+          playbackAssetId: manifest.assetId,
+          durationMs: manifest.durationMs,
+          transitionAt,
+          sourceSessionId: "user_a",
+          sourcePeerId: "peer_a"
+        },
+        manifest,
+        getUnit: async () => null
+      }
+    });
+
+    const resetResult = await engine.sync({
+      manifest,
+      playback: {
+        ...initialPlayback,
+        mediaEpoch: 2,
+        playbackRevision: 2,
+        startAt: transitionAt,
+        startedAt: transitionAt
+      },
+      serverNowMs: serverNowMs + 11_000,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex)
+    });
+
+    expect(resetResult.state).toBe("live");
+    const internals = engine as unknown as {
+      pendingTransition: unknown;
+      timelineStarted: boolean;
+    };
+    expect(internals.pendingTransition).toBeNull();
+    expect(internals.timelineStarted).toBe(true);
+    engine.destroy();
+  });
+
+  it("transitions to ended when roomPositionMs >= durationMs and the tail unit cannot be loaded", async () => {
+    const { context } = createContext();
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext").mockReturnValue(context);
+    const engine = new SegmentedOpusEngine();
+    const serverNowMs = Date.now();
+    const roomPlayback = playback(serverNowMs);
+
+    const ended = await engine.sync({
+      manifest,
+      playback: roomPlayback,
+      serverNowMs: serverNowMs + 12_000,
+      volume: 0.7,
+      getUnit: async () => null
+    });
+
+    expect(ended.state).toBe("ended");
+    engine.destroy();
+  });
 });

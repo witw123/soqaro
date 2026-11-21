@@ -228,7 +228,7 @@ export function getNewMemberPermissions(
 export function isProviderTrackMeta(track: TrackMeta | undefined): boolean {
   return !!(
     track &&
-    (track.sourceType === "netease" || track.sourceType === "qqmusic") &&
+    track.sourceType !== "local_upload" &&
     track.sourceRef &&
     track.sourceRef.provider === track.sourceType
   );

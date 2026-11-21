@@ -376,4 +376,32 @@ describe("RoomAudioActivationManager", () => {
     expect(audio.play).toHaveBeenCalledTimes(1);
     expect(audio.srcObject).toBe(stream);
   });
+
+  it("calls play again when an active-key element has ended even if paused is false", async () => {
+    const manager = new RoomAudioActivationManager();
+    const audio = createAudioElementMock();
+    audio.src = "blob:looped-track";
+    Object.defineProperty(audio, "currentSrc", {
+      configurable: true,
+      value: "blob:looped-track"
+    });
+
+    await manager.playElement(audio);
+    vi.mocked(audio.play).mockClear();
+
+    Object.defineProperty(audio, "paused", {
+      configurable: true,
+      value: false
+    });
+    Object.defineProperty(audio, "ended", {
+      configurable: true,
+      value: true
+    });
+
+    await expect(manager.playElement(audio)).resolves.toEqual({
+      ok: true,
+      error: null
+    });
+    expect(audio.play).toHaveBeenCalledTimes(1);
+  });
 });

@@ -71,6 +71,43 @@ export function shouldAttemptPlaybackEndedAdvance(
   return nowMs - state.lastAttemptAtMs >= cooldownMs;
 }
 
+export function isNativeLocalAudioAtNaturalEnd(input: {
+  status: PlaybackSnapshot["status"];
+  audioEnded: boolean;
+  shouldForceSync: boolean;
+  elementDurationSeconds: number;
+  targetPositionSeconds: number;
+}) {
+  if (input.status !== "playing" || !input.audioEnded || input.shouldForceSync) {
+    return false;
+  }
+  if (input.elementDurationSeconds <= 0) {
+    return true;
+  }
+  const endToleranceSeconds = Math.max(localAudioSeekToleranceSeconds, 2.0);
+  return input.targetPositionSeconds >= input.elementDurationSeconds - endToleranceSeconds;
+}
+
+export function canClientAdvanceAtTrackEnd(input: {
+  isCurrentSource: boolean;
+  isSourceMemberOffline: boolean;
+  roomSnapshot: Pick<RoomSnapshot, "room"> | null | undefined;
+  activeSessionId: string | null | undefined;
+}) {
+  if (!input.isCurrentSource && !input.isSourceMemberOffline) {
+    return false;
+  }
+  const room = input.roomSnapshot?.room;
+  if (
+    room &&
+    (room.roomType === "request" || room.roomType === "radio") &&
+    room.hostId !== input.activeSessionId
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export type LocalAudioResolutionStatus = "idle" | "checking" | "available" | "missing";
 
 export type LocalAudioResolution = {

@@ -220,13 +220,15 @@ export function useRoomRuntimeLifecycle(input: {
     setPeerId(nextPeerId);
   }, [peerStorageKey, setPeerId]);
 
+  const activeSessionUserId = activeSession?.userId ?? null;
+
   useEffect(() => {
-    if (!activeSession) {
+    if (!activeSessionUserId) {
       return;
     }
 
     void refreshPlaylists();
-  }, [activeSession, refreshPlaylists]);
+  }, [activeSessionUserId, refreshPlaylists]);
 
   useEffect(() => {
     const recoverRealtimeSession = () => {
@@ -288,7 +290,7 @@ export function useRoomRuntimeLifecycle(input: {
   ]);
 
   useEffect(() => {
-    if (!roomSnapshot?.room.id || !activeSession) {
+    if (!roomSnapshot?.room.id || !activeSessionUserId) {
       setIceConfig(null);
       setIceConfigResolved(false);
       return;
@@ -426,13 +428,11 @@ export function useRoomRuntimeLifecycle(input: {
     };
   }, [
     roomSnapshot?.room.id,
-    activeSession,
+    activeSessionUserId,
     setIceConfig,
     setIceConfigResolved,
     recordPeerDiagnostic
   ]);
-
-  const activeSessionUserId = activeSession?.userId ?? null;
 
   useEffect(() => {
     if (

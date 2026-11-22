@@ -110,7 +110,7 @@ export function createRoomDataMeshRuntime(input: {
   roomId: string;
   peerId: string;
   emitPeerSignal: (payload: PeerSignalMessage) => void;
-  iceServers: RTCIceServer[];
+  iceServersRef: MutableRefObject<RTCIceServer[]>;
   meshRef: MutableRefObject<P2PMesh | null>;
   localAudibleRef: MutableRefObject<boolean | null>;
   currentRoomRef: MutableRefObject<RoomSnapshot | null>;
@@ -513,7 +513,7 @@ export function createRoomDataMeshRuntime(input: {
         input.connectionSupervisorStatesRef.current.set(peerId, nextSupervisorState);
         const nextIcePolicy = resolvePreferredIceTransportPolicy(
           nextSupervisorState,
-          input.iceServers
+          input.iceServersRef.current
         );
         input.recordPeerDiagnosticRef.current({
           peerId,
@@ -537,13 +537,13 @@ export function createRoomDataMeshRuntime(input: {
         queueDataPeerRecovery(peerId, reason);
       }
     },
-    input.iceServers,
+    input.iceServersRef.current,
     {
       autoReconnect: true,
       resolveConnectionConfig: (peerId) => ({
         iceTransportPolicy: resolvePreferredIceTransportPolicy(
           input.connectionSupervisorStatesRef.current.get(peerId),
-          input.iceServers
+          input.iceServersRef.current
         )
       })
     }

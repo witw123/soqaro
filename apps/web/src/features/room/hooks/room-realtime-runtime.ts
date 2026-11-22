@@ -14,8 +14,7 @@ import type {
   RoomChatMessage
 } from "@soqaro/shared";
 import { createRoomSocket, type RoomSocket } from "@/lib/network/ws-client";
-import { getWebRTCIceServers, P2PMesh } from "@/features/p2p";
-import type { RemoteAudioTrackListener } from "@/features/p2p";
+import type { P2PMesh, RemoteAudioTrackListener } from "@/features/p2p";
 import { createRoomDataMeshRuntime } from "./use-room-data-mesh";
 import type { RoomSnapshotResyncReason } from "@/features/room/room-snapshot-resync";
 import type { RoomStateEvent } from "@/features/room/room-state-reducer";
@@ -173,7 +172,7 @@ export function createRoomSocketRuntime(input: {
 type RoomRealtimeRuntimeInput = {
   roomId: string;
   peerId: string;
-  iceConfig: Parameters<typeof getWebRTCIceServers>[0];
+  iceServersRef: MutableRefObject<RTCIceServer[]>;
   socketRef: MutableRefObject<RoomSocket | null>;
   meshRef: MutableRefObject<P2PMesh | null>;
   localAudibleRef: MutableRefObject<boolean | null>;
@@ -205,11 +204,9 @@ type RoomRealtimeRuntimeInput = {
   setMediaConnectedPeers: Dispatch<SetStateAction<string[]>>;
   setPlaybackReadiness: Dispatch<SetStateAction<RoomPlaybackReadinessPayload[]>>;
   setStatusMessage: (value: string) => void;
-  isNavigatingRoomExit: boolean;
   audioUnlocked: boolean;
-  emitPresence: () => void;
-  startPresenceHeartbeat: () => void;
-  exitCurrentRoom: (message: string) => void;
+  startPresenceHeartbeatRef: MutableRefObject<() => void>;
+  exitCurrentRoomRef: MutableRefObject<(message: string) => void>;
   shouldAcceptIncomingPeerSignalRecoveryGeneration: (input: {
     payloadRecoveryGeneration: number | null | undefined;
     currentRecoveryGeneration: number | null;
@@ -225,7 +222,6 @@ type RoomSocketHandlersInput = RoomRealtimeRuntimeInput & {
 };
 
 export function createRoomRealtimeRuntime(input: RoomRealtimeRuntimeInput) {
-  const iceServers = getWebRTCIceServers(input.iceConfig);
   const { socket, emitPeerSignal, handleSignalFailure } = createRoomSocketRuntime({
     socketRef: input.socketRef,
     recordPeerDiagnosticRef: input.recordPeerDiagnosticRef
@@ -234,7 +230,7 @@ export function createRoomRealtimeRuntime(input: RoomRealtimeRuntimeInput) {
     roomId: input.roomId,
     peerId: input.peerId,
     emitPeerSignal,
-    iceServers,
+    iceServersRef: input.iceServersRef,
     meshRef: input.meshRef,
     localAudibleRef: input.localAudibleRef,
     currentRoomRef: input.currentRoomRef,
@@ -401,6 +397,7 @@ function attachRoomSocketHandlers(input: RoomSocketHandlersInput) {
           // ids after a join/reconnect. Sync immediately so media negotiation
           // does not depend on a later room snapshot or presence patch.
           input.resyncRealtimePeers(ack.bootstrap?.members ?? []);
+          input.startPresenceHeartbeatRef.current();
           startClockCalibrationInterval();
         }
       }
@@ -854,13 +851,13 @@ function notifyMemberPresenceChanges(input: {
 
   socket.on("room.session.replaced", ({ roomId }) => {
     if (roomId === input.roomId) {
-      input.exitCurrentRoom("当前账号已在其他窗口加入此房间。");
+      input.exitCurrentRoomRef.current("当前账号已在其他窗口加入此房间。");
     }
   });
 
   socket.on("room.member.removed", ({ roomId, memberId }) => {
     if (roomId === input.roomId && memberId === input.activeSessionRef.current?.userId) {
-      input.exitCurrentRoom("你已被房主移出房间。");
+      input.exitCurrentRoomRef.current("你已被房主移出房间。");
     }
   });
 
@@ -870,7 +867,7 @@ function notifyMemberPresenceChanges(input: {
     input.activeSessionRef.current = null;
     window.localStorage.removeItem("soqaro-session");
     window.dispatchEvent(new CustomEvent("soqaro-auth-expired", { detail: { reason: "session-revoked" } }));
-    input.exitCurrentRoom("登录已被管理员撤销，请重新登录。");
+    input.exitCurrentRoomRef.current("登录已被管理员撤销，请重新登录。");
   });
 
   socket.on("room.deleted", ({ roomId, trackIds }) => {
@@ -878,7 +875,7 @@ function notifyMemberPresenceChanges(input: {
       return;
     }
     void input.deleteRoomTrackArtifactsRef.current(trackIds, roomId, true);
-    input.exitCurrentRoom("这个房间已被删除。");
+    input.exitCurrentRoomRef.current("这个房间已被删除。");
   });
 
   socket.on("room.snapshot.missing", (payload?: RoomSnapshotMissingPayload) => {
@@ -888,7 +885,7 @@ function notifyMemberPresenceChanges(input: {
         missingRoomId: payload?.roomId
       })
     ) {
-      input.exitCurrentRoom("这个房间已不可用，请重新创建或加入房间。");
+      input.exitCurrentRoomRef.current("这个房间已不可用，请重新创建或加入房间。");
       return;
     }
 

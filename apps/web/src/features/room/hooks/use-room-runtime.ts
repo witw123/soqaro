@@ -16,7 +16,7 @@ import type {
 } from "@soqaro/shared";
 import type { Route } from "next";
 import type { RoomSocket } from "@/lib/network/ws-client";
-import type { P2PMesh, RemoteAudioTrackListener } from "@/features/p2p";
+import { getWebRTCIceServers, type P2PMesh, type RemoteAudioTrackListener } from "@/features/p2p";
 import type { RoomStateEvent } from "@/features/room/room-state-reducer";
 import type { PeerDiagnosticRecorder } from "@/features/p2p/use-peer-diagnostics";
 import { createRoomSnapshotResyncController, type RoomSnapshotResyncReason } from "@/features/room/room-snapshot-resync";
@@ -495,6 +495,15 @@ export function useRoomRuntime({
     socketDisconnectGraceUntilRef,
     requestRoomSnapshotResync
   });
+  const iceServersRef = useRef<RTCIceServer[]>(getWebRTCIceServers(iceConfig));
+  const startPresenceHeartbeatRef = useRef(startPresenceHeartbeat);
+  startPresenceHeartbeatRef.current = startPresenceHeartbeat;
+
+  useEffect(() => {
+    const nextIceServers = getWebRTCIceServers(iceConfig);
+    iceServersRef.current = nextIceServers;
+    meshRef.current?.updateIceServers(nextIceServers);
+  }, [iceConfig, meshRef]);
 
   const { retryRoomRecovery } = useRoomRuntimeLifecycle({
     workspaceOnly,
@@ -565,7 +574,7 @@ export function useRoomRuntime({
     return createRoomRealtimeRuntime({
       roomId: activeRoomId,
       peerId,
-      iceConfig,
+      iceServersRef,
       socketRef,
       localAudibleRef,
       recordPeerDiagnosticRef,
@@ -603,18 +612,15 @@ export function useRoomRuntime({
       dispatchRoomStateEvent,
       setRoomRecoveryState,
       setStatusMessage,
-      isNavigatingRoomExit,
       audioUnlocked: realtimeRuntimeState.audioUnlocked,
-      emitPresence,
-      startPresenceHeartbeat,
-      exitCurrentRoom,
+      startPresenceHeartbeatRef,
+      exitCurrentRoomRef,
       shouldAcceptIncomingPeerSignalRecoveryGeneration,
       onRemoteAudioTrack
     });
   }, [
     roomSnapshot?.room.id,
     hydrated,
-    iceConfig,
     iceConfigResolved,
     peerId,
     activeSessionRef,
@@ -647,11 +653,7 @@ export function useRoomRuntime({
     updateConnectionSupervisorTransportStats,
     updateDataTransportStatsRef,
     updateMediaTransportStatsRef,
-    updatePeerBufferedAmountRef,
-    exitCurrentRoom,
-    emitPresence,
-    startPresenceHeartbeat,
-    isNavigatingRoomExit
+    updatePeerBufferedAmountRef
   ]);
 
   useEffect(() => {

@@ -22,7 +22,7 @@ class FakeDataChannel {
 
 class FakeRTCPeerConnection {
   static instances: FakeRTCPeerConnection[] = [];
-  readonly configuration: RTCConfiguration | undefined;
+  configuration: RTCConfiguration | undefined;
   connectionState: RTCPeerConnectionState = "connected";
   iceConnectionState: RTCIceConnectionState = "checking";
   signalingState: RTCSignalingState = "stable";
@@ -34,6 +34,9 @@ class FakeRTCPeerConnection {
   ondatachannel: ((event: RTCDataChannelEvent) => void) | null = null;
   ontrack: ((event: RTCTrackEvent) => void) | null = null;
   restartIce = vi.fn();
+  setConfiguration = vi.fn((configuration: RTCConfiguration) => {
+    this.configuration = configuration;
+  });
   channel = new FakeDataChannel();
   mediaSender: {
     track: MediaStreamTrack | null;
@@ -1623,5 +1626,32 @@ describe("PeerConnectionLifecycleManager", () => {
     entry.receiverRtpActive = false;
 
     expect(manager.getPeerMediaState("peer_b")?.receiverRtpActive).toBe(false);
+  });
+
+  it("updates ICE servers in place without recreating active peer connections", async () => {
+    const { manager } = createManager();
+
+    await manager.syncPeers(["peer_b"]);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+    const existingConnection = FakeRTCPeerConnection.instances[0]!;
+    const closeSpy = vi.spyOn(existingConnection, "close");
+
+    const refreshedServers = [
+      {
+        urls: "turn:turn.example.com:3478?transport=udp",
+        username: "u-next",
+        credential: "c-next"
+      }
+    ];
+    manager.updateIceServers(refreshedServers);
+
+    expect(closeSpy).not.toHaveBeenCalled();
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+    expect(existingConnection.setConfiguration).toHaveBeenCalledTimes(1);
+    expect(existingConnection.configuration?.iceServers).toEqual(refreshedServers);
+
+    await manager.syncPeers(["peer_b", "peer_c"]);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(2);
+    expect(FakeRTCPeerConnection.instances[1]?.configuration?.iceServers).toEqual(refreshedServers);
   });
 });

@@ -185,7 +185,7 @@ export class PeerConnectionLifecycleManager {
   private readonly statsSampler: PeerStatsSampler;
   private readonly localPeerId: string;
   private readonly autoReconnect: boolean;
-  private readonly iceServers: IceServerConfig[];
+  private iceServers: IceServerConfig[];
   private readonly resolveConnectionConfig?: PeerConnectionLifecycleManagerInput["resolveConnectionConfig"];
   private readonly signaling: SignalingTransport;
   private readonly bindChannelCallback: PeerConnectionLifecycleManagerInput["bindChannel"];
@@ -894,6 +894,27 @@ export class PeerConnectionLifecycleManager {
     }
 
     return this.recreatePeerNow(peerId, entry, { forceInitiate: true });
+  }
+
+  /** Updates the ICE server list in place for active and future peer connections. */
+  updateIceServers(nextIceServers: IceServerConfig[]) {
+    this.iceServers = nextIceServers;
+    for (const [peerId, entry] of this.peerConnections.allEntries()) {
+      if (entry.releasing) {
+        continue;
+      }
+      try {
+        entry.connection.setConfiguration?.(
+          buildPeerConnectionConfig({
+            peerId,
+            iceServers: this.iceServers,
+            resolveConnectionConfig: this.resolveConnectionConfig
+          })
+        );
+      } catch {
+        // Ignore browser restrictions on active connections; new connections still use updated iceServers.
+      }
+    }
   }
 
   async restartIce(peerId: string) {

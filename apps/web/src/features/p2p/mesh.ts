@@ -98,7 +98,7 @@ export class P2PMesh {
     private readonly localPeerId: string,
     private readonly sendSignal: (payload: PeerSignalMessage) => void,
     private readonly callbacks: MeshCallbacks,
-    private readonly iceServers: IceServerConfig[] = [],
+    private iceServers: IceServerConfig[] = [],
     options: MeshOptions = {}
     ) {
     this.autoReconnect = options.autoReconnect ?? true;
@@ -201,6 +201,12 @@ export class P2PMesh {
 
   async restartIce(peerId: string) {
     return this.peerLifecycle.restartIce(peerId);
+  }
+
+  /** Updates ICE servers in place without tearing down existing peer connections. */
+  updateIceServers(iceServers: IceServerConfig[]) {
+    this.iceServers = iceServers;
+    this.peerLifecycle.updateIceServers(iceServers);
   }
 
   async restartMediaPeer(

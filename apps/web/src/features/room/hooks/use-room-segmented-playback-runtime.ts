@@ -62,6 +62,8 @@ import {
   resolveRoomAudioPath,
   resolveRoomAudioPositionMs,
   resolveRoomProviderCachePlan,
+  resolveVisibleMediaPlayback,
+  shouldAcceptNativeLocalAudioEnded,
   shouldAttemptPlaybackEndedAdvance,
   shouldDisableSourcePlayback,
   shouldSkipUnavailableStreamingTrack,
@@ -105,7 +107,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     track: MediaStreamTrack;
   }) => void) => () => void;
   restartMediaPeer: (peerId: string, options?: { forceRecreate?: boolean }) => Promise<unknown>;
-  onPlaybackEnded: () => unknown;
+  onPlaybackEnded: (options?: { expectedPlayback?: PlaybackSnapshot }) => unknown;
   setStatusMessage: (message: string) => void;
   recordPeerDiagnostic: PeerDiagnosticRecorder;
   audibleRef: MutableRefObject<boolean | null>;
@@ -332,7 +334,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       };
       let succeeded = false;
       try {
-        const result = await onPlaybackEnded();
+        const result = await onPlaybackEnded({ expectedPlayback: roomPlayback });
         if (result === false) {
           succeeded = false;
         } else if (
@@ -413,27 +415,30 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
   useEffect(() => {
     const roomPlayback = input.roomSnapshot?.room.playback;
-    if (!shouldSkipUnavailableStreamingTrack({
-      isCurrentSource: input.isCurrentSource,
-      streamingOnlyPlayback,
-      playback: roomPlayback,
-      currentTrackId: input.currentTrack?.id,
-      playbackAsset: currentPlaybackAsset
-    })) {
+    if (
+      !roomPlayback ||
+      !shouldSkipUnavailableStreamingTrack({
+        isCurrentSource: input.isCurrentSource,
+        streamingOnlyPlayback,
+        playback: roomPlayback,
+        currentTrackId: input.currentTrack?.id,
+        playbackAsset: currentPlaybackAsset
+      })
+    ) {
       return;
     }
 
     const timelineKey = [
       input.roomSnapshot?.room.id,
-      roomPlayback?.currentTrackId,
-      roomPlayback?.mediaEpoch
+      roomPlayback.currentTrackId,
+      roomPlayback.mediaEpoch
     ].join(":");
     if (skippedUnavailableStreamingTimelineRef.current === timelineKey) {
       return;
     }
     skippedUnavailableStreamingTimelineRef.current = timelineKey;
     setStatusMessage(`《${input.currentTrack?.title ?? "当前歌曲"}》没有可用播放资产，已跳过。`);
-    void onPlaybackEnded();
+    void onPlaybackEnded({ expectedPlayback: roomPlayback });
   }, [
     currentPlaybackAsset,
     input.currentTrack?.id,
@@ -884,8 +889,16 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     loudnessGainDb,
     audioUnlocked: input.audioUnlocked,
   });
+  const currentRoomPlayback = input.roomSnapshot?.room.playback ?? null;
+  const currentMediaPlaybackIdentity = currentRoomPlayback?.currentTrackId
+    ? resolveLocalAudioTimelineKey(currentRoomPlayback, playbackBarrier)
+    : null;
+  const visibleMediaPlayback = useMemo(
+    () => resolveVisibleMediaPlayback(mediaPlayback, currentMediaPlaybackIdentity),
+    [mediaPlayback, currentMediaPlaybackIdentity]
+  );
   const usesSegmentedPlayback = input.isCurrentSource && !usesNativeLocalAudio;
-  const visiblePlayback = usesSegmentedPlayback ? playback : mediaPlayback;
+  const visiblePlayback = usesSegmentedPlayback ? playback : visibleMediaPlayback;
 
   useEffect(() => {
     roomMediaPlaybackStore.setState(visiblePlayback);
@@ -927,7 +940,12 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     const usesNativeLocalAudio = runtime.usesNativeLocalAudio;
     const usesLocalAudio = !runtime.isCurrentSource && usesNativeLocalAudio;
     const usesSegmentedPlayback = runtime.isCurrentSource && !usesNativeLocalAudio;
-    const visiblePlayback = usesSegmentedPlayback ? playback : mediaPlayback;
+    const runtimeMediaPlaybackIdentity = roomPlayback?.currentTrackId
+      ? resolveLocalAudioTimelineKey(roomPlayback, runtime.playbackBarrier)
+      : null;
+    const visiblePlayback = usesSegmentedPlayback
+      ? playback
+      : resolveVisibleMediaPlayback(mediaPlayback, runtimeMediaPlaybackIdentity);
     const mediaSession =
       roomPlayback?.currentTrackId && runtime.playbackAsset
         ? createPlaybackMediaSession({
@@ -1039,6 +1057,9 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       const operationTimelineKey = roomPlayback
         ? resolveLocalAudioTimelineKey(roomPlayback, runtime.playbackBarrier)
         : null;
+      const operationPlaybackIdentity = roomPlayback?.currentTrackId
+        ? operationTimelineKey
+        : null;
       const sourcePeerId = resolveCurrentSourcePeerId(runtime.roomSnapshot, roomPlayback);
       const bitrateKbps = runtime.playbackAsset
         ? preferredAudioRtpBitrateKbps
@@ -1089,7 +1110,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             ownedUnitCount: 0,
             totalUnitCount: runtime.playbackAsset?.unitCount ?? 0,
             audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-            lastError: "正在等待进度调整同步确认。"
+            lastError: "正在等待进度调整同步确认。",
+            playbackIdentity: operationPlaybackIdentity
           });
         }
         return;
@@ -1108,7 +1130,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
               ownedUnitCount: 0,
               totalUnitCount: 0,
               audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-              lastError: "当前歌曲缺少匹配的曲库播放资产，无法进行流式播放。"
+              lastError: "当前歌曲缺少匹配的曲库播放资产，无法进行流式播放。",
+              playbackIdentity: operationPlaybackIdentity
             });
           }
           return;
@@ -1152,7 +1175,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             ownedUnitCount: 0,
             totalUnitCount: runtime.playbackAsset?.unitCount ?? 0,
             audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-            lastError: null
+            lastError: null,
+            playbackIdentity: operationPlaybackIdentity
           });
         }
         return;
@@ -1197,7 +1221,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
               ownedUnitCount: 0,
               totalUnitCount,
               audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-              lastError: null
+              lastError: null,
+              playbackIdentity: operationPlaybackIdentity
             });
           }
           return;
@@ -1244,6 +1269,17 @@ export function useRoomSegmentedPlaybackRuntime(input: {
               lastCurrentTime: null,
               hasStarted: false
             };
+            if (!cancelled) {
+              setMediaPlayback({
+                state: "buffering",
+                bufferedMs: 0,
+                ownedUnitCount: 0,
+                totalUnitCount,
+                audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
+                lastError: null,
+                playbackIdentity: operationPlaybackIdentity
+              });
+            }
             const metadataReady = waitForLocalAudioMetadata(audio);
             audio.load();
             await metadataReady;
@@ -1351,7 +1387,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
                 ownedUnitCount: 0,
                 totalUnitCount,
                 audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-                lastError: null
+                lastError: null,
+                playbackIdentity: timelineKey
               });
             }
             return;
@@ -1417,7 +1454,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
                 ownedUnitCount: 0,
                 totalUnitCount,
                 audioContextState,
-                lastError: null
+                lastError: null,
+                playbackIdentity: timelineKey
               });
             }
             return;
@@ -1434,7 +1472,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
                 ownedUnitCount: 0,
                 totalUnitCount,
                 audioContextState,
-                lastError: null
+                lastError: null,
+                playbackIdentity: timelineKey
               });
             }
             return;
@@ -1477,7 +1516,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
                 ownedUnitCount: 0,
                 totalUnitCount,
                 audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-                lastError: result.error
+                lastError: result.error,
+                playbackIdentity: timelineKey
               });
               return;
             }
@@ -1493,7 +1533,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
                 ownedUnitCount: 0,
                 totalUnitCount,
                 audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-                lastError: result.error
+                lastError: result.error,
+                playbackIdentity: timelineKey
               });
               return;
             }
@@ -1535,7 +1576,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             ownedUnitCount: 0,
             totalUnitCount,
             audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-            lastError: actuallyPlaying ? null : "音频元素尚未产生实际播放进度。"
+            lastError: actuallyPlaying ? null : "音频元素尚未产生实际播放进度。",
+            playbackIdentity: timelineKey
           });
         } catch (error) {
           if (cancelled) return;
@@ -1550,7 +1592,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
               ownedUnitCount: 0,
               totalUnitCount,
               audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-              lastError: detail
+              lastError: detail,
+              playbackIdentity: operationPlaybackIdentity
             });
             return;
           }
@@ -1619,7 +1662,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           ownedUnitCount: 0,
           totalUnitCount,
           audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-          lastError: null
+          lastError: null,
+          playbackIdentity: operationPlaybackIdentity
         });
         return;
       }
@@ -1655,7 +1699,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           ownedUnitCount: 0,
           totalUnitCount,
           audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-          lastError: null
+          lastError: null,
+          playbackIdentity: operationPlaybackIdentity
         });
         return;
       }
@@ -1827,7 +1872,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             ...idlePlaybackSnapshot(),
             state: blocked ? "awaiting-unlock" : "buffering",
             audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-            lastError: blocked ? null : result.error
+            lastError: blocked ? null : result.error,
+            playbackIdentity: operationPlaybackIdentity
           });
           return;
         }
@@ -1851,7 +1897,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             ownedUnitCount: 0,
             totalUnitCount,
             audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-            lastError: null
+            lastError: null,
+            playbackIdentity: operationPlaybackIdentity
           });
         }
         return;
@@ -1875,7 +1922,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           ownedUnitCount: 0,
           totalUnitCount,
           audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? null,
-          lastError: null
+          lastError: null,
+          playbackIdentity: operationPlaybackIdentity
         });
       }
     };
@@ -2076,11 +2124,34 @@ export function useRoomSegmentedPlaybackRuntime(input: {
 
     const handleEnded = () => {
       const runtime = runtimeInputRef.current;
-      const roomPlayback = runtime.roomSnapshot?.room.playback;
+      const roomPlayback = runtime.roomSnapshot?.room.playback ?? null;
+      const expectedTimelineKey = roomPlayback?.currentTrackId
+        ? resolveLocalAudioTimelineKey(roomPlayback, runtime.playbackBarrier)
+        : null;
+      const elementDurationSeconds = Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : Math.max(0, (runtime.currentTrack?.durationMs ?? 0) / 1000);
+      const targetPositionSeconds = roomPlayback
+        ? resolveRoomAudioPositionMs(roomPlayback, getRoomPlaybackClockNowMs(), runtime.playbackBarrier) / 1000
+        : 0;
       if (
-        !runtime.usesNativeLocalAudio ||
-        roomPlayback?.status !== "playing" ||
-        roomPlayback.currentTrackId !== runtime.currentTrack?.id
+        !roomPlayback ||
+        !expectedTimelineKey ||
+        !shouldAcceptNativeLocalAudioEnded({
+          usesNativeLocalAudio: runtime.usesNativeLocalAudio,
+          status: roomPlayback.status,
+          playbackTrackId: roomPlayback.currentTrackId,
+          currentTrackId: runtime.currentTrack?.id,
+          activeLocalAudioKey: runtime.localAudioResolution.key,
+          boundObjectUrlKey: localAudioObjectUrlRef.current?.key,
+          boundObjectUrl: localAudioObjectUrlRef.current?.url,
+          audioSrc: audio.src,
+          readyKey: localAudioReadyKeyRef.current,
+          appliedTimelineKey: localAudioTimelineKeyRef.current,
+          expectedTimelineKey,
+          elementDurationSeconds,
+          targetPositionSeconds
+        })
       ) {
         return;
       }
@@ -2090,7 +2161,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
         bufferedMs: 0,
         ownedUnitCount: 0,
         audioContextState: roomAudioOutput.getSharedAudioContext()?.state ?? current.audioContextState,
-        lastError: null
+        lastError: null,
+        playbackIdentity: expectedTimelineKey
       }));
       if (runtime.canAdvanceAtTrackEnd) {
         void triggerPlaybackEnded(roomPlayback);
@@ -2165,7 +2237,14 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     if (visiblePlayback.state !== "ended" || !canAdvanceAtTrackEnd) return;
     const room = roomSnapshot?.room;
     const activePlayback = room?.playback;
-    if (!room || !activePlayback?.currentTrackId || activePlayback.status !== "playing") return;
+    if (
+      !room ||
+      !activePlayback?.currentTrackId ||
+      activePlayback.status !== "playing" ||
+      activePlayback.currentTrackId !== input.currentTrack?.id
+    ) {
+      return;
+    }
 
     let cancelled = false;
     let retryTimer: number | null = null;
@@ -2198,6 +2277,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     };
   }, [
     canAdvanceAtTrackEnd,
+    input.currentTrack?.id,
     roomSnapshot,
     triggerPlaybackEnded,
     visiblePlayback.state

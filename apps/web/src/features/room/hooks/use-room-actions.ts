@@ -40,6 +40,7 @@ import {
   createPendingPausePlayback,
   createPendingSeekPlayback,
   hasPlaybackTimelineAdvanced,
+  resolvePlaybackMutationPreflight,
   runBestEffortRoomLeave,
   shouldResetPlayerAfterQueueRemoval,
   shouldResetPlayerAfterTrackRemoval,
@@ -69,26 +70,26 @@ export function useRoomActions({
   const playbackMutationChainRef = useRef<Promise<void>>(Promise.resolve());
   const latestPlaybackStateRef = useRef<{
     roomId: string | null;
-    revision: number | null;
+    playback: PlaybackSnapshot | null;
   }>({
     roomId: roomSnapshot?.room.id ?? null,
-    revision: roomSnapshot?.room.playback.playbackRevision ?? null
+    playback: roomSnapshot?.room.playback ?? null
   });
   const renderedRoomId = roomSnapshot?.room.id ?? null;
-  const renderedPlaybackRevision = roomSnapshot?.room.playback.playbackRevision ?? null;
+  const renderedPlayback = roomSnapshot?.room.playback ?? null;
   if (latestPlaybackStateRef.current.roomId !== renderedRoomId) {
     latestPlaybackStateRef.current = {
       roomId: renderedRoomId,
-      revision: renderedPlaybackRevision
+      playback: renderedPlayback
     };
   }
   if (
-    renderedPlaybackRevision !== null &&
+    renderedPlayback !== null &&
     latestPlaybackStateRef.current.roomId === renderedRoomId &&
-    (latestPlaybackStateRef.current.revision === null ||
-      renderedPlaybackRevision >= latestPlaybackStateRef.current.revision)
+    (latestPlaybackStateRef.current.playback === null ||
+      renderedPlayback.playbackRevision >= latestPlaybackStateRef.current.playback.playbackRevision)
   ) {
-    latestPlaybackStateRef.current.revision = renderedPlaybackRevision;
+    latestPlaybackStateRef.current.playback = renderedPlayback;
   }
 
   const syncRoomSnapshot = useCallback(
@@ -184,19 +185,30 @@ export function useRoomActions({
         if (latestPlaybackStateRef.current.roomId !== roomId) {
           latestPlaybackStateRef.current = {
             roomId,
-            revision: null
+            playback: null
           };
         }
-        let nextExpectedVersion = Math.max(
+        const preflight = resolvePlaybackMutationPreflight({
           expectedVersion,
-          latestPlaybackStateRef.current.revision ?? 0
-        );
+          latestPlayback: latestPlaybackStateRef.current.playback,
+          retryTarget,
+          options
+        });
+        if (preflight.action === "skip") {
+          if (!options?.silentOnConflictSkip) {
+            setStatusMessage("播放曲目已更新，本次操作未重试。");
+          }
+          return options?.returnSnapshotOnConflictSkip
+            ? latestPlaybackStateRef.current.playback
+            : null;
+        }
+        let nextExpectedVersion = preflight.expectedVersion;
 
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
             const playback = await requestPlayback(nextExpectedVersion);
             if (latestPlaybackStateRef.current.roomId === roomId) {
-              latestPlaybackStateRef.current.revision = playback.playbackRevision;
+              latestPlaybackStateRef.current.playback = playback;
             }
             dispatchRoomStateEvent({
               type: "server-playback-patch",
@@ -228,6 +240,9 @@ export function useRoomActions({
                     )
                   : snapshot.room.playback.playbackRevision > nextExpectedVersion;
                 if (alreadyMovedOn) {
+                  if (latestPlaybackStateRef.current.roomId === roomId) {
+                    latestPlaybackStateRef.current.playback = snapshot.room.playback;
+                  }
                   return snapshot.room.playback;
                 }
                 // The mutation never committed: roll the optimistic pending
@@ -236,8 +251,7 @@ export function useRoomActions({
                 // version-gated patch path would reject it and the room would
                 // stay diverged until someone else moves playback forward.
                 if (latestPlaybackStateRef.current.roomId === roomId) {
-                  latestPlaybackStateRef.current.revision =
-                    snapshot.room.playback.playbackRevision;
+                  latestPlaybackStateRef.current.playback = snapshot.room.playback;
                 }
                 dispatchRoomStateEvent({
                   type: "playback-rollback",
@@ -260,7 +274,7 @@ export function useRoomActions({
             try {
               const snapshot = await syncRoomSnapshot(roomId);
               if (latestPlaybackStateRef.current.roomId === roomId) {
-                latestPlaybackStateRef.current.revision = snapshot.room.playback.playbackRevision;
+                latestPlaybackStateRef.current.playback = snapshot.room.playback;
               }
               if (
                 retryTarget &&
@@ -640,17 +654,18 @@ export function useRoomActions({
       options && typeof options === "object" && !("nativeEvent" in options)
         ? options
         : undefined;
+    const targetPlayback = safeOptions?.expectedPlayback ?? roomSnapshot.room.playback;
 
     return runPlaybackMutation(
       roomSnapshot.room.id,
-      roomSnapshot.room.playback.playbackRevision,
+      targetPlayback.playbackRevision,
       (expectedVersion) =>
         soqaroApi.updatePlayback(roomSnapshot.room.id, {
           action: "next",
           actorPeerId: getCurrentPeerId?.() ?? undefined,
           expectedVersion
         }),
-      roomSnapshot.room.playback,
+      targetPlayback,
       {
         requireSameTimelineAnchor: true,
         silentOnConflictSkip: true,

@@ -21,7 +21,10 @@ import {
   type RoomPlaybackBarrierClock
 } from "@/features/playback/room-playback-clock";
 import type { OfflineProviderSource } from "@/features/playback/offline-source-fallback";
-import type { PlaybackAudioPath } from "@/features/playback/use-segmented-opus-playback";
+import type {
+  PlaybackAudioPath,
+  SegmentedPlaybackSnapshot
+} from "@/features/playback/use-segmented-opus-playback";
 import { resolveProviderTrackSource } from "@/features/library/provider-track-identity";
 import { providerDisplayName } from "@/lib/domain/provider-labels";
 
@@ -86,6 +89,64 @@ export function isNativeLocalAudioAtNaturalEnd(input: {
   }
   const endToleranceSeconds = Math.max(localAudioSeekToleranceSeconds, 2.0);
   return input.targetPositionSeconds >= input.elementDurationSeconds - endToleranceSeconds;
+}
+
+export function resolveVisibleMediaPlayback(
+  mediaPlayback: SegmentedPlaybackSnapshot,
+  currentIdentity: string | null
+): SegmentedPlaybackSnapshot {
+  if (!currentIdentity || mediaPlayback.playbackIdentity !== currentIdentity) {
+    return {
+      state: "idle",
+      bufferedMs: 0,
+      ownedUnitCount: 0,
+      totalUnitCount: mediaPlayback.totalUnitCount,
+      audioContextState: mediaPlayback.audioContextState,
+      lastError: null,
+      playbackIdentity: currentIdentity
+    };
+  }
+  return mediaPlayback;
+}
+
+export function shouldAcceptNativeLocalAudioEnded(input: {
+  usesNativeLocalAudio: boolean;
+  status: PlaybackSnapshot["status"] | null | undefined;
+  playbackTrackId: string | null | undefined;
+  currentTrackId: string | null | undefined;
+  activeLocalAudioKey: string | null | undefined;
+  boundObjectUrlKey: string | null | undefined;
+  boundObjectUrl: string | null | undefined;
+  audioSrc: string | null | undefined;
+  readyKey: string | null | undefined;
+  appliedTimelineKey: string | null | undefined;
+  expectedTimelineKey: string | null | undefined;
+  elementDurationSeconds: number;
+  targetPositionSeconds: number;
+}): boolean {
+  if (
+    !input.usesNativeLocalAudio ||
+    input.status !== "playing" ||
+    !input.playbackTrackId ||
+    input.playbackTrackId !== input.currentTrackId ||
+    !input.activeLocalAudioKey ||
+    input.boundObjectUrlKey !== input.activeLocalAudioKey ||
+    !input.boundObjectUrl ||
+    input.audioSrc !== input.boundObjectUrl ||
+    input.readyKey !== input.activeLocalAudioKey ||
+    !input.expectedTimelineKey ||
+    input.appliedTimelineKey !== input.expectedTimelineKey
+  ) {
+    return false;
+  }
+
+  return isNativeLocalAudioAtNaturalEnd({
+    status: "playing",
+    audioEnded: true,
+    shouldForceSync: false,
+    elementDurationSeconds: input.elementDurationSeconds,
+    targetPositionSeconds: input.targetPositionSeconds
+  });
 }
 
 export function canClientAdvanceAtTrackEnd(input: {

@@ -14,7 +14,44 @@ export type PlaybackMutationOptions = {
   requireSameTimelineAnchor?: boolean;
   silentOnConflictSkip?: boolean;
   returnSnapshotOnConflictSkip?: boolean;
+  expectedPlayback?: PlaybackSnapshot;
 };
+
+export type PlaybackMutationPreflightResult =
+  | { action: "skip" }
+  | { action: "proceed"; expectedVersion: number };
+
+export function resolvePlaybackMutationPreflight(input: {
+  expectedVersion: number;
+  latestPlayback: PlaybackSnapshot | null;
+  retryTarget?: PlaybackMutationTarget;
+  options?: Pick<PlaybackMutationOptions, "requireSameTimelineAnchor">;
+}): PlaybackMutationPreflightResult {
+  if (input.options?.requireSameTimelineAnchor && input.retryTarget) {
+    if (
+      input.latestPlayback &&
+      !shouldRetryPlaybackMutationAfterConflict(
+        input.retryTarget,
+        input.latestPlayback,
+        input.options
+      )
+    ) {
+      return { action: "skip" };
+    }
+    return {
+      action: "proceed",
+      expectedVersion: input.expectedVersion
+    };
+  }
+
+  return {
+    action: "proceed",
+    expectedVersion: Math.max(
+      input.expectedVersion,
+      input.latestPlayback?.playbackRevision ?? 0
+    )
+  };
+}
 
 export async function runBestEffortRoomLeave(input: {
   roomId: string;

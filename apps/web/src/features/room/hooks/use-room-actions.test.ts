@@ -3,6 +3,7 @@ import {
   createPendingPausePlayback,
   createPendingSeekPlayback,
   hasPlaybackTimelineAdvanced,
+  resolvePlaybackMutationPreflight,
   runBestEffortRoomLeave,
   shouldRetryPlaybackMutationAfterConflict,
   shouldResetPlayerAfterQueueRemoval,
@@ -247,5 +248,109 @@ describe("runBestEffortRoomLeave", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("resolvePlaybackMutationPreflight", () => {
+  const basePlayback = {
+    status: "playing" as const,
+    currentTrackId: "track_1",
+    currentQueueItemId: "queue_1",
+    playbackAssetId: "asset_1",
+    startAt: "2026-07-22T00:00:00.000Z",
+    startedAt: "2026-07-22T00:00:00.000Z",
+    sourceSessionId: "session_1",
+    sourcePeerId: "peer_1",
+    sourceTrackId: "track_1",
+    positionMs: 0,
+    queueVersion: 1,
+    playbackRevision: 10,
+    mediaEpoch: 1,
+    playbackMode: "sequence" as const
+  };
+
+  it("skips timeline-pinned nextTrack when the room has already moved on or looped", () => {
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 10,
+        latestPlayback: {
+          ...basePlayback,
+          currentTrackId: "track_2",
+          currentQueueItemId: "queue_2",
+          playbackRevision: 11
+        },
+        retryTarget: basePlayback,
+        options: { requireSameTimelineAnchor: true }
+      })
+    ).toEqual({ action: "skip" });
+
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 10,
+        latestPlayback: {
+          ...basePlayback,
+          currentQueueItemId: "queue_2",
+          playbackRevision: 11
+        },
+        retryTarget: basePlayback,
+        options: { requireSameTimelineAnchor: true }
+      })
+    ).toEqual({ action: "skip" });
+
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 10,
+        latestPlayback: {
+          ...basePlayback,
+          status: "paused",
+          playbackRevision: 11
+        },
+        retryTarget: basePlayback,
+        options: { requireSameTimelineAnchor: true }
+      })
+    ).toEqual({ action: "skip" });
+
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 10,
+        latestPlayback: {
+          ...basePlayback,
+          startAt: "2026-07-22T00:03:00.000Z",
+          startedAt: "2026-07-22T00:03:00.000Z",
+          playbackRevision: 11
+        },
+        retryTarget: basePlayback,
+        options: { requireSameTimelineAnchor: true }
+      })
+    ).toEqual({ action: "skip" });
+  });
+
+  it("preserves caller expectedVersion for timeline-pinned mutations on the same anchor", () => {
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 10,
+        latestPlayback: {
+          ...basePlayback,
+          playbackRevision: 12
+        },
+        retryTarget: basePlayback,
+        options: { requireSameTimelineAnchor: true }
+      })
+    ).toEqual({ action: "proceed", expectedVersion: 10 });
+  });
+
+  it("upgrades expectedVersion to latest playbackRevision for non-pinned mutations", () => {
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 10,
+        latestPlayback: {
+          ...basePlayback,
+          currentTrackId: "track_2",
+          currentQueueItemId: "queue_2",
+          playbackRevision: 12
+        },
+        retryTarget: basePlayback
+      })
+    ).toEqual({ action: "proceed", expectedVersion: 12 });
   });
 });

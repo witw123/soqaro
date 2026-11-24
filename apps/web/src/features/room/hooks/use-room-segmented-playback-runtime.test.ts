@@ -20,6 +20,8 @@ import {
   resolveRoomAudioPositionMs,
   resolveRoomProviderCachePlan,
   resolveRemoteAudioTimelineKey,
+  resolveVisibleMediaPlayback,
+  shouldAcceptNativeLocalAudioEnded,
   shouldAttemptPlaybackEndedAdvance,
   shouldDisableSourcePlayback,
   shouldSkipUnavailableStreamingTrack,
@@ -808,5 +810,101 @@ describe("native local audio natural end and advance permission", () => {
       roomSnapshot: { room: { roomType: "interactive", hostId: "host-1" } } as never,
       activeSessionId: "host-1"
     })).toBe(false);
+  });
+});
+
+describe("media playback identity scoping and native ended guards", () => {
+  it("drops stale ended state synchronously across track switches, single loops, and cache handoffs", () => {
+    const trackAEnded = {
+      state: "ended" as const,
+      bufferedMs: 0,
+      ownedUnitCount: 0,
+      totalUnitCount: 90,
+      audioContextState: "running" as const,
+      lastError: null,
+      playbackIdentity: "track-a:1:playing:2026-07-22T00:00:00.000Z:playing:no-hold:no-resume"
+    };
+
+    expect(
+      resolveVisibleMediaPlayback(
+        trackAEnded,
+        "track-a:1:playing:2026-07-22T00:00:00.000Z:playing:no-hold:no-resume"
+      )
+    ).toEqual(trackAEnded);
+
+    expect(
+      resolveVisibleMediaPlayback(
+        trackAEnded,
+        "track-b:2:playing:2026-07-22T00:03:00.000Z:playing:no-hold:no-resume"
+      )
+    ).toMatchObject({
+      state: "idle",
+      playbackIdentity: "track-b:2:playing:2026-07-22T00:03:00.000Z:playing:no-hold:no-resume"
+    });
+
+    expect(
+      resolveVisibleMediaPlayback(
+        trackAEnded,
+        "track-a:1:playing:2026-07-22T00:03:00.000Z:playing:no-hold:no-resume"
+      )
+    ).toMatchObject({
+      state: "idle",
+      playbackIdentity: "track-a:1:playing:2026-07-22T00:03:00.000Z:playing:no-hold:no-resume"
+    });
+
+    expect(resolveVisibleMediaPlayback(trackAEnded, null)).toMatchObject({
+      state: "idle",
+      playbackIdentity: null
+    });
+  });
+
+  it("accepts natural end only when the active audio element and timeline match", () => {
+    const baseInput = {
+      usesNativeLocalAudio: true,
+      status: "playing" as const,
+      playbackTrackId: "track-a",
+      currentTrackId: "track-a",
+      activeLocalAudioKey: "track-a:hash-a",
+      boundObjectUrlKey: "track-a:hash-a",
+      boundObjectUrl: "blob:track-a",
+      audioSrc: "blob:track-a",
+      readyKey: "track-a:hash-a",
+      appliedTimelineKey: "track-a:1:playing:t1:playing:no-hold:no-resume",
+      expectedTimelineKey: "track-a:1:playing:t1:playing:no-hold:no-resume",
+      elementDurationSeconds: 180,
+      targetPositionSeconds: 179.5
+    };
+
+    expect(shouldAcceptNativeLocalAudioEnded(baseInput)).toBe(true);
+
+    expect(
+      shouldAcceptNativeLocalAudioEnded({
+        ...baseInput,
+        activeLocalAudioKey: "track-b:hash-b",
+        playbackTrackId: "track-b",
+        currentTrackId: "track-b"
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAcceptNativeLocalAudioEnded({
+        ...baseInput,
+        expectedTimelineKey: "track-a:1:playing:t2:playing:no-hold:no-resume"
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAcceptNativeLocalAudioEnded({
+        ...baseInput,
+        targetPositionSeconds: 42
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAcceptNativeLocalAudioEnded({
+        ...baseInput,
+        readyKey: null
+      })
+    ).toBe(false);
   });
 });

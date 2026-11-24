@@ -120,8 +120,6 @@ export function RadioRoomView(props: RoomDashboardViewProps) {
         <RoomControlHeader
           isMobile
           roomSnapshot={props.roomSnapshot}
-          mediaConnectionState={props.mediaConnectionState}
-          currentTrack={props.currentTrack}
           host={props.host}
           canDeleteRoom={props.canDeleteRoom}
           canDisbandRoom={props.canDisbandRoom}
@@ -138,8 +136,6 @@ export function RadioRoomView(props: RoomDashboardViewProps) {
       <div className="relative z-30 hidden lg:block shrink-0 border-b border-surface-border/50 bg-surface/40 px-3 sm:px-4 backdrop-blur-xl">
         <RoomControlHeader
           roomSnapshot={props.roomSnapshot}
-          mediaConnectionState={props.mediaConnectionState}
-          currentTrack={props.currentTrack}
           host={props.host}
           canDeleteRoom={props.canDeleteRoom}
           canDisbandRoom={props.canDisbandRoom}
@@ -620,8 +616,6 @@ function HostBroadcastDesk(props: RoomDashboardViewProps) {
                 activeSession={props.activeSession}
                 canManageLibrary
                 localStorageSummary={props.localStorageSummary}
-                onCleanLocalStorage={props.onCleanLocalStorage}
-                onDeletePlaylist={props.onDeletePlaylist}
                 onImportCachedTrack={props.onImportCachedTrack}
                 onImportNeteaseTrack={props.onImportNeteaseTrack}
                 onImportNeteaseTracks={props.onImportNeteaseTracks}
@@ -630,10 +624,6 @@ function HostBroadcastDesk(props: RoomDashboardViewProps) {
                 onImportBilibiliTrack={props.onImportBilibiliTrack}
                 onImportBilibiliTracks={props.onImportBilibiliTracks}
                 onLoadPlaylistIntoRoom={props.onLoadPlaylistIntoRoom}
-                onRefreshLocalStorage={props.onRefreshLocalStorage}
-                onSavePlaylistFromQueue={props.onSavePlaylistFromQueue}
-                onUpdatePlaylistTitle={props.onUpdatePlaylistTitle}
-                onUpdatePlaylistTracks={props.onUpdatePlaylistTracks}
                 playlists={props.playlists}
                 roomPlaylists={props.roomSnapshot.playlists}
                 currentRoomId={props.roomSnapshot.room.id}

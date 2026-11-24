@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import type {
+  AuthSession,
   BilibiliTrackCandidate,
-  GuestSession,
   QqMusicTrackCandidate,
   NeteaseTrackCandidate,
   RoomSnapshot,
@@ -86,7 +86,7 @@ export {
 } from "@/features/library/cache-library";
 
 export function useTrackUploads(options: {
-  activeSession: GuestSession | null;
+  activeSession: AuthSession | null;
   roomSnapshot: RoomSnapshot | null;
   dispatchRoomStateEvent: Dispatch<RoomStateEvent>;
   setStatusMessage: (message: string) => void;
@@ -210,8 +210,7 @@ export function useTrackUploads(options: {
     refreshCacheLibrary,
     roomSnapshot,
     setStatusMessage,
-    setUploadedTracks,
-    uploadedTracks
+    setUploadedTracks
   });
 
   const importCachedTrack = useCallback(async (cachedTrack: CachedLibraryTrack) => {

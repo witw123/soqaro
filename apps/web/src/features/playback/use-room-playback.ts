@@ -18,7 +18,6 @@ const playingProgressCommitThresholdMs = 80;
 const idleProgressCommitThresholdMs = 120;
 const displayClockTransitionWindowMs = 100;
 const monotonicProgressBacktrackToleranceMs = 180;
-const audibleClockFreezeWindowMs = 150;
 const audibleClockFallbackGraceMs = 1_500;
 
 export type DisplayClockSource =
@@ -154,14 +153,6 @@ export function resolveDisplayClockProgress(input: {
   if (localAudibleSample) {
     targetSource = localAudibleSample.source;
     targetProgressMs = clampProgressMs(localAudibleSample.progressMs, input.durationMs);
-  } else if (
-    input.playbackStatus === "playing" &&
-    input.previousContinuity &&
-    continuityAgeMs !== null &&
-    continuityAgeMs <= audibleClockFreezeWindowMs
-  ) {
-    targetSource = input.previousContinuity.sample.source;
-    targetProgressMs = clampProgressMs(input.previousContinuity.sample.progressMs, input.durationMs);
   } else if (
     input.playbackStatus === "playing" &&
     input.previousContinuity &&

@@ -13,7 +13,7 @@ import {
   createAnnouncementRequestSchema,
   updateAnnouncementRequestSchema
 } from "@soqaro/shared";
-import type { RoomMember } from "@soqaro/shared";
+import type { AdminTrackStats, RoomMember, TrackMeta } from "@soqaro/shared";
 import { PrismaService } from "../../infra/prisma/prisma.service";
 import { RedisService } from "../../infra/redis/redis.service";
 import { AuthService } from "../auth/auth.service";
@@ -378,7 +378,31 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     if (!user || user.role === "ADMIN") throw new NotFoundException("普通用户不存在。");
     const reason = payload.reason;
     const disabled = payload.status === "DISABLED";
-    await this.prisma.$transaction(async (tx) => { await tx.user.update({ where: { id: userId }, data: { status: payload.status, disabledAt: disabled ? new Date() : null, disabledReason: disabled ? reason : null } }); if (disabled) await tx.userSession.deleteMany({ where: { userId } }); await tx.adminAuditLog.create({ data: { id: `audit_${randomUUID()}`, actorUserId: actor.userId, action: disabled ? "user.disable" : "user.enable", targetType: "user", targetId: userId, reason, result: "SUCCEEDED", userAgent: request.headers["user-agent"] ?? null } }); });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          status: payload.status,
+          disabledAt: disabled ? new Date() : null,
+          disabledReason: disabled ? reason : null
+        }
+      });
+      if (disabled) {
+        await tx.userSession.deleteMany({ where: { userId } });
+      }
+      await tx.adminAuditLog.create({
+        data: {
+          id: `audit_${randomUUID()}`,
+          actorUserId: actor.userId,
+          action: disabled ? "user.disable" : "user.enable",
+          targetType: "user",
+          targetId: userId,
+          reason,
+          result: "SUCCEEDED",
+          userAgent: request.headers["user-agent"] ?? null
+        }
+      });
+    });
     await this.auth.invalidateSessionsForUser(userId);
     await this.publishUserInvalidated(userId);
     return { ok: true, status: payload.status };
@@ -779,16 +803,53 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     return { ok: true, id };
   }
 
-  private async roomSummary(row: { id: string; joinCode: string; name?: string | null; description?: string | null; createdAt?: Date; visibility: string; hostId: string; members: unknown; tracks?: unknown; playback: unknown; updatedAt: Date }, livePresence?: Map<string, { peerId: string | null; presenceState: string }>) {
-    const members = Array.isArray(row.members) ? row.members as Array<{ id?: string; nickname?: string; presenceState?: string; peerId?: string | null }> : [];
+  private async roomSummary(
+    row: {
+      id: string;
+      joinCode: string;
+      name?: string | null;
+      description?: string | null;
+      createdAt?: Date;
+      visibility: string;
+      hostId: string;
+      members: unknown;
+      tracks?: unknown;
+      playback: unknown;
+      updatedAt: Date;
+    },
+    livePresence?: Map<string, { peerId: string | null; presenceState: string }>
+  ) {
+    const members = Array.isArray(row.members)
+      ? (row.members as Array<{ id?: string; nickname?: string; presenceState?: string; peerId?: string | null }>)
+      : [];
     const playback = (row.playback ?? {}) as { status?: string; currentTrackId?: string };
-    const tracks = Array.isArray(row.tracks) ? row.tracks as Array<{ id?: string; title?: string }> : [];
+    const tracks = Array.isArray(row.tracks) ? (row.tracks as Array<{ id?: string; title?: string }>) : [];
     const presence = livePresence ?? await this.roomPresence.getPresenceSnapshot(row.id, members as RoomMember[]);
     const onlineMembers = members.filter((member) => member.id && presence.get(member.id)?.presenceState === "online");
     const reportedPeerIds = await this.readReportedPeerIds(row.id);
-    const reported = onlineMembers.filter((member) => { const peerId = presence.get(member.id!)?.peerId; return !!peerId && reportedPeerIds.has(peerId); }).length;
+    const reported = onlineMembers.filter((member) => {
+      const peerId = presence.get(member.id!)?.peerId;
+      return !!peerId && reportedPeerIds.has(peerId);
+    }).length;
     const health = await this.resolveRoomHealth(row.id, onlineMembers, presence, reportedPeerIds);
-    return { id: row.id, joinCode: row.joinCode, name: row.name ?? null, description: row.description ?? null, createdAt: row.createdAt?.toISOString() ?? null, visibility: row.visibility, hostId: row.hostId, hostNickname: members.find((member) => member.id === row.hostId)?.nickname ?? null, memberCount: members.length, onlineMemberCount: onlineMembers.length, onlineUserIds: onlineMembers.map((member) => member.id!), playbackStatus: playback.status ?? "idle", currentTrackTitle: tracks.find((track) => track.id === playback.currentTrackId)?.title ?? null, health, telemetryCoverage: { reported, total: onlineMembers.length }, updatedAt: row.updatedAt.toISOString() };
+    return {
+      id: row.id,
+      joinCode: row.joinCode,
+      name: row.name ?? null,
+      description: row.description ?? null,
+      createdAt: row.createdAt?.toISOString() ?? null,
+      visibility: row.visibility,
+      hostId: row.hostId,
+      hostNickname: members.find((member) => member.id === row.hostId)?.nickname ?? null,
+      memberCount: members.length,
+      onlineMemberCount: onlineMembers.length,
+      onlineUserIds: onlineMembers.map((member) => member.id!),
+      playbackStatus: playback.status ?? "idle",
+      currentTrackTitle: tracks.find((track) => track.id === playback.currentTrackId)?.title ?? null,
+      health,
+      telemetryCoverage: { reported, total: onlineMembers.length },
+      updatedAt: row.updatedAt.toISOString()
+    };
   }
 
   private async resolveRoomHealth(roomId: string, onlineMembers: Array<{ id?: string }>, livePresence: Map<string, { peerId: string | null; presenceState: string }>, reportedPeerIds: Set<string>) {
@@ -828,7 +889,7 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   }
 
 
-  async getTrackStats(): Promise<import("@soqaro/shared").AdminTrackStats> {
+  async getTrackStats(): Promise<AdminTrackStats> {
     if (!(await this.prisma.ensureAvailable())) {
       return { totalTracks: 0, sourceDistribution: {} };
     }
@@ -843,10 +904,12 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
     };
     let total = 0;
     for (const room of rooms) {
-      const tracks = Array.isArray(room.tracks) ? (room.tracks as Array<{ source?: string }>) : [];
+      const tracks = Array.isArray(room.tracks)
+        ? (room.tracks as Array<Partial<Pick<TrackMeta, "sourceType">>>)
+        : [];
       for (const track of tracks) {
         total += 1;
-        const source = (track.source ?? "").toLowerCase();
+        const source = (track.sourceType ?? "").toLowerCase();
         if (source === "bilibili" || source.includes("bili")) {
           distribution.bilibili += 1;
         } else if (source === "netease" || source.includes("163")) {
@@ -920,6 +983,22 @@ export class AdminService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
-function safeEqual(left: string, right: string) { const a = Buffer.from(left); const b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
-function parseCookies(raw?: string) { return Object.fromEntries((raw ?? "").split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value).map(([key, ...value]) => [key, value.join("=")])); }
+function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function safeEqual(left: string, right: string) {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function parseCookies(raw?: string) {
+  return Object.fromEntries(
+    (raw ?? "")
+      .split(";")
+      .map((part) => part.trim().split("="))
+      .filter(([key, value]) => key && value)
+      .map(([key, ...value]) => [key, value.join("=")])
+  );
+}

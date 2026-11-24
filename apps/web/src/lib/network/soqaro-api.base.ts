@@ -203,17 +203,22 @@ async function readStreamChunkWithTimeout(
   outerSignal?: AbortSignal
 ): Promise<{ done: boolean; value?: Uint8Array }> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error("网络流数据传输超时")), timeoutMs);
   });
   const abortPromise = new Promise<never>((_, reject) => {
     if (outerSignal?.aborted) return reject(new Error("Download aborted"));
-    outerSignal?.addEventListener("abort", () => reject(new Error("Download aborted")), { once: true });
+    onAbort = () => reject(new Error("Download aborted"));
+    outerSignal?.addEventListener("abort", onAbort, { once: true });
   });
   try {
     return await Promise.race([reader.read(), timeoutPromise, abortPromise]);
   } finally {
     clearTimeout(timer);
+    if (onAbort) {
+      outerSignal?.removeEventListener("abort", onAbort);
+    }
   }
 }
 
@@ -706,15 +711,20 @@ export async function downloadDirectTrack(input: DirectAudioDownloadInput): Prom
             concurrentParts: 1
           });
           let timer: ReturnType<typeof setTimeout> | undefined;
+          let onAbort: (() => void) | undefined;
           const timeoutPromise = new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(new Error(`本地直连下载超时: ${directUrl}`)), 30_000);
-            input.signal?.addEventListener("abort", () => reject(new Error("Download aborted")), { once: true });
+            onAbort = () => reject(new Error("Download aborted"));
+            input.signal?.addEventListener("abort", onAbort, { once: true });
           });
           let res: { dataBase64: string; contentType: string; contentLength: number } | undefined;
           try {
             res = await Promise.race([invokePromise, timeoutPromise]);
           } finally {
             clearTimeout(timer);
+            if (onAbort) {
+              input.signal?.removeEventListener("abort", onAbort);
+            }
           }
           if (res && res.dataBase64) {
             const rawBlob = base64ToBlob(res.dataBase64, res.contentType || resolved.mimeType || "audio/mpeg");

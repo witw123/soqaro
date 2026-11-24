@@ -1,6 +1,5 @@
 import { memo, useEffect, useState, type ComponentProps, type CSSProperties, type MutableRefObject } from "react";
 import type {
-  RoomMediaConnectionState,
   RoomMember,
   RoomSnapshot,
   TrackMeta,
@@ -12,8 +11,7 @@ import { RoomLyricsPositionProvider, useRoomLyricsPositionMs } from "./room-lyri
 
 import { VinylAuraVisualizer } from "./VinylAuraVisualizer";
 import { VinylTonearm } from "./VinylTonearm";
-import { RoomControlHeader, getSourceModeLabel } from "./RoomControlHeader";
-export { getSourceModeLabel };
+import { RoomControlHeader } from "./RoomControlHeader";
 import { RoomLyricsPanel } from "./RoomLyricsPanel";
 import { fetchProviderLyricsCached, hasWordSyncedRoomLyrics, selectRoomLyrics } from "@/features/playback/lyrics";
 import { getArtworkSourceUrl, useArtworkPalette } from "@/components/bottom-player/artwork-colors";
@@ -35,9 +33,6 @@ type RoomStageProps = {
   canDeleteRoom: boolean;
   canDisbandRoom: boolean;
   currentSourceOwnerNickname: string | null;
-  mediaConnectionState: RoomMediaConnectionState;
-  mediaConnectedPeersCount: number;
-  iceConfigSource: string;
   onCopyJoinCode: () => Promise<void>;
   onShareRoom: () => Promise<void>;
   onAwayRoom: () => void;
@@ -62,7 +57,6 @@ function RoomStageBase({
   canDeleteRoom,
   canDisbandRoom,
   currentSourceOwnerNickname,
-  mediaConnectionState,
   onCopyJoinCode,
   onShareRoom,
   onAwayRoom,
@@ -273,8 +267,6 @@ function RoomStageBase({
     >
       <RoomControlHeader
         roomSnapshot={roomSnapshot}
-        mediaConnectionState={mediaConnectionState}
-        currentTrack={currentTrack}
         host={host}
         canDeleteRoom={canDeleteRoom}
         canDisbandRoom={canDisbandRoom}
@@ -288,9 +280,7 @@ function RoomStageBase({
         className={
           hideRoomMetadata && !mobileControlsOnly
             ? "absolute right-3 top-[calc(0.75rem+env(safe-area-inset-top))] sm:right-5 md:right-8 z-30"
-            : mobileControlsOnly
-              ? `relative z-30 ${compactStage ? "mb-0 lg:mb-3" : "mb-0 lg:mb-5 xl:mb-6"}`
-              : `relative z-30 ${compactStage ? "mb-0 lg:mb-3" : "mb-0 lg:mb-5 xl:mb-6"}`
+            : `relative z-30 ${compactStage ? "mb-0 lg:mb-3" : "mb-0 lg:mb-5 xl:mb-6"}`
         }
       />
 

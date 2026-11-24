@@ -145,4 +145,22 @@ describe("toHttpApiError", () => {
       }
     });
   });
+
+  it("maps song-request and playback transition domain errors instead of returning 500", () => {
+    expect(toHttpApiError(new Error("Song request not found."))).toEqual({
+      status: HttpStatus.NOT_FOUND,
+      body: {
+        code: errorCodes.roomNotFound,
+        message: "Song request not found."
+      }
+    });
+
+    expect(toHttpApiError(new Error("当前房间不支持点歌请求。")).status).toBe(HttpStatus.BAD_REQUEST);
+    expect(toHttpApiError(new Error("The current queue item is already playing.")).status).toBe(
+      HttpStatus.BAD_REQUEST
+    );
+    expect(toHttpApiError(new Error("Gapless transition is not ready.")).status).toBe(
+      HttpStatus.BAD_REQUEST
+    );
+  });
 });

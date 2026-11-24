@@ -247,8 +247,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
         <RoomControlHeader
           isMobile
           roomSnapshot={props.roomSnapshot}
-          mediaConnectionState={props.mediaConnectionState}
-          currentTrack={props.currentTrack}
           host={props.host}
           canDeleteRoom={props.canDeleteRoom}
           canDisbandRoom={props.canDisbandRoom}
@@ -265,8 +263,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
       <div className="relative z-30 hidden lg:block shrink-0 border-b border-surface-border/50 bg-surface/40 px-3 sm:px-4 backdrop-blur-xl">
         <RoomControlHeader
           roomSnapshot={props.roomSnapshot}
-          mediaConnectionState={props.mediaConnectionState}
-          currentTrack={props.currentTrack}
           host={props.host}
           canDeleteRoom={props.canDeleteRoom}
           canDisbandRoom={props.canDisbandRoom}
@@ -378,8 +374,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
                     canManageLibrary={isHost}
                     currentRoomId={props.roomSnapshot.room.id}
                     localStorageSummary={props.localStorageSummary}
-                    onCleanLocalStorage={props.onCleanLocalStorage}
-                    onDeletePlaylist={props.onDeletePlaylist}
                     onImportBilibiliTrack={props.onImportBilibiliTrack}
                     onImportBilibiliTracks={props.onImportBilibiliTracks}
                     onImportCachedTrack={props.onImportCachedTrack}
@@ -388,10 +382,6 @@ export function RequestRoomView(props: RoomDashboardViewProps) {
                     onImportQqMusicTrack={props.onImportQqMusicTrack}
                     onImportQqMusicTracks={props.onImportQqMusicTracks}
                     onLoadPlaylistIntoRoom={props.onLoadPlaylistIntoRoom}
-                    onRefreshLocalStorage={props.onRefreshLocalStorage}
-                    onSavePlaylistFromQueue={props.onSavePlaylistFromQueue}
-                    onUpdatePlaylistTitle={props.onUpdatePlaylistTitle}
-                    onUpdatePlaylistTracks={props.onUpdatePlaylistTracks}
                     playlists={props.playlists}
                     roomPlaylists={props.roomSnapshot.playlists}
                     tracks={props.roomSnapshot.tracks}
@@ -685,7 +675,7 @@ function RequestInbox({
         <div className="flex items-center gap-1.5">
           <h2 className="font-bold text-foreground text-xs sm:text-sm">待审核点歌</h2>
           {pendingRequests.length > 0 ? (
-            <span className="rounded-full bg-amber-400/15 border border-amber-400/30 px-2 py-0.2 text-xs font-bold text-amber-400">
+            <span className="rounded-full bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 text-xs font-bold text-amber-400">
               {pendingRequests.length}
             </span>
           ) : null}

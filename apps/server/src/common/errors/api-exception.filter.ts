@@ -200,7 +200,8 @@ export function mapErrorCode(message: string, status?: number): ErrorCode {
     message.includes("room.snapshot.missing") ||
     message.includes("Track not found") ||
     message.includes("Queue item not found") ||
-    message.includes("Playlist not found")
+    message.includes("Playlist not found") ||
+    message.includes("Song request not found")
   ) {
     return errorCodes.roomNotFound;
   }
@@ -235,7 +236,10 @@ export function mapErrorCode(message: string, status?: number): ErrorCode {
     status === HttpStatus.BAD_REQUEST ||
     message.includes("Username already exists") ||
     message.includes("Queue reorder payload does not match") ||
-    message.includes("No tracks from this playlist are available")
+    message.includes("No tracks from this playlist are available") ||
+    message.includes("当前房间不支持点歌") ||
+    message.includes("already playing") ||
+    message.includes("Gapless transition is not ready")
   ) {
     return errorCodes.validationFailed;
   }

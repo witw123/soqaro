@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import { useMemo } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { PeerDiagnosticsSnapshot, PeerSignalMessage, RoomSnapshot } from "@soqaro/shared";
 import {
@@ -11,19 +10,12 @@ import {
 } from "@/features/p2p";
 import type { RemoteAudioTrackListener } from "@/features/p2p";
 import { createPeerTelemetryReport, sumFiniteRates } from "@/features/p2p/peer-telemetry";
-import { playbackBandwidthMonitor } from "@/lib/network/import-bandwidth-governor";
 import type {
-  DataMeshBridge,
   PlaybackRecoveryRecommendation,
   RoomDataMeshDiagnosticsRefs
 } from "./room-runtime-types";
 
 const telemetryPublishIntervalMs = 1_000;
-
-type DataMeshRuntime = Pick<
-  P2PMesh,
-  "syncPeers" | "restartPeer" | "getConnectedPeerIds"
-> & Pick<P2PMesh, "restartMediaPeer">;
 
 export function updatePeerMembership(
   setPeers: Dispatch<SetStateAction<string[]>>,
@@ -39,42 +31,6 @@ export function updatePeerMembership(
       ? current
       : current.filter((currentPeerId) => currentPeerId !== peerId);
   });
-}
-
-export function useRoomDataMesh(input: {
-  meshRef: MutableRefObject<P2PMesh | null>;
-}): DataMeshBridge | null {
-  return useMemo<DataMeshBridge>(
-    () => createDataMeshBridge(input.meshRef),
-    [input.meshRef]
-  );
-}
-
-export function createDataMeshBridge(
-  meshRef: MutableRefObject<DataMeshRuntime | null>
-): DataMeshBridge {
-  return {
-    async syncPeers(peerIds, options) {
-      const mesh = meshRef.current;
-      if (!mesh) {
-        return false;
-      }
-      await mesh.syncPeers(peerIds, options);
-      return true;
-    },
-    restartPeer(peerId) {
-      return meshRef.current?.restartPeer(peerId) ?? Promise.resolve(null);
-    },
-    restartMediaPeer(peerId, options) {
-      return meshRef.current?.restartMediaPeer?.(peerId, options) ?? Promise.resolve(null);
-    },
-    getConnectedPeerIds() {
-      return meshRef.current?.getConnectedPeerIds() ?? [];
-    },
-    isReady() {
-      return !!meshRef.current;
-    }
-  };
 }
 
 export function resolveDataPeerRecoveryRecommendation(input: {
@@ -119,12 +75,10 @@ export function createRoomDataMeshRuntime(input: {
   isPageVisible: boolean;
   playbackStatus: RoomSnapshot["room"]["playback"]["status"] | null | undefined;
   currentTrackId: string | null | undefined;
-  bufferHealth: "healthy" | "low" | "critical";
   queuePlaybackRecoveryRecommendation?: (recommendation: PlaybackRecoveryRecommendation) => void;
   reportMeshResyncFailure: (error: unknown) => void;
   onRemoteAudioTrack?: RemoteAudioTrackListener;
 } & RoomDataMeshDiagnosticsRefs) {
-  playbackBandwidthMonitor.clear();
   const peerBufferedAmountBytes = new Map<string, number>();
   const latestMediaSamples = new Map<string, {
     sendRateKbps: number | null;
@@ -260,7 +214,6 @@ export function createRoomDataMeshRuntime(input: {
           updatePeerMembership(input.setMediaConnectedPeers, peerId, operational);
           if (state === "failed" || state === "closed") {
             latestMediaSamples.delete(peerId);
-            playbackBandwidthMonitor.remove(peerId);
             publishLocalTelemetry(true);
           }
           return;
@@ -326,7 +279,6 @@ export function createRoomDataMeshRuntime(input: {
         }
         if (state === "closed") {
           latestMediaSamples.delete(peerId);
-          playbackBandwidthMonitor.remove(peerId);
           // Remote self-report becomes unavailable once the control channel drops.
           input.recordPeerDiagnosticRef.current({
             peerId,
@@ -390,14 +342,6 @@ export function createRoomDataMeshRuntime(input: {
               (sample.mediaSendBitrateKbps ?? 0) > 0
             )
           );
-          playbackBandwidthMonitor.update(peerId, {
-            availableOutgoingBitrateKbps: sample.availableOutgoingBitrateKbps,
-            mediaReceiveBitrateKbps: sample.mediaReceiveBitrateKbps,
-            mediaSendBitrateKbps: sample.mediaSendBitrateKbps,
-            packetLossRate: sample.packetLossRate,
-            jitterMs: sample.jitterMs,
-            hasMediaTrack: Boolean(sample.senderTrackId || sample.receiverTrackId)
-          });
           publishLocalTelemetry();
         } else if (latestMediaSamples.has(peerId)) {
           // Keep publishing after media samples pause so zeros/stale totals clear promptly.
@@ -462,7 +406,6 @@ export function createRoomDataMeshRuntime(input: {
       onMediaStateChange: ({ peerId, direction, state }) => {
         if (state === "none" || state === "ended" || state === "failed") {
           latestMediaSamples.delete(peerId);
-          playbackBandwidthMonitor.remove(peerId);
           updatePeerMembership(input.setMediaConnectedPeers, peerId, false);
           publishLocalTelemetry(true);
         }
@@ -553,9 +496,7 @@ export function createRoomDataMeshRuntime(input: {
   mesh.setStatsSamplingMode(
     !input.currentTrackId || (!input.isPageVisible && input.playbackStatus !== "playing")
       ? "off"
-      : input.bufferHealth !== "healthy"
-        ? "active"
-        : "steady"
+      : "steady"
   );
 
   const resyncRealtimePeers = (

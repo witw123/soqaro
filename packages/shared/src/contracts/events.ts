@@ -2,7 +2,6 @@ import { z } from "zod";
 import { peerSignalMessageSchema } from "../p2p/models";
 import { p2pProtocolVersion, segmentedOpusCapability } from "../p2p/asset-models";
 import {
-  roomChatDeletedPayloadSchema,
   roomChatMessageSchema,
   roomSnapshotSchema,
   roomTrackDeletionSchema,
@@ -11,31 +10,6 @@ import {
 import { playbackSnapshotSchema } from "../playback/models";
 import { queueItemSchema, trackMetaSchema } from "../playlist/models";
 import { telemetryReportSchema, type TelemetryReport } from "./telemetry";
-
-export const websocketEventSchema = z.union([
-  z.literal("room.subscribe"),
-  z.literal("room.presence"),
-  z.literal("room.unsubscribe"),
-  z.literal("room.snapshot"),
-  z.literal("room.snapshot.missing"),
-  z.literal("room.deleted"),
-  z.literal("room.playback.patch"),
-  z.literal("room.playback.readiness"),
-  z.literal("room.queue.patch"),
-  z.literal("room.presence.patch"),
-  z.literal("room.library.patch"),
-  z.literal("room.track.deleted"),
-  z.literal("room.track.asset.ready"),
-  z.literal("room.track.asset.unavailable"),
-  z.literal("room.member.removed"),
-  z.literal("room.session.replaced"),
-  z.literal("peer.signal"),
-  z.literal("room.chat"),
-  z.literal("room.chat.deleted"),
-  z.literal("room.reaction"),
-  z.literal("diagnostics.report"),
-  z.literal("session.revoked")
-]);
 
 export const diagnosticsReportPayloadSchema = telemetryReportSchema;
 
@@ -166,56 +140,6 @@ export const roomMemberRemovedPayloadSchema = z.object({
   memberId: z.string()
 });
 
-export const roomSnapshotEventSchema = z.object({
-  event: z.literal("room.snapshot"),
-  payload: roomSnapshotSchema
-});
-
-export const roomSnapshotMissingEventSchema = z.object({
-  event: z.literal("room.snapshot.missing"),
-  payload: roomSnapshotMissingPayloadSchema
-});
-
-export const roomDeletedEventSchema = z.object({
-  event: z.literal("room.deleted"),
-  payload: roomDeletedPayloadSchema
-});
-
-export const roomSessionReplacedEventSchema = z.object({
-  event: z.literal("room.session.replaced"),
-  payload: roomSessionReplacedPayloadSchema
-});
-
-export const roomPlaybackPatchEventSchema = z.object({
-  event: z.literal("room.playback.patch"),
-  payload: roomPlaybackPatchPayloadSchema
-});
-
-export const roomQueuePatchEventSchema = z.object({
-  event: z.literal("room.queue.patch"),
-  payload: roomQueuePatchPayloadSchema
-});
-
-export const roomPresencePatchEventSchema = z.object({
-  event: z.literal("room.presence.patch"),
-  payload: roomPresencePatchPayloadSchema
-});
-
-export const roomLibraryPatchEventSchema = z.object({
-  event: z.literal("room.library.patch"),
-  payload: roomLibraryPatchPayloadSchema
-});
-
-export const roomPlaybackReadinessEventSchema = z.object({
-  event: z.literal("room.playback.readiness"),
-  payload: roomPlaybackReadinessPayloadSchema
-});
-
-export const roomTrackDeletedEventSchema = z.object({
-  event: z.literal("room.track.deleted"),
-  payload: roomTrackDeletedPayloadSchema
-});
-
 export const roomTrackAssetReadyPayloadSchema = z.object({
   roomId: z.string(),
   trackId: z.string(),
@@ -224,31 +148,11 @@ export const roomTrackAssetReadyPayloadSchema = z.object({
   roomRevision: z.number().int().nonnegative().optional()
 });
 
-export const roomTrackAssetReadyEventSchema = z.object({
-  event: z.literal("room.track.asset.ready"),
-  payload: roomTrackAssetReadyPayloadSchema
-});
-
 export const roomTrackAssetUnavailablePayloadSchema = z.object({
   roomId: z.string(),
   trackId: z.string(),
   reason: z.enum(["source-missing", "asset-corrupt", "permission-denied"]),
   roomRevision: z.number().int().nonnegative().optional()
-});
-
-export const roomTrackAssetUnavailableEventSchema = z.object({
-  event: z.literal("room.track.asset.unavailable"),
-  payload: roomTrackAssetUnavailablePayloadSchema
-});
-
-export const roomMemberRemovedEventSchema = z.object({
-  event: z.literal("room.member.removed"),
-  payload: roomMemberRemovedPayloadSchema
-});
-
-export const peerSignalEventSchema = z.object({
-  event: z.literal("peer.signal"),
-  payload: peerSignalMessageSchema
 });
 
 export const roomChatPayloadSchema = roomChatMessageSchema;
@@ -270,16 +174,6 @@ export const roomClockAckPayloadSchema = z.object({
   serverNow: z.string().datetime()
 });
 
-export const roomChatEventSchema = z.object({
-  event: z.literal("room.chat"),
-  payload: roomChatPayloadSchema
-});
-
-export const roomChatDeletedEventSchema = z.object({
-  event: z.literal("room.chat.deleted"),
-  payload: roomChatDeletedPayloadSchema
-});
-
 export const roomReactionPayloadSchema = z.object({
   roomId: z.string(),
   senderId: z.string(),
@@ -296,12 +190,6 @@ export const roomReactionInputPayloadSchema = z.object({
   trackId: z.string().nullable().optional()
 }).strict();
 
-export const roomReactionEventSchema = z.object({
-  event: z.literal("room.reaction"),
-  payload: roomReactionPayloadSchema
-});
-
-export type WebsocketEvent = z.infer<typeof websocketEventSchema>;
 export type RoomSubscribePayload = z.infer<typeof roomSubscribePayloadSchema>;
 export type RoomSubscribeBootstrapMember = z.infer<typeof roomSubscribeBootstrapMemberSchema>;
 export type RoomSubscribeAckPayload = z.infer<typeof roomSubscribeAckPayloadSchema>;

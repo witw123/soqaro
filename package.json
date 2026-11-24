@@ -17,8 +17,7 @@
     "build:app": "pnpm build:desktop",
     "check:toolchain": "node scripts/check-toolchain.mjs",
     "deploy:check": "node scripts/deploy-check.mjs",
-    "deploy:linux": "sh scripts/deploy-linux.sh",
-    "migrate:p2p-v4": "pnpm --filter @soqaro/server migrate:p2p-v4"
+    "deploy:linux": "sh scripts/deploy-linux.sh"
   },
   "pnpm": {
     "auditConfig": {

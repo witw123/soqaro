@@ -660,61 +660,6 @@ export function useRoomActions({
     );
   }, [roomSnapshot, activeSession, getCurrentPeerId, runPlaybackMutation]);
 
-  const savePlaylistFromQueue = useCallback(
-    async (title: string) => {
-      if (!activeSession || !roomSnapshot) {
-        return;
-      }
-
-      try {
-        await soqaroApi.createPlaylistFromRoom({
-          roomId: roomSnapshot.room.id,
-          title,
-          description: "从当前房间队列保存"
-        });
-        await refreshPlaylists();
-        setStatusMessage(`歌单“${title}”已保存。`);
-      } catch (error) {
-        setStatusMessage(toUserFacingError(error));
-      }
-    },
-    [activeSession, roomSnapshot, refreshPlaylists, setStatusMessage]
-  );
-
-  const updatePlaylistTitle = useCallback(
-    async (playlistId: string, title: string) => {
-      if (!activeSession) {
-        return;
-      }
-
-      try {
-        await soqaroApi.updatePlaylist(playlistId, { title });
-        await refreshPlaylists();
-        setStatusMessage("歌单名称已更新。");
-      } catch (error) {
-        setStatusMessage(toUserFacingError(error));
-      }
-    },
-    [activeSession, refreshPlaylists, setStatusMessage]
-  );
-
-  const updatePlaylistTracks = useCallback(
-    async (playlistId: string, trackIds: string[]) => {
-      if (!activeSession) {
-        return;
-      }
-
-      try {
-        await soqaroApi.updatePlaylist(playlistId, { trackIds });
-        await refreshPlaylists();
-        setStatusMessage("歌单曲目已更新。");
-      } catch (error) {
-        setStatusMessage(toUserFacingError(error));
-      }
-    },
-    [activeSession, refreshPlaylists, setStatusMessage]
-  );
-
   const deletePlaylist = useCallback(
     async (playlistId: string) => {
       if (!activeSession) {
@@ -1039,9 +984,6 @@ export function useRoomActions({
     pauseTrack,
     prevTrack,
     nextTrack,
-    savePlaylistFromQueue,
-    updatePlaylistTitle,
-    updatePlaylistTracks,
     updateRoom,
     updateMemberPermissions,
     removeMember,

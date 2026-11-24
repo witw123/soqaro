@@ -111,7 +111,7 @@ export function Metric({
       <div className="flex items-center justify-between text-xs text-foreground-muted">
         <span>{label}</span>
         {badge ? (
-          <span className={`px-1.5 py-0.2 rounded text-[11px] font-mono border-[0.5px] ${badgeClasses}`}>
+          <span className={`px-1.5 py-0.5 rounded text-xs font-mono border-[0.5px] ${badgeClasses}`}>
             {badge}
           </span>
         ) : null}
@@ -142,6 +142,64 @@ export function PanelHeader({
       {action}
     </div>
   );
+}
+
+export function InfoPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface overflow-hidden">
+      <PanelHeader title={title} />
+      <div className="px-3.5 py-1 divide-y divide-[var(--slate-6)]/60">{children}</div>
+    </section>
+  );
+}
+
+export function DataPanel({
+  title,
+  hint,
+  children
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface overflow-hidden">
+      <PanelHeader title={title} hint={hint} />
+      <div>{children}</div>
+    </section>
+  );
+}
+
+export function DetailRow({
+  label,
+  value,
+  mono = false
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2 text-xs">
+      <span className="text-foreground-muted">{label}</span>
+      <span className={`text-foreground font-medium ${mono ? "font-mono" : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+export function DataList<T>({
+  rows,
+  empty,
+  render
+}: {
+  rows: T[];
+  empty: string;
+  render: (item: T, index: number) => ReactNode;
+}) {
+  if (!rows.length) {
+    return <div className="p-6 text-center text-xs text-foreground-muted">{empty}</div>;
+  }
+  return <div className="divide-y divide-[var(--slate-6)]/60">{rows.map((row, index) => render(row, index))}</div>;
 }
 
 export function RoomCell({ room }: { room: AdminRoomSummary }) {
@@ -254,7 +312,7 @@ export function HealthRow({
       <span className="text-foreground-muted">{label}</span>
       <div>
         {status ? (
-          <span className={`px-2 py-0.5 rounded text-[11px] font-medium border-[0.5px] ${statusClasses}`}>
+          <span className={`px-2 py-0.5 rounded text-xs font-medium border-[0.5px] ${statusClasses}`}>
             {value}
           </span>
         ) : (
@@ -417,6 +475,21 @@ export function translateScope(value: string) {
 
 export function translateAction(value: string) {
   const labels: Record<string, string> = {
+    "user.disable": "禁用用户",
+    "user.enable": "启用用户",
+    "user.set_role": "修改用户角色",
+    "user.reset_password": "重置密码",
+    "user.sessions.revoke": "撤销会话",
+    "room.terminate": "结束房间",
+    "room.playback": "远程播放控制",
+    "room.kick_member": "移出房间成员",
+    "room.delete_chat": "删除房间聊天",
+    "announcement.create": "发布系统通知",
+    "announcement.update": "更新系统通知",
+    "announcement.delete": "删除系统通知",
+    "system.maintenance": "系统自愈维护",
+    "admin.login": "管理员登录",
+    "admin.logout": "管理员退出",
     terminate_room: "结束房间",
     disable_user: "禁用用户",
     enable_user: "启用用户",
@@ -460,7 +533,8 @@ export function formatTime(value: string) {
     : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function formatDateTime(value: string) {
+export function formatDateTime(value?: string | null) {
+  if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "-"

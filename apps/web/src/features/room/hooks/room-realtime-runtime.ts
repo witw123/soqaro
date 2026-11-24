@@ -7,7 +7,6 @@ import type {
   PeerSignalMessage,
   RoomSubscribeAckPayload,
   RoomClockAckPayload,
-  RoomPlaybackReadinessPayload,
   RoomTrackDeletedPayload,
   RoomSnapshotMissingPayload,
   RoomSnapshot,
@@ -31,9 +30,7 @@ import {
 } from "@/features/room/playback/room-track-asset-preparation";
 import type {
   PlaybackRecoveryRecommendation,
-  RoomDataMeshDiagnosticsRefs,
-  RoomRecoveryMode,
-  RoomRecoveryState
+  RoomDataMeshDiagnosticsRefs
 } from "./room-runtime-types";
 import {
   buildRoomSubscribePayload,
@@ -45,16 +42,6 @@ import {
 
 const subscribeAckTimeoutMs = 4_000;
 const subscribeRetryBackoffMs = [200, 500, 1_000, 2_000, 4_000] as const;
-const socketDisconnectGraceMs = 6_000;
-
-function compareReadinessUpdates(left: string, right: string) {
-  const leftMs = Date.parse(left);
-  const rightMs = Date.parse(right);
-  if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) {
-    return leftMs - rightMs;
-  }
-  return left.localeCompare(right);
-}
 
 // The room playback clock is a one-shot offset calibrated only at subscribe
 // time. Client clocks drift and the offset is never re-converged, which makes
@@ -66,22 +53,14 @@ function applyRoomSubscribeBootstrap(input: {
   ack: RoomSubscribeAckPayload;
   activeRouteRoomIdRef: MutableRefObject<string | null>;
   currentRoomRef: MutableRefObject<RoomSnapshot | null>;
-  lastSubscribeAckAtRef: MutableRefObject<number | null>;
   recoveryGenerationRef: MutableRefObject<number | null>;
-  recoveryModeRef: MutableRefObject<RoomRecoveryMode>;
   dispatchRoomStateEvent: Dispatch<RoomStateEvent>;
-  setRoomRecoveryState: Dispatch<SetStateAction<RoomRecoveryState>>;
-  audioUnlocked: boolean;
 }) {
   if (!input.ack.bootstrap || input.ack.bootstrap.roomId !== input.activeRouteRoomIdRef.current) {
     return false;
   }
 
-  input.lastSubscribeAckAtRef.current = Date.now();
-  const nextRecoveryMode =
-    input.recoveryGenerationRef.current === null ? "late-join" : "rejoin";
   input.recoveryGenerationRef.current = input.ack.recoveryGeneration ?? null;
-  input.recoveryModeRef.current = nextRecoveryMode;
 
   const currentMembers = input.currentRoomRef.current?.room.members ?? [];
   const mergedMembers = input.ack.bootstrap.members.map((member) => {
@@ -104,19 +83,6 @@ function applyRoomSubscribeBootstrap(input: {
     presenceRevision: input.ack.bootstrap.presenceRevision,
     roomRevision: input.ack.bootstrap.roomRevision
   });
-
-  input.setRoomRecoveryState((current) => ({
-    ...current,
-    phase: "resyncing",
-    mode: nextRecoveryMode,
-    generation: input.ack.recoveryGeneration ?? null,
-    bootstrapStartedAt: input.ack.serverNow ?? new Date().toISOString(),
-    bootstrapSourcePeerId: input.ack.bootstrap?.playback.sourcePeerId ?? null,
-    pendingSnapshot: true,
-    pendingData: false,
-    pendingMedia: false,
-    listenerBootstrapAttempts: current.listenerBootstrapAttempts ?? 0,
-  }));
 
   return true;
 }
@@ -182,7 +148,6 @@ type RoomRealtimeRuntimeInput = {
   isPageVisible: boolean;
   playbackStatus: RoomSnapshot["room"]["playback"]["status"] | null | undefined;
   currentTrackId: string | null | undefined;
-  bufferHealth: "healthy" | "low" | "critical";
   queuePlaybackRecoveryRecommendation?: (recommendation: PlaybackRecoveryRecommendation) => void;
   resubscribeRoomRef: MutableRefObject<(() => void) | null>;
   activeSessionRef: MutableRefObject<AuthSession | null>;
@@ -193,18 +158,10 @@ type RoomRealtimeRuntimeInput = {
   deleteRoomTrackArtifactsRef: MutableRefObject<(trackIds: string[], roomId?: string, deleteRoomSnapshot?: boolean) => Promise<void> | void>;
   lastRealtimeRoomEventAtRef: MutableRefObject<number>;
   recoveryGenerationRef: MutableRefObject<number | null>;
-  lastSubscribeAckAtRef: MutableRefObject<number | null>;
-  recoveryModeRef: MutableRefObject<RoomRecoveryMode>;
-  socketDisconnectGraceUntilRef: MutableRefObject<number | null>;
-  socketDisconnectGraceTimeoutRef: MutableRefObject<number | null>;
   stopPresenceHeartbeat: () => void;
-  clearSocketDisconnectGrace: () => void;
   dispatchRoomStateEvent: Dispatch<RoomStateEvent>;
-  setRoomRecoveryState: Dispatch<SetStateAction<RoomRecoveryState>>;
   setMediaConnectedPeers: Dispatch<SetStateAction<string[]>>;
-  setPlaybackReadiness: Dispatch<SetStateAction<RoomPlaybackReadinessPayload[]>>;
   setStatusMessage: (value: string) => void;
-  audioUnlocked: boolean;
   startPresenceHeartbeatRef: MutableRefObject<() => void>;
   exitCurrentRoomRef: MutableRefObject<(message: string) => void>;
   shouldAcceptIncomingPeerSignalRecoveryGeneration: (input: {
@@ -248,7 +205,6 @@ export function createRoomRealtimeRuntime(input: RoomRealtimeRuntimeInput) {
     isPageVisible: input.isPageVisible,
     playbackStatus: input.playbackStatus,
     currentTrackId: input.currentTrackId,
-    bufferHealth: input.bufferHealth,
     queuePlaybackRecoveryRecommendation: input.queuePlaybackRecoveryRecommendation,
     onRemoteAudioTrack: input.onRemoteAudioTrack,
     reportMeshResyncFailure: (error) => {
@@ -385,12 +341,8 @@ function attachRoomSocketHandlers(input: RoomSocketHandlersInput) {
           ack,
           activeRouteRoomIdRef: input.activeRouteRoomIdRef,
           currentRoomRef: input.currentRoomRef,
-          lastSubscribeAckAtRef: input.lastSubscribeAckAtRef,
           recoveryGenerationRef: input.recoveryGenerationRef,
-          recoveryModeRef: input.recoveryModeRef,
-          dispatchRoomStateEvent: input.dispatchRoomStateEvent,
-          setRoomRecoveryState: input.setRoomRecoveryState,
-          audioUnlocked: input.audioUnlocked
+          dispatchRoomStateEvent: input.dispatchRoomStateEvent
         });
         if (bootstrapApplied) {
           // The subscribe ack is the first authoritative source of live peer
@@ -417,7 +369,6 @@ function attachRoomSocketHandlers(input: RoomSocketHandlersInput) {
   };
 
   socket.on("connect", () => {
-    input.clearSocketDisconnectGrace();
     subscribeToRoom();
     input.resyncRealtimePeers();
     void input.requestRoomSnapshotResyncRef.current("socket-connect", input.roomId);
@@ -454,13 +405,6 @@ function attachRoomSocketHandlers(input: RoomSocketHandlersInput) {
     // previous snapshot, otherwise a missed presence event can leave the
     // media peer absent while the data peer remains visible.
     input.resyncRealtimePeers(snapshot.room.members);
-    input.setRoomRecoveryState((current: RoomRecoveryState) => ({
-      ...current,
-      phase: "steady",
-      pendingSnapshot: false,
-      pendingData: false,
-      pendingMedia: false
-    }));
   });
 
   socket.on("room.playback.patch", ({ playback, roomRevision }) => {
@@ -750,25 +694,6 @@ function notifyMemberPresenceChanges(input: {
     });
   });
 
-  socket.on("room.playback.readiness", (payload) => {
-    if (
-      payload.roomId !== input.roomId ||
-      input.activeRouteRoomIdRef.current !== input.roomId
-    ) {
-      return;
-    }
-    input.setPlaybackReadiness((current) => {
-      const previous = current.find((item) => item.sessionId === payload.sessionId);
-      if (previous && compareReadinessUpdates(payload.updatedAt, previous.updatedAt) <= 0) {
-        return current;
-      }
-      return [
-        ...current.filter((item) => item.sessionId !== payload.sessionId),
-        payload
-      ];
-    });
-  });
-
   socket.on("room.track.deleted", (payload: RoomTrackDeletedPayload) => {
     if (payload.roomId !== input.roomId || input.activeRouteRoomIdRef.current !== input.roomId) {
       return;
@@ -892,24 +817,12 @@ function notifyMemberPresenceChanges(input: {
     void input.requestRoomSnapshotResyncRef.current("subscribe-ack", input.roomId);
   });
 
-  socket.on("disconnect", () => {
-    input.socketDisconnectGraceUntilRef.current = Date.now() + socketDisconnectGraceMs;
-    if (input.socketDisconnectGraceTimeoutRef.current !== null) {
-      window.clearTimeout(input.socketDisconnectGraceTimeoutRef.current);
-    }
-    input.socketDisconnectGraceTimeoutRef.current = window.setTimeout(() => {
-      input.socketDisconnectGraceUntilRef.current = null;
-      input.socketDisconnectGraceTimeoutRef.current = null;
-    }, socketDisconnectGraceMs);
-  });
-
   subscribeToRoom();
 
   return () => {
     clearSubscribeTimers();
     stopClockCalibrationInterval();
     input.stopPresenceHeartbeat();
-    input.setPlaybackReadiness([]);
     input.resubscribeRoomRef.current = null;
     socket.emit("room.unsubscribe", { roomId: input.roomId });
     socket.removeAllListeners();

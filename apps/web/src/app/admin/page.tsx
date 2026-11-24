@@ -34,12 +34,18 @@ export default function AdminPage() {
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([]);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const loadingRef = useRef(false);
   const queuedRef = useRef(false);
   const latestLoadRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   const load = useCallback(async () => {
     if (loadingRef.current) {
@@ -54,8 +60,8 @@ export default function AdminPage() {
       setSession(current);
       const [overviewData, roomData, userData, incidentData, auditData, announcementData] = await Promise.all([
         adminApi.overview(),
-        adminApi.rooms(query),
-        adminApi.users(query),
+        adminApi.rooms(debouncedQuery),
+        adminApi.users(debouncedQuery),
         adminApi.incidents(),
         adminApi.audit(),
         adminApi.announcements().catch(() => ({ data: [] }))
@@ -81,7 +87,7 @@ export default function AdminPage() {
         void latestLoadRef.current?.();
       }
     }
-  }, [query, session]);
+  }, [debouncedQuery, session]);
 
   latestLoadRef.current = load;
   useEffect(() => {
@@ -199,10 +205,7 @@ export default function AdminPage() {
           {/* 页面标题 & 搜索栏 */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="text-xs font-mono text-foreground-muted">
-                运维中心 / {activeTab.label}
-              </div>
-              <h1 className="text-lg font-semibold tracking-tight mt-0.5">{activeTab.label}</h1>
+              <h1 className="text-lg font-semibold tracking-tight">{activeTab.label}</h1>
               <p className="text-xs text-foreground-muted mt-0.5">
                 {refreshing
                   ? "正在同步最新状态..."

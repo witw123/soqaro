@@ -10,10 +10,6 @@ import {
 } from "react";
 import type { QueueItem, RoomSnapshot } from "@soqaro/shared";
 import { toUserFacingError } from "@/lib/domain/soqaro-ui";
-import {
-  createPlaybackStartRequest,
-  type PlaybackStartRequest
-} from "@/features/playback/playback-start-request";
 import { roomAudioOutput } from "@/features/playback/room-audio-output";
 import type { PeerDiagnosticRecorder } from "@/features/p2p/use-peer-diagnostics";
 
@@ -22,9 +18,6 @@ type UseRoomPlaybackActionsInput = {
   audioRef: RefObject<HTMLAudioElement | null>;
   roomSnapshot: RoomSnapshot | null;
   currentPlaybackTrackId: string | null;
-  playbackMediaEpoch: number | null;
-  playbackQueueVersion: number | null;
-  playbackRevision: number | null;
   playbackStatus: RoomSnapshot["room"]["playback"]["status"] | null;
   isCurrentSourceOwner: boolean;
   audioUnlocked: boolean;
@@ -37,8 +30,6 @@ type UseRoomPlaybackActionsInput = {
   recordPeerDiagnostic: PeerDiagnosticRecorder;
   setAudioBlockedOverlay: Dispatch<SetStateAction<boolean>>;
   setAudioUnlocked: Dispatch<SetStateAction<boolean>>;
-  setLastSourceStartError: Dispatch<SetStateAction<string | null>>;
-  setPlaybackStartRequest: Dispatch<SetStateAction<PlaybackStartRequest | null>>;
   setStatusMessage: (value: string) => void;
 };
 
@@ -60,9 +51,6 @@ export function useRoomPlaybackActions({
   audioRef,
   roomSnapshot,
   currentPlaybackTrackId,
-  playbackMediaEpoch,
-  playbackQueueVersion,
-  playbackRevision,
   playbackStatus,
   isCurrentSourceOwner,
   audioUnlocked,
@@ -75,15 +63,12 @@ export function useRoomPlaybackActions({
   recordPeerDiagnostic,
   setAudioBlockedOverlay,
   setAudioUnlocked,
-  setLastSourceStartError,
-  setPlaybackStartRequest,
   setStatusMessage
 }: UseRoomPlaybackActionsInput) {
   const ensureRoomAudioUnlocked = useCallback(
     async (reason: string) => {
       if (isSegmentedAudioOutputReady()) {
         setAudioUnlocked(true);
-        setLastSourceStartError(null);
         return true;
       }
 
@@ -96,7 +81,6 @@ export function useRoomPlaybackActions({
           const contextReady = await roomAudioOutput.resumeSharedAudioContext();
           if (contextReady) {
             setAudioUnlocked(true);
-            setLastSourceStartError(null);
             void roomAudioOutput.primeOutputs({ localAudio: audioRef.current });
             return true;
           }
@@ -106,7 +90,6 @@ export function useRoomPlaybackActions({
         setAudioUnlocked(audioReady);
         if (!audioReady) {
           const message = "浏览器仍未允许房间音频输出";
-          setLastSourceStartError(message);
           setStatusMessage(message);
           recordPeerDiagnostic({
             peerId: "system",
@@ -122,7 +105,6 @@ export function useRoomPlaybackActions({
           });
           return false;
         }
-        setLastSourceStartError(null);
         recordPeerDiagnostic({
           peerId: "system",
           channelKind: "system",
@@ -139,7 +121,6 @@ export function useRoomPlaybackActions({
       } catch (error) {
         const message = toUserFacingError(error);
         setAudioUnlocked(isSegmentedAudioOutputReady());
-        setLastSourceStartError(message);
         recordPeerDiagnostic({
           peerId: "system",
           channelKind: "system",
@@ -160,7 +141,6 @@ export function useRoomPlaybackActions({
       audioRef,
       isCurrentSourceOwner,
       setAudioUnlocked,
-      setLastSourceStartError,
       setStatusMessage
     ]
   );
@@ -206,27 +186,10 @@ export function useRoomPlaybackActions({
   );
 
   const armPlaybackStart = useCallback(
-    async (input: {
-      reason: PlaybackStartRequest["reason"];
-      trackId?: string | null;
-      queueItemId?: string | null;
-    }) => {
-      setPlaybackStartRequest(
-        createPlaybackStartRequest({
-          reason: input.reason,
-          trackId: input.trackId,
-          queueItemId: input.queueItemId,
-          targetPlaybackRevision:
-            (playbackRevision ??
-              playbackQueueVersion ??
-              0) + 1,
-          previousQueueVersion: playbackQueueVersion,
-          previousMediaEpoch: playbackMediaEpoch
-        })
-      );
+    async (reason: "track-change" | "user-play" | "queue-advance") => {
       setStatusMessage("正在准备音源...");
       startBestEffortPlaybackAudioUnlock({
-        unlockAudio: () => ensureRoomAudioUnlocked(`playback-intent:${input.reason}`),
+        unlockAudio: () => ensureRoomAudioUnlocked(`playback-intent:${reason}`),
         onError: (error) => {
           const message = toUserFacingError(error);
           recordPeerDiagnostic({
@@ -248,10 +211,6 @@ export function useRoomPlaybackActions({
     [
       ensureRoomAudioUnlocked,
       recordPeerDiagnostic,
-      playbackMediaEpoch,
-      playbackQueueVersion,
-      playbackRevision,
-      setPlaybackStartRequest,
       setStatusMessage
     ]
   );
@@ -284,7 +243,6 @@ export function useRoomPlaybackActions({
 
   const handlePlayTrack = useCallback(
     async (trackId?: string) => {
-      const targetTrackId = trackId ?? currentPlaybackTrackId ?? null;
       const existingQueueItem = trackId
         ? roomSnapshot?.queue.find((item) => item.trackId === trackId) ?? null
         : null;
@@ -293,11 +251,7 @@ export function useRoomPlaybackActions({
         : existingQueueItem;
       if (trackId && !queueItem) return;
 
-      await armPlaybackStart({
-        reason: trackId ? "track-change" : "user-play",
-        trackId: queueItem?.trackId ?? targetTrackId,
-        queueItemId: queueItem?.id
-      });
+      await armPlaybackStart(trackId ? "track-change" : "user-play");
       if (queueItem) {
         // The queue mutation updates the reducer asynchronously. Pass the
         // resolved track id so playback can include its asset even while the
@@ -310,7 +264,6 @@ export function useRoomPlaybackActions({
     [
       addToQueue,
       armPlaybackStart,
-      currentPlaybackTrackId,
       playQueueItem,
       playTrack,
       roomSnapshot?.queue
@@ -319,33 +272,22 @@ export function useRoomPlaybackActions({
 
   const handlePlayQueueItem = useCallback(
     async (queueItemId: string) => {
-      const queueTrackId =
-        roomSnapshot?.queue.find((item) => item.id === queueItemId)?.trackId ?? null;
-      await armPlaybackStart({
-        reason: "queue-advance",
-        queueItemId,
-        trackId: queueTrackId
-      });
+      await armPlaybackStart("queue-advance");
       await playQueueItem(queueItemId);
     },
     [
       armPlaybackStart,
-      playQueueItem,
-      roomSnapshot?.queue
+      playQueueItem
     ]
   );
 
   const handlePrevTrack = useCallback(async () => {
-    await armPlaybackStart({
-      reason: "queue-advance"
-    });
+    await armPlaybackStart("queue-advance");
     await prevTrack();
   }, [armPlaybackStart, prevTrack]);
 
   const handleNextTrack = useCallback(async () => {
-    await armPlaybackStart({
-      reason: "queue-advance"
-    });
+    await armPlaybackStart("queue-advance");
     await nextTrack();
   }, [armPlaybackStart, nextTrack]);
 

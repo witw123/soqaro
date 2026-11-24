@@ -71,14 +71,17 @@ export function RoomChatPanel({ roomId, activeSession, isHost, socket, scrollEna
     if (!isLoading && messages.length > 0 && !initialScrolledRef.current) {
       initialScrolledRef.current = true;
       scrollToBottom("auto");
+      let raf2 = 0;
       const raf1 = requestAnimationFrame(() => {
         scrollToBottom("auto");
-        const raf2 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
           scrollToBottom("auto");
         });
-        return () => cancelAnimationFrame(raf2);
       });
-      return () => cancelAnimationFrame(raf1);
+      return () => {
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+      };
     }
   }, [isLoading, messages.length, scrollToBottom]);
 

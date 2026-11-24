@@ -13,7 +13,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import type {
   Playlist,
   RoomDirectoryItem,
-  RoomMediaConnectionState,
   RoomSnapshot
 } from "@soqaro/shared";
 import type { Route } from "next";
@@ -26,9 +25,7 @@ import { isLocalPlaylistMirror } from "@/features/playlist/local-playlist-databa
 import { filterOpenPublicRooms } from "@/features/room/room-list-visibility";
 import { useRoomActions } from "@/features/room/hooks/use-room-actions";
 import type { RoomStateEvent } from "@/features/room/room-state-reducer";
-import type { PlaybackStartRequest } from "@/features/playback/playback-start-request";
 import { useRoomLifecycleActions } from "@/features/room/hooks/use-room-lifecycle-actions";
-import type { RoomRecoveryState } from "@/features/room/hooks/use-room-page-state";
 
 type RoomRouter = {
   push: (href: Route) => void;
@@ -51,15 +48,11 @@ type UseRoomPageRoomActionsInput = {
   roomSnapshot: RoomSnapshot | null;
   router: RoomRouter;
   setAvailableRooms: Dispatch<SetStateAction<RoomDirectoryItem[]>>;
-  setBufferHealth: Dispatch<SetStateAction<"healthy" | "low" | "critical">>;
   setIsNavigatingRoomExit: Dispatch<SetStateAction<boolean>>;
   setMediaConnectedPeers: Dispatch<SetStateAction<string[]>>;
-  setMediaConnectionState: Dispatch<SetStateAction<RoomMediaConnectionState>>;
   setPeerId: Dispatch<SetStateAction<string>>;
-  setPlaybackStartRequest: Dispatch<SetStateAction<PlaybackStartRequest | null>>;
   setPlayerResetEpoch: Dispatch<SetStateAction<number>>;
   setPlaylists: Dispatch<SetStateAction<Playlist[]>>;
-  setRoomRecoveryState: Dispatch<SetStateAction<RoomRecoveryState>>;
   setStatusMessage: (value: string) => void;
   setSuppressRoomRecovery: Dispatch<SetStateAction<boolean>>;
   workspaceEntryHref: string;
@@ -80,15 +73,11 @@ export function useRoomPageRoomActions({
   roomSnapshot,
   router,
   setAvailableRooms,
-  setBufferHealth,
   setIsNavigatingRoomExit,
   setMediaConnectedPeers,
-  setMediaConnectionState,
   setPeerId,
-  setPlaybackStartRequest,
   setPlayerResetEpoch,
   setPlaylists,
-  setRoomRecoveryState,
   setStatusMessage,
   setSuppressRoomRecovery,
   workspaceEntryHref,
@@ -190,31 +179,13 @@ export function useRoomPageRoomActions({
     resetPeerDiagnostics();
     currentPlaybackPositionRef.current = 0;
     setPlayerResetEpoch((current) => current + 1);
-    setBufferHealth("healthy");
-    setMediaConnectionState("idle");
     setMediaConnectedPeers([]);
-    setPlaybackStartRequest(null);
-    setRoomRecoveryState({
-      phase: "joining",
-      mode: "steady",
-      generation: null,
-      bootstrapStartedAt: null,
-      bootstrapSourcePeerId: null,
-      pendingSnapshot: false,
-      pendingData: false,
-      pendingMedia: false,
-      listenerBootstrapAttempts: null,
-    });
   }, [
     audioRef,
     currentPlaybackPositionRef,
     resetPeerDiagnostics,
-    setBufferHealth,
     setMediaConnectedPeers,
-    setMediaConnectionState,
-    setPlaybackStartRequest,
-    setPlayerResetEpoch,
-    setRoomRecoveryState
+    setPlayerResetEpoch
   ]);
 
   const {
@@ -229,9 +200,6 @@ export function useRoomPageRoomActions({
     pauseTrack,
     prevTrack,
     nextTrack,
-    savePlaylistFromQueue,
-    updatePlaylistTitle,
-    updatePlaylistTracks,
     updateRoom,
     updateMemberPermissions,
     removeMember,
@@ -294,9 +262,6 @@ export function useRoomPageRoomActions({
     handleLeaveRoomAction,
     handleLogout,
     nextTrack,
-    savePlaylistFromQueue,
-    updatePlaylistTitle,
-    updatePlaylistTracks,
     updateRoom,
     updateMemberPermissions,
     removeMember,

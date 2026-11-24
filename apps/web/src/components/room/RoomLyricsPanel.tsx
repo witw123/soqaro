@@ -303,11 +303,29 @@ export function RoomLyricsPanel({
                   tabIndex={canSeekLine ? 0 : undefined}
                   data-testid="room-lyrics-line"
                   style={{ fontSize: `${getLyricFontSize({ isActive, visibleLines, fontScale })}rem` }}
-                  className={`group/line relative ${lineAlignmentClass} flex w-full ${canSeekLine ? "cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" : ""} ${isActive ? (isSevenLineView ? "min-h-[3.5rem] sm:min-h-[4rem]" : isFiveLineView ? "min-h-[4rem] sm:min-h-[4.5rem]" : "min-h-[3rem] sm:min-h-[3.5rem]") : (isSevenLineView ? "min-h-[2.25rem] sm:min-h-[2.5rem]" : isFiveLineView ? "min-h-[2.5rem] sm:min-h-[3rem]" : "min-h-[2rem] sm:min-h-[2.25rem]")} shrink-0 ${mobile ? "max-w-none px-1 [overflow-wrap:anywhere]" : immersive ? "max-w-[40rem]" : "max-w-[30rem]"} items-center break-words leading-[1.38] ${frozen ? "" : "transition-[opacity,transform,color] duration-300"} ${isSelected ? "text-accent" : "text-foreground"} ${
+                  className={[
+                    "group/line relative flex w-full shrink-0 items-center break-words leading-[1.38]",
+                    lineAlignmentClass,
+                    canSeekLine ? "cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" : "",
                     isActive
-                      ? `font-bold opacity-100 ${isSevenLineView ? "text-[1.1rem] sm:text-[1.3rem]" : isFiveLineView ? "text-[1.2rem] sm:text-[1.45rem]" : "text-[1.1rem] sm:text-[1.3rem]"}`
-                      : `font-medium opacity-35 hover:opacity-80 ${isSevenLineView ? "text-[0.78rem] sm:text-[0.92rem]" : isFiveLineView ? "text-[0.82rem] sm:text-[0.98rem]" : "text-[0.8rem] sm:text-[0.92rem]"}`
-                  }`}
+                      ? isSevenLineView
+                        ? "min-h-[3.5rem] sm:min-h-[4rem] font-bold opacity-100"
+                        : isFiveLineView
+                          ? "min-h-[4rem] sm:min-h-[4.5rem] font-bold opacity-100"
+                          : "min-h-[3rem] sm:min-h-[3.5rem] font-bold opacity-100"
+                      : isSevenLineView
+                        ? "min-h-[2.25rem] sm:min-h-[2.5rem] font-medium opacity-35 hover:opacity-80"
+                        : isFiveLineView
+                          ? "min-h-[2.5rem] sm:min-h-[3rem] font-medium opacity-35 hover:opacity-80"
+                          : "min-h-[2rem] sm:min-h-[2.25rem] font-medium opacity-35 hover:opacity-80",
+                    mobile
+                      ? "max-w-none px-1 [overflow-wrap:anywhere]"
+                      : immersive
+                        ? "max-w-[40rem]"
+                        : "max-w-[30rem]",
+                    frozen ? "" : "transition-[opacity,transform,color] duration-300",
+                    isSelected ? "text-accent" : "text-foreground"
+                  ].filter(Boolean).join(" ")}
                 >
                   {canSeekLine && !isActive ? (
                     <span

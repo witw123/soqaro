@@ -1,30 +1,10 @@
 ﻿"use client";
 
-import type { MutableRefObject, RefObject } from "react";
-import type {
-  AuthSession,
-  PeerDiagnosticsSnapshot,
-  RoomSnapshot
-} from "@soqaro/shared";
+import type { MutableRefObject } from "react";
+import type { PeerDiagnosticsSnapshot } from "@soqaro/shared";
 import type { PeerConnectionStatsSample } from "@/features/p2p/connection-stats";
 import type { PeerConnectionSupervisorState } from "@/features/p2p/connection-supervisor";
 import type { PeerDiagnosticRecorder } from "@/features/p2p/use-peer-diagnostics";
-import type { RoomSocket } from "@/lib/network/ws-client";
-import type { UploadedTrack } from "@/features/library/audio-utils";
-
-export type DataMeshBridge = {
-  syncPeers(
-    peerIds: string[],
-    options?: { forceReconnectDegraded?: boolean }
-  ): Promise<boolean>;
-  restartPeer(peerId: string): Promise<unknown>;
-  restartMediaPeer?(
-    peerId: string,
-    options?: { forceRecreate?: boolean; forceIceRestart?: boolean }
-  ): Promise<unknown>;
-  getConnectedPeerIds(): string[];
-  isReady(): boolean;
-};
 
 export type DataTransportStatsInput = {
   peerId: string;
@@ -98,51 +78,4 @@ export type PlaybackRecoveryRecommendation = {
   level: "soft" | "hard-recreate" | "full-resubscribe";
   reason: string;
   observedNoProgressMs: number | null;
-};
-
-export type RoomRecoveryPhase =
-  | "joining"
-  | "resyncing"
-  | "bootstrapping-data"
-  | "steady";
-
-export type RoomRecoveryMode = "late-join" | "rejoin" | "steady";
-
-export type RoomRecoveryState = {
-  phase: RoomRecoveryPhase;
-  mode: RoomRecoveryMode;
-  generation: number | null;
-  bootstrapStartedAt: string | null;
-  bootstrapSourcePeerId: string | null;
-  pendingSnapshot: boolean;
-  pendingData: boolean;
-  pendingMedia: boolean;
-  listenerBootstrapAttempts: number | null;
-};
-
-export type RoomRuntimeEvent =
-  | {
-      type: "diagnostic";
-      peerId: string;
-      channelKind: "data" | "system";
-      direction: "local" | "sent" | "received";
-      event: string;
-      summary: string;
-      level?: "info" | "warning" | "error";
-      recordEvent?: boolean;
-      update?: (snapshot: PeerDiagnosticsSnapshot) => PeerDiagnosticsSnapshot;
-    }
-  | {
-      type: "status";
-      message: string;
-    };
-
-export type RoomRuntimeBaseContext = {
-  roomSnapshot: RoomSnapshot | null;
-  currentRoomRef: MutableRefObject<RoomSnapshot | null>;
-  peerId: string;
-  activeSession: AuthSession | null;
-  socketRef: MutableRefObject<RoomSocket | null>;
-  audioRef: RefObject<HTMLAudioElement | null>;
-  uploadedTracks: Record<string, UploadedTrack>;
 };

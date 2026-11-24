@@ -3,7 +3,6 @@
 import { memo } from "react";
 import type {
   AuthSession,
-  RoomMediaConnectionState,
   RoomSnapshot,
   TrackMeta
 } from "@soqaro/shared";
@@ -17,7 +16,6 @@ import type { RoomPlaybackBarrierClock } from "@/features/playback/room-playback
 import { RoomWorkspace } from "@/components/room/RoomWorkspace";
 
 export type RoomWorkspaceSectionProps = {
-  awayRoomId: string | null;
   onAwayRoom: () => void;
   onRetryRecovery?: () => void;
   activeSession: AuthSession | null;
@@ -33,7 +31,6 @@ export type RoomWorkspaceSectionProps = {
   canReorderQueue: boolean;
   uploads: ReturnType<typeof useTrackUploads>;
   playlists: ReturnType<typeof useRoomPageState>["playlists"];
-  mediaConnectionState: RoomMediaConnectionState;
   workspaceEntryHref: string;
   authEntryHref: string;
   isNavigatingRoomExit: boolean;
@@ -65,7 +62,6 @@ function RoomWorkspaceSectionComponent({
   canReorderQueue,
   uploads,
   playlists,
-  mediaConnectionState,
   workspaceEntryHref,
   authEntryHref,
   isNavigatingRoomExit,
@@ -100,11 +96,8 @@ function RoomWorkspaceSectionComponent({
       uploadedTracks={uploads.uploadedTracks}
       localStorageSummary={uploads.localStorageSummary}
       playlists={playlists}
-      onCleanLocalStorage={uploads.cleanLocalStorage}
-      onRefreshLocalStorage={uploads.refreshCacheLibrary}
       onImportCachedTrack={uploads.importCachedTrack}
       onSaveTrackToLocal={uploads.saveTrackToLocal}
-      onSavePlaylistFromQueue={roomActions.savePlaylistFromQueue}
       onLoadPlaylistIntoRoom={roomActions.loadPlaylistIntoRoom}
       onImportNeteaseTrack={uploads.handleNeteaseTrackImport}
       onImportQqMusicTrack={uploads.handleQqMusicTrackImport}
@@ -112,15 +105,10 @@ function RoomWorkspaceSectionComponent({
       onImportNeteaseTracks={uploads.handleNeteaseTrackImports}
       onImportQqMusicTracks={uploads.handleQqMusicTrackImports}
       onImportBilibiliTracks={uploads.handleBilibiliTrackImports}
-      onUpdatePlaylistTitle={roomActions.updatePlaylistTitle}
-      onUpdatePlaylistTracks={roomActions.updatePlaylistTracks}
       onUpdateRoom={roomActions.updateRoom}
       onUpdateMemberPermissions={roomActions.updateMemberPermissions}
       onRemoveMember={roomActions.removeMember}
       onDeletePlaylist={roomActions.deletePlaylist}
-      connectedPeersCount={workspaceViewModel.connectedPeersCount}
-      mediaConnectionState={mediaConnectionState}
-      mediaConnectedPeersCount={workspaceViewModel.mediaConnectedPeersCount}
       peerDiagnostics={workspaceViewModel.workspacePeerDiagnostics.peerDiagnostics}
       peerRecentEvents={workspaceViewModel.workspacePeerDiagnostics.peerRecentEvents}
       localMemberState={workspaceViewModel.localMemberState}
@@ -158,7 +146,6 @@ function RoomWorkspaceSectionComponent({
       onDiagnosticsVisibilityChange={onDiagnosticsVisibilityChange}
       onSeek={onSeek}
       socket={socket}
-      playerSlot={null}
     />
   );
 }

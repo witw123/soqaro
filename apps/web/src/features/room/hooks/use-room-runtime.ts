@@ -11,8 +11,7 @@ import {
 import type {
   AuthSession,
   IceConfigResponse,
-  RoomSnapshot,
-  RoomPlaybackReadinessPayload
+  RoomSnapshot
 } from "@soqaro/shared";
 import type { Route } from "next";
 import type { RoomSocket } from "@/lib/network/ws-client";
@@ -44,7 +43,6 @@ import {
   resolvePlaybackRecoveryDropReason,
   useRoomPlaybackConnectionCoordinator
 } from "./use-room-playback-connection-coordinator";
-import type { RoomRecoveryState } from "./room-runtime-types";
 
 export { shouldAcceptIncomingPeerSignal };
 export { isCurrentPlaybackSourceDevice } from "@/features/playback/playback-source-identity";
@@ -90,10 +88,8 @@ type UseRoomRuntimeInput = {
   currentRoomRef: MutableRefObject<RoomSnapshot | null>;
   peerId: string;
   setPeerId: Dispatch<SetStateAction<string>>;
-  connectedPeers: string[];
   setConnectedPeers: Dispatch<SetStateAction<string[]>>;
   setMediaConnectedPeers: Dispatch<SetStateAction<string[]>>;
-  setPlaybackReadiness: Dispatch<SetStateAction<RoomPlaybackReadinessPayload[]>>;
   suppressRoomRecovery: boolean;
   setSuppressRoomRecovery: Dispatch<SetStateAction<boolean>>;
   setIsRecoveringRoom: Dispatch<SetStateAction<boolean>>;
@@ -105,14 +101,7 @@ type UseRoomRuntimeInput = {
   setIceConfigResolved: Dispatch<SetStateAction<boolean>>;
   isPageVisible: boolean;
   setIsPageVisible: Dispatch<SetStateAction<boolean>>;
-  schedulerMode: "normal" | "conservative" | "idle";
-  setSchedulerMode: Dispatch<SetStateAction<"normal" | "conservative" | "idle">>;
-  bufferHealth: "healthy" | "low" | "critical";
-  audioUnlocked: boolean;
-  roomRecoveryState: RoomRecoveryState;
-  setRoomRecoveryState: Dispatch<SetStateAction<RoomRecoveryState>>;
   recordPeerDiagnostic: PeerDiagnosticRecorder;
-  deleteUploadedTrackArtifacts: (trackId: string) => Promise<void> | void;
   deleteRoomTrackArtifacts: (trackIds: string[], roomId?: string, deleteRoomSnapshot?: boolean) => Promise<void> | void;
   socketRef: MutableRefObject<RoomSocket | null>;
   localAudibleRef: MutableRefObject<boolean | null>;
@@ -176,10 +165,8 @@ export function useRoomRuntime({
   currentRoomRef,
   peerId,
   setPeerId,
-  connectedPeers,
   setConnectedPeers,
   setMediaConnectedPeers,
-  setPlaybackReadiness,
   suppressRoomRecovery,
   setSuppressRoomRecovery,
   setIsRecoveringRoom,
@@ -191,13 +178,7 @@ export function useRoomRuntime({
   setIceConfigResolved,
   isPageVisible,
   setIsPageVisible,
-  setSchedulerMode,
-  bufferHealth,
-  audioUnlocked,
-  roomRecoveryState,
-  setRoomRecoveryState,
   recordPeerDiagnostic,
-  deleteUploadedTrackArtifacts,
   deleteRoomTrackArtifacts,
   socketRef,
   localAudibleRef,
@@ -212,43 +193,30 @@ export function useRoomRuntime({
   const realtimeRuntimeStateRef = useRef({
     playbackStatus: roomPlaybackStatus,
     currentTrackId: roomPlaybackCurrentTrackId,
-    bufferHealth,
-    isPageVisible,
-    audioUnlocked
+    isPageVisible
   });
   realtimeRuntimeStateRef.current = {
     playbackStatus: roomPlaybackStatus,
     currentTrackId: roomPlaybackCurrentTrackId,
-    bufferHealth,
-    isPageVisible,
-    audioUnlocked
+    isPageVisible
   };
   const {
     meshRef,
     initialRecoveryAttemptRef,
     previousInitialRoomIdRef,
     activeRouteRoomIdRef,
-    socketDisconnectGraceUntilRef,
     resubscribeRoomRef,
     recoveryGenerationRef,
-    lastSubscribeAckAtRef,
-    recoveryModeRef,
     lastRealtimeRoomEventAtRef,
-    lastDataActivityAtRef,
-    socketDisconnectGraceTimeoutRef,
     deleteRoomTrackArtifactsRef,
     resetPlayerSurfaceRef,
-    recordPeerDiagnosticRef,
-    clearSocketDisconnectGrace
+    recordPeerDiagnosticRef
   } = useRoomRuntimeMutableState({
     initialRoomId,
     roomSnapshot,
     currentRoomRef,
     activeSession,
     activeSessionRef,
-    socketRef,
-    roomRecoveryState,
-    deleteUploadedTrackArtifacts,
     deleteRoomTrackArtifacts,
     resetPlayerSurface,
     recordPeerDiagnostic,
@@ -263,9 +231,8 @@ export function useRoomRuntime({
   const {
     connectionSupervisorStatesRef,
     updateConnectionSupervisorSignalState,
-    updateConnectionSupervisorTransportStats,
-    updateConnectionSupervisorPlayout
-  } = useRoomConnectionSupervisor({ lastSubscribeAckAtRef });
+    updateConnectionSupervisorTransportStats
+  } = useRoomConnectionSupervisor();
   const {
     updateDataTransportStatsRef,
     updateMediaTransportStatsRef,
@@ -485,14 +452,8 @@ export function useRoomRuntime({
     peerId,
     socketRef,
     isNavigatingRoomExit,
-    uploadedTrackIds: [],
     lastRealtimeRoomEventAtRef,
-    lastSubscribeAckAtRef,
-    recoveryGenerationRef,
-    recoveryModeRef,
     resubscribeRoomRef,
-    meshRef,
-    socketDisconnectGraceUntilRef,
     requestRoomSnapshotResync
   });
   const iceServersRef = useRef<RTCIceServer[]>(getWebRTCIceServers(iceConfig));
@@ -534,7 +495,6 @@ export function useRoomRuntime({
     setIceConfig,
     setIceConfigResolved,
     setIsPageVisible,
-    setSchedulerMode,
     dispatchRoomStateEvent,
     deleteRoomTrackArtifacts,
     recordPeerDiagnostic,
@@ -590,11 +550,9 @@ export function useRoomRuntime({
       withSupervisorDiagnosticPatch,
       setConnectedPeers,
       setMediaConnectedPeers,
-      setPlaybackReadiness,
       isPageVisible: realtimeRuntimeState.isPageVisible,
       playbackStatus: realtimeRuntimeState.playbackStatus ?? "paused",
       currentTrackId: realtimeRuntimeState.currentTrackId,
-      bufferHealth: realtimeRuntimeState.bufferHealth,
       queuePlaybackRecoveryRecommendation,
       resubscribeRoomRef,
       activeSessionRef,
@@ -603,16 +561,9 @@ export function useRoomRuntime({
       deleteRoomTrackArtifactsRef,
       lastRealtimeRoomEventAtRef,
       recoveryGenerationRef,
-      lastSubscribeAckAtRef,
-      recoveryModeRef,
-      socketDisconnectGraceUntilRef,
-      socketDisconnectGraceTimeoutRef,
       stopPresenceHeartbeat,
-      clearSocketDisconnectGrace,
       dispatchRoomStateEvent,
-      setRoomRecoveryState,
       setStatusMessage,
-      audioUnlocked: realtimeRuntimeState.audioUnlocked,
       startPresenceHeartbeatRef,
       exitCurrentRoomRef,
       shouldAcceptIncomingPeerSignalRecoveryGeneration,
@@ -630,24 +581,17 @@ export function useRoomRuntime({
     deleteRoomTrackArtifactsRef,
     dispatchRoomStateEvent,
     lastRealtimeRoomEventAtRef,
-    lastSubscribeAckAtRef,
     meshRef,
     queuePlaybackRecoveryRecommendation,
     recordPeerDiagnosticRef,
     recoveryGenerationRef,
-    recoveryModeRef,
     resubscribeRoomRef,
     localAudibleRef,
-    socketDisconnectGraceTimeoutRef,
-    socketDisconnectGraceUntilRef,
     socketRef,
     stopPresenceHeartbeat,
-    clearSocketDisconnectGrace,
     onRemoteAudioTrack,
     setConnectedPeers,
     setMediaConnectedPeers,
-    setPlaybackReadiness,
-    setRoomRecoveryState,
     setStatusMessage,
     updateConnectionSupervisorSignalState,
     updateConnectionSupervisorTransportStats,
@@ -661,22 +605,16 @@ export function useRoomRuntime({
       !isPageVisible && roomPlaybackStatus !== "playing"
         ? "off"
         : // Keep active sampling so member upload/download rates stay timely.
-          roomPlaybackStatus === "playing" || !!roomPlaybackCurrentTrackId || bufferHealth !== "healthy"
+          roomPlaybackStatus === "playing" || !!roomPlaybackCurrentTrackId
           ? "active"
           : "steady"
     );
   }, [
-    bufferHealth,
     isPageVisible,
     meshRef,
     roomPlaybackCurrentTrackId,
     roomPlaybackStatus
   ]);
-
-  useEffect(() => {
-    updateConnectionSupervisorPlayout();
-    lastDataActivityAtRef.current = Date.now();
-  }, [lastDataActivityAtRef, updateConnectionSupervisorPlayout, connectedPeers.length]);
 
   const setLocalAudioStream = useCallback(
     (

@@ -87,36 +87,100 @@ export class QqMusicService {
     }
   }
   async startQrLogin(userId: string) {
-    this.assertEnabled(); this.assertRateLimit(`qr:${userId}`, 3);
-    const qr = await this.callProvider(() => this.api.createQrCode()); const attemptId = randomUUID();
-    await this.redis.setJson(`${qrKeyPrefix}${attemptId}`, { userId, qrsig: qr.qrsig, ptqrtoken: qr.ptqrtoken }, qrTtlSeconds);
-    return { attemptId, qrimg: qr.qrimg, expiresAt: new Date(Date.now() + qrTtlSeconds * 1000).toISOString() };
+    this.assertEnabled();
+    this.assertRateLimit(`qr:${userId}`, 3);
+    const qr = await this.callProvider(() => this.api.createQrCode());
+    const attemptId = randomUUID();
+    await this.redis.setJson(
+      `${qrKeyPrefix}${attemptId}`,
+      { userId, qrsig: qr.qrsig, ptqrtoken: qr.ptqrtoken },
+      qrTtlSeconds
+    );
+    return {
+      attemptId,
+      qrimg: qr.qrimg,
+      expiresAt: new Date(Date.now() + qrTtlSeconds * 1000).toISOString()
+    };
   }
+
   async checkQrLogin(userId: string, attemptId: string) {
-    this.assertEnabled(); const key = `${qrKeyPrefix}${attemptId}`; const attempt = await this.redis.getJson<QrAttempt>(key);
-    if (!attempt) return { status: "expired" as const }; if (attempt.userId !== userId) throw new HttpException(createApiErrorResponse(errorCodes.unauthorized, "This QR login attempt belongs to another user."), HttpStatus.FORBIDDEN);
+    this.assertEnabled();
+    const key = `${qrKeyPrefix}${attemptId}`;
+    const attempt = await this.redis.getJson<QrAttempt>(key);
+    if (!attempt) {
+      return { status: "expired" as const };
+    }
+    if (attempt.userId !== userId) {
+      throw new HttpException(
+        createApiErrorResponse(
+          errorCodes.unauthorized,
+          "This QR login attempt belongs to another user."
+        ),
+        HttpStatus.FORBIDDEN
+      );
+    }
     const result = await this.callProvider(() => this.api.checkQrCode(attempt));
     if (result.status === "connected" && result.session) {
       if (typeof this.api.validateCookie === "function") {
         try {
-          if (!result.session.userId) throw new QqMusicApiError("auth-expired");
-          await this.api.validateCookie({ userId: result.session.userId, cookie: result.session.cookie });
+          if (!result.session.userId) {
+            throw new QqMusicApiError("auth-expired");
+          }
+          await this.api.validateCookie({
+            userId: result.session.userId,
+            cookie: result.session.cookie
+          });
         } catch {
           await this.redis.delete(key);
-          return { status: "failed" as const, message: "二维码已扫码，但 QQ 音乐登录验证失败，请重新生成二维码。" };
+          return {
+            status: "failed" as const,
+            message: "二维码已扫码，但 QQ 音乐登录验证失败，请重新生成二维码。"
+          };
         }
       }
-      await this.accounts.saveAccount({ userId, cookie: result.session.cookie, qqMusicUserId: result.session.userId, nickname: result.session.nickname, avatarUrl: result.session.avatarUrl });
-      await this.redis.delete(key); return { status: "connected" as const, account: await this.accounts.getStatus(userId) };
+      await this.accounts.saveAccount({
+        userId,
+        cookie: result.session.cookie,
+        qqMusicUserId: result.session.userId,
+        nickname: result.session.nickname,
+        avatarUrl: result.session.avatarUrl
+      });
+      await this.redis.delete(key);
+      return {
+        status: "connected" as const,
+        account: await this.accounts.getStatus(userId)
+      };
     }
-    if (result.status === "expired") await this.redis.delete(key);
-    return { status: result.status, ...(result.message ? { message: result.message } : {}) };
+    if (result.status === "expired") {
+      await this.redis.delete(key);
+    }
+    return {
+      status: result.status,
+      ...(result.message ? { message: result.message } : {})
+    };
   }
-  async disconnectAccount(userId: string) { this.assertEnabled(); return this.accounts.disconnect(userId); }
-  async searchTracks(userId: string, query: QqMusicSearchQuery, clientIp?: string): Promise<QqMusicSearchResponse> {
-    this.assertEnabled(); this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30); const cookie = await this.getOptionalCookie(userId);
+
+  async disconnectAccount(userId: string) {
+    this.assertEnabled();
+    return this.accounts.disconnect(userId);
+  }
+
+  async searchTracks(
+    userId: string,
+    query: QqMusicSearchQuery,
+    clientIp?: string
+  ): Promise<QqMusicSearchResponse> {
+    this.assertEnabled();
+    this.assertRateLimit(`search:${this.resolveRateLimitSubject(userId, clientIp)}`, 30);
+    const cookie = await this.getOptionalCookie(userId);
     const records = await this.callProvider(() => this.api.searchTracks({ ...query, cookie }));
-    return { items: records.map((record) => toTrackCandidate(record)).filter((value): value is QqMusicTrackCandidate => !!value), limit: query.limit, offset: query.offset };
+    return {
+      items: records
+        .map((record) => toTrackCandidate(record))
+        .filter((value): value is QqMusicTrackCandidate => !!value),
+      limit: query.limit,
+      offset: query.offset
+    };
   }
 
   async searchPlaylists(userId: string, query: QqMusicSearchQuery, clientIp?: string): Promise<ProviderPlaylistListResponse> {
@@ -189,11 +253,21 @@ export class QqMusicService {
   }
 
   async getTrack(userId: string, trackId: string) {
-    this.assertEnabled(); const cookie = await this.getOptionalCookie(userId); const records = await this.callProvider(() => this.api.searchTracks({ keywords: trackId, limit: 20, offset: 0, cookie }));
+    this.assertEnabled();
+    const cookie = await this.getOptionalCookie(userId);
+    const records = await this.callProvider(() =>
+      this.api.searchTracks({ keywords: trackId, limit: 20, offset: 0, cookie })
+    );
     const track = records
       .map((record) => toTrackCandidate(record))
       .find((value) => value?.providerTrackId === trackId);
-    if (!track) throw new HttpException(createApiErrorResponse(errorCodes.qqMusicTrackNotFound, "QQ Music track was not found."), HttpStatus.NOT_FOUND); return track;
+    if (!track) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.qqMusicTrackNotFound, "QQ Music track was not found."),
+        HttpStatus.NOT_FOUND
+      );
+    }
+    return track;
   }
 
   async getLyrics(userId: string, trackId: string): Promise<ProviderLyrics> {
@@ -389,7 +463,8 @@ export class QqMusicService {
   }
 
   async openAudio(userId: string, trackId: string, quality: string, range?: string) {
-    this.assertEnabled(); this.assertRateLimit(`audio:${userId}`, 120);
+    this.assertEnabled();
+    this.assertRateLimit(`audio:${userId}`, 120);
     const selected = qqMusicQualitySchema.safeParse(quality).success ? quality as QqMusicQuality : this.defaultQuality();
     const cookie = await this.getOptionalCookie(userId);
     if (cookie) {
@@ -433,12 +508,36 @@ export class QqMusicService {
         await upstream.body.cancel().catch(() => undefined);
         continue;
       }
-      return { upstream, mimeType, contentLength: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null, fileType: mimeType === "audio/flac" ? "flac" : "mp3", maxBytes: this.maxImportBytes() };
+      return {
+        upstream,
+        mimeType,
+        contentLength: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
+        fileType: mimeType === "audio/flac" ? "flac" : "mp3",
+        maxBytes: this.maxImportBytes()
+      };
     }
 
-    if (!sawUrl) throw new HttpException(createApiErrorResponse(errorCodes.qqMusicTrackNotFound, "QQ Music audio is unavailable."), HttpStatus.NOT_FOUND);
-    if (sawOversized) throw new HttpException(createApiErrorResponse(errorCodes.qqMusicImportTooLarge, "QQ Music audio is too large."), HttpStatus.PAYLOAD_TOO_LARGE);
-    if (sawUnsupported) throw new HttpException(createApiErrorResponse(errorCodes.qqMusicAudioUnsupported, "QQ Music returned an unsupported audio format."), HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    if (!sawUrl) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.qqMusicTrackNotFound, "QQ Music audio is unavailable."),
+        HttpStatus.NOT_FOUND
+      );
+    }
+    if (sawOversized) {
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.qqMusicImportTooLarge, "QQ Music audio is too large."),
+        HttpStatus.PAYLOAD_TOO_LARGE
+      );
+    }
+    if (sawUnsupported) {
+      throw new HttpException(
+        createApiErrorResponse(
+          errorCodes.qqMusicAudioUnsupported,
+          "QQ Music returned an unsupported audio format."
+        ),
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE
+      );
+    }
     throw this.unavailableError();
   }
 

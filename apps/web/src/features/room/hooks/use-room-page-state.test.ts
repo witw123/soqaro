@@ -9,34 +9,17 @@ describe("roomPageStateReducer", () => {
     expect(createInitialRoomPageState({ documentHidden: true })).toMatchObject({
       activeDashboardTab: "library",
       audioUnlocked: false,
-      bufferHealth: "healthy",
       connectedPeers: [],
       iceConfig: null,
       iceConfigResolved: false,
       isPageVisible: false,
       isRecoveringRoom: false,
       isNavigatingRoomExit: false,
-      lastSourceStartError: null,
       mediaConnectedPeers: [],
-      mediaConnectionState: "idle",
-      playbackStartRequest: null,
-      roomRecoveryState: {
-        phase: "joining",
-        mode: "steady",
-        generation: null,
-        bootstrapStartedAt: null,
-        bootstrapSourcePeerId: null,
-        pendingSnapshot: false,
-        pendingData: false,
-        pendingMedia: false,
-        listenerBootstrapAttempts: null,
-      },
       volume: 0.72,
-      schedulerMode: "normal",
       playerResetEpoch: 0,
       audioBlockedOverlay: false,
       isDiagnosticsPanelOpen: false,
-      sourceStartState: "idle",
       suppressRoomRecovery: false
     });
   });
@@ -75,35 +58,16 @@ describe("roomPageStateReducer", () => {
       key: "isRecoveringRoom",
       value: true
     });
-    const withAudioError = roomPageStateReducer(withRecovery, {
+    const withVolume = roomPageStateReducer(withRecovery, {
       type: "set",
-      key: "lastSourceStartError",
-      value: "blocked"
+      key: "volume",
+      value: 0.5
     });
 
     expect(withMorePeers.connectedPeers).toEqual(["peer_a", "peer_b"]);
-    expect(withAudioError).toMatchObject({
+    expect(withVolume).toMatchObject({
       isRecoveringRoom: true,
-      lastSourceStartError: "blocked",
-      volume: 0.72
-    });
-  });
-
-  it("updates recovery state through the reducer", () => {
-    const initial = createInitialRoomPageState({ documentHidden: false });
-    const withRecovery = roomPageStateReducer(initial, {
-      type: "set",
-      key: "roomRecoveryState",
-      value: (current) => ({
-        ...current,
-        phase: "steady",
-      })
-    });
-
-    expect(withRecovery).toMatchObject({
-      roomRecoveryState: {
-        phase: "steady",
-      }
+      volume: 0.5
     });
   });
 });

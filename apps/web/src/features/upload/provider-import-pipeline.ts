@@ -1,6 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type {
-  GuestSession,
+  AuthSession,
   ProviderTrackCandidate,
   RoomSnapshot,
   TrackMeta,
@@ -156,7 +156,7 @@ export async function prefetchProviderAudio(
 }
 
 export async function importProviderTracks(input: {
-  activeSession: GuestSession | null;
+  activeSession: AuthSession | null;
   candidates: ProviderTrackCandidate[];
   inFlightUploadHashesRef: MutableRefObject<Set<string>>;
   origin: UploadedTrack["origin"];

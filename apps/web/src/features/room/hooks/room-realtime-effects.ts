@@ -10,7 +10,6 @@ import type { AuthSession, RoomSnapshot } from "@soqaro/shared";
 import type { RoomSocket } from "@/lib/network/ws-client";
 import type { RoomSnapshotResyncReason } from "@/features/room/room-snapshot-resync";
 import { getRoomPlaybackClockNowMs } from "@/features/playback/room-playback-clock";
-import type { RoomRecoveryMode } from "./room-runtime-types";
 import {
   isSoloRoomPlaybackOverdue,
   resolvePresenceRepairAction,
@@ -33,14 +32,8 @@ export function useRoomRealtimeConnectionEffects(input: {
   peerId: string;
   socketRef: MutableRefObject<RoomSocket | null>;
   isNavigatingRoomExit: boolean;
-  uploadedTrackIds: string[];
   lastRealtimeRoomEventAtRef: MutableRefObject<number>;
-  lastSubscribeAckAtRef: MutableRefObject<number | null>;
-  recoveryGenerationRef: MutableRefObject<number | null>;
-  recoveryModeRef: MutableRefObject<RoomRecoveryMode>;
   resubscribeRoomRef: MutableRefObject<(() => void) | null>;
-  meshRef: MutableRefObject<{ restartPeer: (peerId: string) => Promise<unknown> } | null>;
-  socketDisconnectGraceUntilRef: MutableRefObject<number | null>;
   requestRoomSnapshotResync: (
     reason: RoomSnapshotResyncReason,
     roomId?: string | null
@@ -59,8 +52,7 @@ export function useRoomRealtimeConnectionEffects(input: {
     requestRoomSnapshotResync,
     resubscribeRoomRef,
     roomSnapshot,
-    socketRef,
-    uploadedTrackIds
+    socketRef
   } = input;
   const {
     hasLocalMemberPresence,
@@ -71,8 +63,7 @@ export function useRoomRealtimeConnectionEffects(input: {
     snapshotRoomId
   } = resolveRoomRealtimeSnapshotInputs({
     roomSnapshot,
-    activeSessionId: activeSession?.userId,
-    fallbackUploadedTrackIds: uploadedTrackIds
+    activeSessionId: activeSession?.userId
   });
   const presenceIntervalRef = useRef<number | null>(null);
   const presenceAckTimerRef = useRef<number | null>(null);

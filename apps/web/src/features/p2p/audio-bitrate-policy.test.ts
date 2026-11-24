@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   maximumAudioBitrateKbps,
   preferredAudioRtpBitrateKbps,
-  resolveAdaptiveAudioBitrateKbps,
   resolveFanoutAudioBitrateKbps,
   resolveFixedAudioBitrateKbps
 } from "./audio-bitrate-policy";
@@ -36,60 +35,6 @@ describe("fixed RTP audio bitrate policy", () => {
     expect(resolveFixedAudioBitrateKbps({ requestedKbps: -1 })).toBeNull();
     expect(resolveFixedAudioBitrateKbps({ requestedKbps: Number.NaN })).toBeNull();
     expect(resolveFixedAudioBitrateKbps({ requestedKbps: Number.POSITIVE_INFINITY })).toBeNull();
-  });
-});
-
-describe("adaptive RTP audio bitrate policy", () => {
-  it("keeps the configured target when the link is healthy", () => {
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 0,
-      jitterMs: 5,
-      availableOutgoingBitrateKbps: 800
-    })).toBe(preferredAudioRtpBitrateKbps);
-  });
-
-  it("keeps the configured target on moderate loss or jitter", () => {
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 3,
-      jitterMs: 5,
-      availableOutgoingBitrateKbps: 800
-    })).toBe(preferredAudioRtpBitrateKbps);
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 0,
-      jitterMs: 20,
-      availableOutgoingBitrateKbps: 800
-    })).toBe(preferredAudioRtpBitrateKbps);
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 1,
-      jitterMs: 10,
-      availableOutgoingBitrateKbps: 350
-    })).toBe(preferredAudioRtpBitrateKbps);
-  });
-
-  it("keeps the configured target on severe loss, jitter, or tight bandwidth", () => {
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 8,
-      jitterMs: 5,
-      availableOutgoingBitrateKbps: 800
-    })).toBe(preferredAudioRtpBitrateKbps);
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 0,
-      jitterMs: 40,
-      availableOutgoingBitrateKbps: 800
-    })).toBe(preferredAudioRtpBitrateKbps);
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 0,
-      jitterMs: 5,
-      availableOutgoingBitrateKbps: 180
-    })).toBe(preferredAudioRtpBitrateKbps);
-  });
-
-  it("ignores network estimates entirely", () => {
-    expect(resolveAdaptiveAudioBitrateKbps({
-      lossRate: 1,
-      jitterMs: 10,
-      availableOutgoingBitrateKbps: null
-    })).toBe(preferredAudioRtpBitrateKbps);
   });
 });
 

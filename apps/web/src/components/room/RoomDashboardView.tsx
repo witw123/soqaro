@@ -10,7 +10,6 @@ import type {
   PeerDiagnosticsSnapshot,
   PeerRecentEvent,
   RoomMemberPermissions,
-  RoomMediaConnectionState,
   RoomMember,
   RoomSnapshot,
   QqMusicTrackCandidate,
@@ -56,11 +55,8 @@ export type RoomDashboardViewProps = {
   uploadedTracks: Record<string, UploadedTrack>;
   localStorageSummary: LocalStorageSummary;
   playlists: Playlist[];
-  onCleanLocalStorage: () => Promise<void>;
-  onRefreshLocalStorage: () => Promise<void>;
   onImportCachedTrack: (track: CachedLibraryTrack) => Promise<void>;
   onSaveTrackToLocal: (track: TrackMeta) => Promise<void>;
-  onSavePlaylistFromQueue: (title: string) => Promise<void>;
   onLoadPlaylistIntoRoom: (playlistId: string) => Promise<void>;
   onImportNeteaseTrack: (track: NeteaseTrackCandidate) => Promise<void>;
   onImportQqMusicTrack: (track: QqMusicTrackCandidate) => Promise<void>;
@@ -68,15 +64,10 @@ export type RoomDashboardViewProps = {
   onImportNeteaseTracks: (tracks: NeteaseTrackCandidate[]) => Promise<void>;
   onImportQqMusicTracks: (tracks: QqMusicTrackCandidate[]) => Promise<void>;
   onImportBilibiliTracks?: (tracks: BilibiliTrackCandidate[]) => Promise<void>;
-  onUpdatePlaylistTitle: (playlistId: string, title: string) => Promise<void>;
-  onUpdatePlaylistTracks: (playlistId: string, trackIds: string[]) => Promise<void>;
   onUpdateRoom: (input: UpdateRoomRequest) => Promise<boolean>;
   onUpdateMemberPermissions: (memberId: string, permissions: RoomMemberPermissions) => Promise<boolean>;
   onRemoveMember: (memberId: string) => Promise<boolean>;
   onDeletePlaylist: (playlistId: string) => Promise<void>;
-  connectedPeersCount: number;
-  mediaConnectionState: RoomMediaConnectionState;
-  mediaConnectedPeersCount: number;
   peerDiagnostics: PeerDiagnosticsSnapshot[];
   peerRecentEvents: PeerRecentEvent[];
   localMemberState: LocalMemberPanelState | null;
@@ -201,8 +192,6 @@ function InteractiveRoomLayout(props: RoomLayoutProps) {
             <RoomControlHeader
               isMobile
               roomSnapshot={props.roomSnapshot}
-              mediaConnectionState={props.mediaConnectionState}
-              currentTrack={props.currentTrack}
               host={props.host}
               canDeleteRoom={props.canDeleteRoom}
               canDisbandRoom={props.canDisbandRoom}
@@ -315,8 +304,6 @@ function RoomManagementContent(props: RoomLayoutProps & { activeTab: ManagementT
         canManageLibrary={props.canManageLibrary}
         currentRoomId={props.roomSnapshot.room.id}
         localStorageSummary={props.localStorageSummary}
-        onCleanLocalStorage={props.onCleanLocalStorage}
-        onDeletePlaylist={props.onDeletePlaylist}
         onImportBilibiliTrack={props.onImportBilibiliTrack}
         onImportBilibiliTracks={props.onImportBilibiliTracks}
         onImportCachedTrack={props.onImportCachedTrack}
@@ -325,10 +312,6 @@ function RoomManagementContent(props: RoomLayoutProps & { activeTab: ManagementT
         onImportQqMusicTrack={props.onImportQqMusicTrack}
         onImportQqMusicTracks={props.onImportQqMusicTracks}
         onLoadPlaylistIntoRoom={props.onLoadPlaylistIntoRoom}
-        onRefreshLocalStorage={props.onRefreshLocalStorage}
-        onSavePlaylistFromQueue={props.onSavePlaylistFromQueue}
-        onUpdatePlaylistTitle={props.onUpdatePlaylistTitle}
-        onUpdatePlaylistTracks={props.onUpdatePlaylistTracks}
         playlists={props.playlists}
         roomPlaylists={props.roomSnapshot.playlists}
         tracks={props.roomSnapshot.tracks}
@@ -336,7 +319,24 @@ function RoomManagementContent(props: RoomLayoutProps & { activeTab: ManagementT
       />
     );
   }
-  return <MembersTabPanel members={props.roomSnapshot.room.members} peerDiagnostics={props.peerDiagnostics} peerRecentEvents={props.peerRecentEvents} localMemberState={props.localMemberState} playbackStatus={props.roomSnapshot.room.playback.status} sourceSessionId={props.roomSnapshot.room.playback.sourceSessionId} sourcePeerId={props.currentSourcePeerId} iceConfigSource={props.iceConfigSource} iceConfigStatus={props.iceConfigStatus} activeSessionId={props.activeSession?.userId ?? null} isHost={props.isHost} onUpdateMemberPermissions={props.onUpdateMemberPermissions} onRemoveMember={props.onRemoveMember} onDiagnosticsVisibilityChange={props.onDiagnosticsVisibilityChange} />;
+  return (
+    <MembersTabPanel
+      members={props.roomSnapshot.room.members}
+      peerDiagnostics={props.peerDiagnostics}
+      peerRecentEvents={props.peerRecentEvents}
+      localMemberState={props.localMemberState}
+      playbackStatus={props.roomSnapshot.room.playback.status}
+      sourceSessionId={props.roomSnapshot.room.playback.sourceSessionId}
+      sourcePeerId={props.currentSourcePeerId}
+      iceConfigSource={props.iceConfigSource}
+      iceConfigStatus={props.iceConfigStatus}
+      activeSessionId={props.activeSession?.userId ?? null}
+      isHost={props.isHost}
+      onUpdateMemberPermissions={props.onUpdateMemberPermissions}
+      onRemoveMember={props.onRemoveMember}
+      onDiagnosticsVisibilityChange={props.onDiagnosticsVisibilityChange}
+    />
+  );
 }
 
 export function buildRoomStageProps(
@@ -354,9 +354,6 @@ export function buildRoomStageProps(
     canDeleteRoom: props.canDeleteRoom,
     canDisbandRoom: props.canDisbandRoom,
     currentSourceOwnerNickname: props.currentSourceOwnerNickname,
-    mediaConnectionState: props.mediaConnectionState,
-    mediaConnectedPeersCount: props.mediaConnectedPeersCount,
-    iceConfigSource: props.iceConfigSource,
     onUpdateRoom: props.onUpdateRoom,
     onCopyJoinCode: props.onCopyJoinCode,
     onShareRoom: props.onShareRoom,

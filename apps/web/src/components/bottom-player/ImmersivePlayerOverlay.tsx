@@ -777,32 +777,127 @@ function TrackDetails({ currentTrack, mobile = false }: { currentTrack: TrackMet
   );
 }
 
-function TransportButton({ accentColor, ariaLabel, children, disabled, onClick }: { accentColor: string; ariaLabel: string; children: ReactNode; disabled: boolean; onClick: () => void }) {
-  return <button aria-label={ariaLabel} className="inline-flex h-8.5 w-8.5 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-white/10 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer" disabled={disabled} onClick={onClick} style={{ color: accentColor }} title={ariaLabel} type="button">{children}</button>;
+function TransportButton({
+  accentColor,
+  ariaLabel,
+  children,
+  disabled,
+  onClick
+}: {
+  accentColor: string;
+  ariaLabel: string;
+  children: ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={ariaLabel}
+      className="inline-flex h-8.5 w-8.5 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-white/10 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
+      disabled={disabled}
+      onClick={onClick}
+      style={{ color: accentColor }}
+      title={ariaLabel}
+      type="button"
+    >
+      {children}
+    </button>
+  );
 }
 
 function LyricsGlyph() {
-  return <svg aria-hidden="true" fill="none" height="20" viewBox="0 0 24 24" width="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M5 6h14" /><path d="M5 10h10" /><path d="M5 14h14" /><path d="M5 18h8" /></svg>;
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height="20"
+      viewBox="0 0 24 24"
+      width="20"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    >
+      <path d="M5 6h14" />
+      <path d="M5 10h10" />
+      <path d="M5 14h14" />
+      <path d="M5 18h8" />
+    </svg>
+  );
 }
 
 function SpeakerGlyph({ volume }: { volume: number }) {
-  return <svg aria-hidden="true" fill="none" height="20" viewBox="0 0 24 24" width="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M11 5 6 9H3v6h3l5 4V5Z" />{volume <= 0.01 ? <path d="m19 9-5 6m0-6 5 6" /> : <><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></>}</svg>;
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height="20"
+      viewBox="0 0 24 24"
+      width="20"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    >
+      <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+      {volume <= 0.01 ? (
+        <path d="m19 9-5 6m0-6 5 6" />
+      ) : (
+        <>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+        </>
+      )}
+    </svg>
+  );
 }
 
-function ImmersiveVinyl({ artworkUrl, desktop = false, frozen = false, isPlaying, mobile = false, palette, playerStyle }: { artworkUrl: string | null; desktop?: boolean; frozen?: boolean; isPlaying: boolean; mobile?: boolean; palette: ArtworkPalette; playerStyle: "vinyl" | "square-cover" }) {
+function ImmersiveVinyl({
+  artworkUrl,
+  desktop = false,
+  frozen = false,
+  isPlaying,
+  mobile = false,
+  palette,
+  playerStyle
+}: {
+  artworkUrl: string | null;
+  desktop?: boolean;
+  frozen?: boolean;
+  isPlaying: boolean;
+  mobile?: boolean;
+  palette: ArtworkPalette;
+  playerStyle: "vinyl" | "square-cover";
+}) {
+  const containerSizeClass = mobile
+    ? "w-[min(68vw,calc(31*var(--app-dvh)),34rem)]"
+    : desktop
+      ? "h-[min(58vh,34rem)] w-auto"
+      : "h-[min(calc(68*var(--app-dvh)),34rem)] w-auto";
+  const discRingGradient = `conic-gradient(from 0deg at 50% 50%, ${palette.accentSoft} 0deg, transparent 90deg, ${palette.accentSoft} 180deg, transparent 270deg, ${palette.accentSoft} 360deg)`;
+
   return (
-    <div className={`relative flex aspect-square max-w-full items-center justify-center ${mobile ? "w-[min(68vw,calc(31*var(--app-dvh)),34rem)]" : desktop ? "h-[min(58vh,34rem)] w-auto" : "h-[min(calc(68*var(--app-dvh)),34rem)] w-auto"}`}>
+    <div className={`relative flex aspect-square max-w-full items-center justify-center ${containerSizeClass}`}>
       <div className={`relative flex aspect-square items-center justify-center overflow-visible ${desktop || playerStyle === "square-cover" ? "w-full" : "w-[86%]"}`}>
-        {playerStyle === "square-cover" ? <SquareAlbumCover artworkUrl={artworkUrl} className={`${desktop ? "rounded-[0.75rem]" : "rounded-[1.25rem]"} h-full w-full shadow-[0_26px_90px_rgba(0,0,0,0.35)]`} /> : (
+        {playerStyle === "square-cover" ? (
+          <SquareAlbumCover
+            artworkUrl={artworkUrl}
+            className={`${desktop ? "rounded-[0.75rem]" : "rounded-[1.25rem]"} h-full w-full shadow-[0_26px_90px_rgba(0,0,0,0.35)]`}
+          />
+        ) : (
           <>
             <VinylAuraVisualizer accentColor={palette.accent} frozen={frozen} isPlaying={isPlaying} />
-            <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-white/5 bg-gradient-to-tr from-[#020202] via-[#111111] to-[#1a1a1a] shadow-[0_26px_90px_rgba(0,0,0,0.55)] animate-spin-slow" style={{ animationPlayState: isPlaying ? "running" : "paused" }}>
+            <div
+              className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-white/5 bg-gradient-to-tr from-[#020202] via-[#111111] to-[#1a1a1a] shadow-[0_26px_90px_rgba(0,0,0,0.55)] animate-spin-slow"
+              style={{ animationPlayState: isPlaying ? "running" : "paused" }}
+            >
               <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_70%_30%,rgba(255,255,255,0.1),transparent_40%)]" />
-              <div className="absolute inset-0 rounded-full" style={{ background: `conic-gradient(from 0deg at 50% 50%, ${palette.accentSoft} 0deg, transparent 90deg, ${palette.accentSoft} 180deg, transparent 270deg, ${palette.accentSoft} 360deg)` }} />
+              <div className="absolute inset-0 rounded-full" style={{ background: discRingGradient }} />
               {artworkUrl ? (
                 <div className="absolute z-10 aspect-square w-[48%] overflow-hidden rounded-full border border-white/10 shadow-[0_0_24px_rgba(0,0,0,0.35)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img loading="lazy"
+                  <img
+                    loading="lazy"
                     alt=""
                     className="h-full w-full object-cover"
                     referrerPolicy="no-referrer"
@@ -813,13 +908,39 @@ function ImmersiveVinyl({ artworkUrl, desktop = false, frozen = false, isPlaying
             </div>
           </>
         )}
-        {playerStyle === "vinyl" ? <VinylTonearm frozen={frozen} isPlaying={isPlaying} accentColor={palette.accent} /> : null}
+        {playerStyle === "vinyl" ? (
+          <VinylTonearm frozen={frozen} isPlaying={isPlaying} accentColor={palette.accent} />
+        ) : null}
       </div>
     </div>
   );
 }
 
-function ImmersiveLyrics({ desktop = false, frozen = false, isOpen, isPlaying, mobile = false, onSeekToPosition, roomLyrics, translatedLyrics: storedTranslatedLyrics, romanizedLyrics: storedRomanizedLyrics, sourceProvider, sourceTrackId }: { desktop?: boolean; frozen?: boolean; isOpen: boolean; isPlaying: boolean; mobile?: boolean; onSeekToPosition?: (positionMs: number) => void; roomLyrics: string | null; translatedLyrics?: string | null; romanizedLyrics?: string | null; sourceProvider: string | undefined; sourceTrackId: string | undefined }) {
+function ImmersiveLyrics({
+  desktop = false,
+  frozen = false,
+  isOpen,
+  isPlaying,
+  mobile = false,
+  onSeekToPosition,
+  roomLyrics,
+  translatedLyrics: storedTranslatedLyrics,
+  romanizedLyrics: storedRomanizedLyrics,
+  sourceProvider,
+  sourceTrackId
+}: {
+  desktop?: boolean;
+  frozen?: boolean;
+  isOpen: boolean;
+  isPlaying: boolean;
+  mobile?: boolean;
+  onSeekToPosition?: (positionMs: number) => void;
+  roomLyrics: string | null;
+  translatedLyrics?: string | null;
+  romanizedLyrics?: string | null;
+  sourceProvider: string | undefined;
+  sourceTrackId: string | undefined;
+}) {
   const positionMs = useImmersivePositionMs();
   const desktopLyricsContext = useMaybeDesktopLyrics();
   const trackKey = sourceProvider && sourceTrackId ? `${sourceProvider}:${sourceTrackId}` : sourceTrackId;
@@ -903,7 +1024,36 @@ function ImmersiveLyrics({ desktop = false, frozen = false, isOpen, isPlaying, m
   }, [desktopLyricsContext, desktopLyricsContext?.lyrics, isOpen, roomLyrics, sourceProvider, sourceTrackId, storedRomanizedLyrics, storedTranslatedLyrics]);
 
   if (!isOpen) return null;
-  return <div className={desktop || mobile ? "min-h-0 w-full flex-1" : "mt-4 min-h-0 border-t border-surface-border pt-4"}><RoomLyricsPanel align={desktop ? "left" : "center"} frozen={frozen} immersive={desktop} mobile={mobile} visibleLines={desktop || mobile ? 7 : 3} fontScale="medium" isPlaying={isPlaying} lyrics={plainLyric} translatedLyrics={translatedLyric} romanizedLyrics={romanizedLyric} showControls showTranslation={lyricPreferences.showLyricTranslation} showRomanized={lyricPreferences.showLyricRomanized} offsetMs={offsetMs} onOffsetChange={setOffset} onToggleTranslation={() => updateAppSettings({ playback: { showLyricTranslation: !lyricPreferences.showLyricTranslation } })} onToggleRomanized={() => updateAppSettings({ playback: { showLyricRomanized: !lyricPreferences.showLyricRomanized } })} onSeek={onSeekToPosition} positionMs={positionMs} status={lyricsStatus} /></div>;
+  return (
+    <div className={desktop || mobile ? "min-h-0 w-full flex-1" : "mt-4 min-h-0 border-t border-surface-border pt-4"}>
+      <RoomLyricsPanel
+        align={desktop ? "left" : "center"}
+        frozen={frozen}
+        immersive={desktop}
+        mobile={mobile}
+        visibleLines={desktop || mobile ? 7 : 3}
+        fontScale="medium"
+        isPlaying={isPlaying}
+        lyrics={plainLyric}
+        translatedLyrics={translatedLyric}
+        romanizedLyrics={romanizedLyric}
+        showControls
+        showTranslation={lyricPreferences.showLyricTranslation}
+        showRomanized={lyricPreferences.showLyricRomanized}
+        offsetMs={offsetMs}
+        onOffsetChange={setOffset}
+        onToggleTranslation={() =>
+          updateAppSettings({ playback: { showLyricTranslation: !lyricPreferences.showLyricTranslation } })
+        }
+        onToggleRomanized={() =>
+          updateAppSettings({ playback: { showLyricRomanized: !lyricPreferences.showLyricRomanized } })
+        }
+        onSeek={onSeekToPosition}
+        positionMs={positionMs}
+        status={lyricsStatus}
+      />
+    </div>
+  );
 }
 
 function getSourceLabel(sourceType: TrackMeta["sourceType"]) {

@@ -9,17 +9,20 @@
   UnauthorizedException
 } from "@nestjs/common";
 import { z } from "zod";
-import { providerAlbumSummarySchema, providerArtistSummarySchema, providerSchema, providerTrackCandidateSchema } from "@soqaro/shared";
+import {
+  providerAlbumSummarySchema,
+  providerArtistSummarySchema,
+  providerSchema,
+  providerTrackCandidateSchema
+} from "@soqaro/shared";
 import { parseRequestBody } from "../../common/validation/zod-validation";
 import { AuthService } from "../auth/auth.service";
 import { FavoritesService } from "./favorites.service";
 
-const saveFavoriteAlbumSchema = providerAlbumSummarySchema;
 const providerAlbumParamSchema = z.object({
   provider: providerSchema,
   providerAlbumId: z.string().trim().min(1).max(128)
 });
-const saveFavoriteTrackSchema = providerTrackCandidateSchema;
 const providerTrackParamSchema = z.object({
   provider: providerSchema,
   providerTrackId: z.string().trim().min(1).max(128)
@@ -29,29 +32,29 @@ const providerArtistParamSchema = z.object({
   providerArtistId: z.string().trim().min(1).max(128)
 });
 
-@Controller("v1/favorites/albums")
+@Controller("v1/favorites")
 export class FavoritesController {
   constructor(
     private readonly favorites: FavoritesService,
     private readonly auth: AuthService
   ) {}
 
-  @Get()
-  async list(@Headers("x-session-token") sessionToken?: string) {
+  @Get("albums")
+  async listAlbums(@Headers("x-session-token") sessionToken?: string) {
     return this.favorites.listAlbums(await this.getCurrentUserId(sessionToken));
   }
 
-  @Put()
-  async save(
+  @Put("albums")
+  async saveAlbum(
     @Headers("x-session-token") sessionToken: string | undefined,
     @Body() body: unknown
   ) {
-    const album = parseRequestBody(saveFavoriteAlbumSchema, body);
+    const album = parseRequestBody(providerAlbumSummarySchema, body);
     return this.favorites.saveAlbum(await this.getCurrentUserId(sessionToken), album);
   }
 
-  @Delete(":provider/:providerAlbumId")
-  async remove(
+  @Delete("albums/:provider/:providerAlbumId")
+  async removeAlbum(
     @Param() params: Record<string, unknown>,
     @Headers("x-session-token") sessionToken?: string
   ) {
@@ -63,38 +66,22 @@ export class FavoritesController {
     );
   }
 
-  private async getCurrentUserId(sessionToken?: string) {
-    try {
-      return (await this.auth.getAuthSessionByTokenOrThrow(sessionToken)).userId;
-    } catch (error) {
-      throw new UnauthorizedException(error instanceof Error ? error.message : "Unauthorized.");
-    }
-  }
-}
-
-@Controller("v1/favorites/tracks")
-export class FavoriteTracksController {
-  constructor(
-    private readonly favorites: FavoritesService,
-    private readonly auth: AuthService
-  ) {}
-
-  @Get()
-  async list(@Headers("x-session-token") sessionToken?: string) {
+  @Get("tracks")
+  async listTracks(@Headers("x-session-token") sessionToken?: string) {
     return this.favorites.listTracks(await this.getCurrentUserId(sessionToken));
   }
 
-  @Put()
-  async save(
+  @Put("tracks")
+  async saveTrack(
     @Headers("x-session-token") sessionToken: string | undefined,
     @Body() body: unknown
   ) {
-    const track = parseRequestBody(saveFavoriteTrackSchema, body);
+    const track = parseRequestBody(providerTrackCandidateSchema, body);
     return this.favorites.saveTrack(await this.getCurrentUserId(sessionToken), track);
   }
 
-  @Delete(":provider/:providerTrackId")
-  async remove(
+  @Delete("tracks/:provider/:providerTrackId")
+  async removeTrack(
     @Param() params: Record<string, unknown>,
     @Headers("x-session-token") sessionToken?: string
   ) {
@@ -106,29 +93,13 @@ export class FavoriteTracksController {
     );
   }
 
-  private async getCurrentUserId(sessionToken?: string) {
-    try {
-      return (await this.auth.getAuthSessionByTokenOrThrow(sessionToken)).userId;
-    } catch (error) {
-      throw new UnauthorizedException(error instanceof Error ? error.message : "Unauthorized.");
-    }
-  }
-}
-
-@Controller("v1/favorites/artists")
-export class FavoriteArtistsController {
-  constructor(
-    private readonly favorites: FavoritesService,
-    private readonly auth: AuthService
-  ) {}
-
-  @Get()
-  async list(@Headers("x-session-token") sessionToken?: string) {
+  @Get("artists")
+  async listArtists(@Headers("x-session-token") sessionToken?: string) {
     return this.favorites.listArtists(await this.getCurrentUserId(sessionToken));
   }
 
-  @Put()
-  async save(
+  @Put("artists")
+  async saveArtist(
     @Headers("x-session-token") sessionToken: string | undefined,
     @Body() body: unknown
   ) {
@@ -136,8 +107,8 @@ export class FavoriteArtistsController {
     return this.favorites.saveArtist(await this.getCurrentUserId(sessionToken), artist);
   }
 
-  @Delete(":provider/:providerArtistId")
-  async remove(
+  @Delete("artists/:provider/:providerArtistId")
+  async removeArtist(
     @Param() params: Record<string, unknown>,
     @Headers("x-session-token") sessionToken?: string
   ) {

@@ -21,10 +21,7 @@ type LocalStorageTabPanelProps = {
   activeSession: AuthSession | null;
   canManageLibrary: boolean;
   localStorageSummary: LocalStorageSummary;
-  onCleanLocalStorage: () => Promise<void>;
-  onRefreshLocalStorage: () => Promise<void>;
   onImportCachedTrack: (track: CachedLibraryTrack) => Promise<void>;
-  onSavePlaylistFromQueue: (title: string) => Promise<void>;
   onLoadPlaylistIntoRoom: (playlistId: string) => Promise<void>;
   onImportNeteaseTrack: (track: NeteaseTrackCandidate) => Promise<void>;
   onImportQqMusicTrack: (track: QqMusicTrackCandidate) => Promise<void>;
@@ -32,9 +29,6 @@ type LocalStorageTabPanelProps = {
   onImportNeteaseTracks: (tracks: NeteaseTrackCandidate[]) => Promise<void>;
   onImportQqMusicTracks: (tracks: QqMusicTrackCandidate[]) => Promise<void>;
   onImportBilibiliTracks?: (tracks: BilibiliTrackCandidate[]) => Promise<void>;
-  onUpdatePlaylistTitle: (playlistId: string, title: string) => Promise<void>;
-  onUpdatePlaylistTracks: (playlistId: string, trackIds: string[]) => Promise<void>;
-  onDeletePlaylist: (playlistId: string) => Promise<void>;
   currentRoomId?: string | null;
   roomPlaylists?: Playlist[];
   onRefreshRoom?: () => Promise<unknown>;
@@ -47,7 +41,6 @@ function LocalStorageTabPanelBase({
   canManageLibrary,
   localStorageSummary,
   onImportCachedTrack,
-  onSavePlaylistFromQueue,
   onLoadPlaylistIntoRoom,
   onImportNeteaseTrack,
   onImportQqMusicTrack,
@@ -55,9 +48,6 @@ function LocalStorageTabPanelBase({
   onImportNeteaseTracks,
   onImportQqMusicTracks,
   onImportBilibiliTracks,
-  onUpdatePlaylistTitle,
-  onUpdatePlaylistTracks,
-  onDeletePlaylist,
   currentRoomId,
   roomPlaylists,
   onRefreshRoom
@@ -140,11 +130,8 @@ function LocalStorageTabPanelBase({
       </section> : null}
       {playlistTab === "network" ? <section className="flex flex-col gap-3" data-testid="network-playlist-section">
         <PlaylistPanel
-          activeSession={activeSession}
           canManageLibrary={canManageLibrary}
-          canCreatePlaylist={!!activeSession}
           currentRoomId={currentRoomId}
-          onDeletePlaylist={onDeletePlaylist}
           onLoadPlaylistIntoRoom={onLoadPlaylistIntoRoom}
           onImportNeteaseTrack={onImportNeteaseTrack}
           onImportQqMusicTrack={onImportQqMusicTrack}
@@ -152,9 +139,6 @@ function LocalStorageTabPanelBase({
           onImportNeteaseTracks={onImportNeteaseTracks}
           onImportQqMusicTracks={onImportQqMusicTracks}
           onImportBilibiliTracks={onImportBilibiliTracks}
-          onSavePlaylistFromQueue={onSavePlaylistFromQueue}
-          onUpdatePlaylistTitle={onUpdatePlaylistTitle}
-          onUpdatePlaylistTracks={onUpdatePlaylistTracks}
           playlists={playlists}
           roomPlaylists={roomPlaylists}
           tracks={tracks}

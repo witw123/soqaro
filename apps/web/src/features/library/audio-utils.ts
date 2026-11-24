@@ -1,7 +1,7 @@
 "use client";
 
 import type {
-  GuestSession,
+  AuthSession,
   NeteaseTrackCandidate,
   QqMusicTrackCandidate,
   RemoteTrackSourceRef,
@@ -60,7 +60,7 @@ export type CapturedAudioStreamMode = CapturedAudioGraph["mode"];
 export async function buildTrackMeta(
   file: File,
   objectUrl: string,
-  session: GuestSession,
+  session: AuthSession,
   preparedAssets?: PreparedAudioAssets,
   source?: {
     type: TrackSourceType;

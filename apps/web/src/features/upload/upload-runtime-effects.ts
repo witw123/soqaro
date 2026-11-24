@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MutableRefObject, type SetStateAction, type Dispatch } from "react";
-import type { GuestSession, RoomSnapshot } from "@soqaro/shared";
+import type { AuthSession, RoomSnapshot } from "@soqaro/shared";
 import {
   getCachedLibraryTrack,
   getCachedLibraryTrackSummary
@@ -18,7 +18,7 @@ import {
 import { persistRoomSnapshotToLocalRepository } from "@/features/library/local-room-storage";
 
 type UploadRuntimeEffectsInput = {
-  activeSession: GuestSession | null;
+  activeSession: AuthSession | null;
   cacheLibraryVersion: number;
   cacheLibraryTracksRef: MutableRefObject<Map<string, CachedLibraryTrack>>;
   inFlightUploadHashesRef?: MutableRefObject<Set<string>>;

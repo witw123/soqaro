@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type {
   PlaybackSnapshot,
   RoomPlaybackReadinessInputPayload,
-  RoomPlaybackReadinessPayload,
   RoomSnapshot,
   TrackMeta
 } from "@soqaro/shared";
@@ -24,7 +23,6 @@ import { cacheLibraryChangedEventName } from "@/features/library/cache-library";
 import { storageRootChangedEvent } from "@/features/library/storage-root-events";
 import { ensureOfflineProviderPlaybackAsset } from "@/features/playback/offline-source-fallback";
 import { providerPlaybackCacheChangedEvent } from "@/features/playback/provider-track-cache";
-import { resolveRoomPlaybackStrategy } from "@/features/room/playback/room-playback-strategy";
 import { resolveProviderTrackSource } from "@/features/library/provider-track-identity";
 import { getRoomQueuePreloadTracks, RoomAudioPreloader } from "@/features/room/playback/room-queue-preload";
 import { resolveCurrentRoomPlaybackAsset } from "@/features/playback/room-playback-asset";
@@ -108,23 +106,15 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   }) => void) => () => void;
   restartMediaPeer: (peerId: string, options?: { forceRecreate?: boolean }) => Promise<unknown>;
   onPlaybackEnded: () => unknown;
-  setMediaConnectionState: Dispatch<SetStateAction<"idle" | "connecting" | "live" | "buffering" | "reconnecting" | "failed">>;
-  setSourceStartState: Dispatch<SetStateAction<"idle" | "awaiting-unlock" | "starting" | "live" | "failed">>;
-  setLastSourceStartError: Dispatch<SetStateAction<string | null>>;
   setStatusMessage: (message: string) => void;
   recordPeerDiagnostic: PeerDiagnosticRecorder;
   audibleRef: MutableRefObject<boolean | null>;
-  playbackReadiness: RoomPlaybackReadinessPayload[];
   publishPlaybackReadiness: (payload: RoomPlaybackReadinessInputPayload) => void;
   activeSessionId: string | null;
 }) {
-  const playbackStrategy = resolveRoomPlaybackStrategy(input.roomSnapshot?.room.roomType);
   const setStatusMessage = input.setStatusMessage;
   const onPlaybackEnded = input.onPlaybackEnded;
   const roomSnapshot = input.roomSnapshot;
-  const setLastSourceStartError = input.setLastSourceStartError;
-  const setMediaConnectionState = input.setMediaConnectionState;
-  const setSourceStartState = input.setSourceStartState;
   const setAudioUnlocked = input.setAudioUnlocked;
   const subscribeRemoteAudioTrack = input.subscribeRemoteAudioTrack;
   const [playbackPreferences, setPlaybackPreferences] = useState(
@@ -193,8 +183,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   useEffect(() => () => localAudioPreloader.update([]), [localAudioPreloader]);
   // Offline auto-cache prevention and stream-only playback take priority over
   // the provider-cache preference when multiple strategies are enabled.
-  const sharedCacheEnabled = playbackStrategy.cache === "shared-library-and-provider";
-  const segmentedStreamEnabled = playbackStrategy.stream === "segmented-opus-with-rtp-fallback";
+  const sharedCacheEnabled = true;
+  const segmentedStreamEnabled = true;
   const providerCachePlan = resolveRoomProviderCachePlan({
     sharedCacheEnabled,
     segmentedStreamEnabled,
@@ -811,7 +801,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     if (hasRecentReceiverRtp && !input.forceRecovery && !input.forceRecreate) {
       return;
     }
-    input.runtime.setMediaConnectionState("reconnecting");
     input.runtime.recordPeerDiagnostic({
       peerId: input.sourcePeerId,
       channelKind: "media",
@@ -912,16 +901,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     readinessPlaybackStatus,
     playbackBarrier.blocked
   ]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    roomAudioOutput.applyVolume({
-      localAudio: audio,
-      volume: input.volume,
-      loudnessGainDb
-    });
-  }, [audioRef, input.volume, loudnessGainDb]);
 
   useEffect(() => {
     if (usesNativeLocalAudio) {
@@ -1550,7 +1529,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
             audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             nativeHealth.hasStarted &&
             now - nativeHealth.lastProgressAtMs < 1_500;
-          activeRuntime.setMediaConnectionState(actuallyPlaying ? "live" : "buffering");
           setMediaPlayback({
             state: actuallyPlaying ? "live" : "buffering",
             bufferedMs: 0,
@@ -2090,8 +2068,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     };
   }, [audioRef, input.volume, loudnessGainDb, setAudioUnlocked]);
 
-  const lastReportedErrorRef = useRef<string | null>(null);
-
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !usesNativeLocalAudio) {
@@ -2165,18 +2141,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   ]);
 
   useEffect(() => {
-    if (visiblePlayback.lastError && visiblePlayback.lastError !== lastReportedErrorRef.current) {
-      lastReportedErrorRef.current = visiblePlayback.lastError;
-      setLastSourceStartError(visiblePlayback.lastError);
-      return;
-    }
-    if (!visiblePlayback.lastError && lastReportedErrorRef.current && visiblePlayback.state === "live") {
-      lastReportedErrorRef.current = null;
-      setLastSourceStartError(null);
-    }
-  }, [setLastSourceStartError, visiblePlayback.lastError, visiblePlayback.state]);
-
-  useEffect(() => {
     if (!input.isCurrentSource) {
       lastSourceHealthRef.current = undefined;
       return;
@@ -2196,65 +2160,6 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       }
     }
   }, [input.isCurrentSource, playback.sourceHealth, setStatusMessage]);
-
-  useEffect(() => {
-    if (input.isCurrentSource) {
-      if (playback.sourceHealth === "source-underrun") {
-        setMediaConnectionState("buffering");
-      } else if (playback.sourceHealth === "source-silent") {
-        setMediaConnectionState("reconnecting");
-      } else if (playback.sourceHealth === "source-ready") {
-        setMediaConnectionState("live");
-      }
-    }
-  }, [input.isCurrentSource, playback.sourceHealth, setMediaConnectionState]);
-
-  useEffect(() => {
-    if (visiblePlayback.state === "live") {
-      setSourceStartState("live");
-      setMediaConnectionState(
-        input.isCurrentSource && visiblePlayback.sourceHealth === "source-silent"
-          ? "reconnecting"
-          : "live"
-      );
-      setLastSourceStartError(null);
-      return;
-    }
-    if (visiblePlayback.state === "buffering") {
-      setSourceStartState("starting");
-      setMediaConnectionState("buffering");
-      if (visiblePlayback.lastError) {
-        setLastSourceStartError(visiblePlayback.lastError);
-      }
-      return;
-    }
-    if (visiblePlayback.state === "awaiting-unlock") {
-      setSourceStartState("awaiting-unlock");
-      setMediaConnectionState("connecting");
-      return;
-    }
-    if (visiblePlayback.state === "ended") {
-      setSourceStartState("live");
-      setMediaConnectionState("live");
-      return;
-    }
-    if (visiblePlayback.state === "unavailable") {
-      setSourceStartState("failed");
-      setMediaConnectionState("failed");
-      setLastSourceStartError(visiblePlayback.lastError ?? "当前播放源媒体轨道不可用。");
-      return;
-    }
-    setSourceStartState("idle");
-    setMediaConnectionState("idle");
-  }, [
-    input.isCurrentSource,
-    setLastSourceStartError,
-    setMediaConnectionState,
-    setSourceStartState,
-    visiblePlayback.lastError,
-    visiblePlayback.sourceHealth,
-    visiblePlayback.state
-  ]);
 
   useEffect(() => {
     if (visiblePlayback.state !== "ended" || !canAdvanceAtTrackEnd) return;

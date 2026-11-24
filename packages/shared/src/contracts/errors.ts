@@ -36,47 +36,16 @@ export const errorCodes = {
   bilibiliUnavailable: "BILIBILI_UNAVAILABLE"
 } as const;
 
+export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes];
+
+const errorCodeValues = Object.values(errorCodes) as [ErrorCode, ...ErrorCode[]];
+
 export const apiErrorResponseSchema = z.object({
-  code: z.enum([
-    errorCodes.internal,
-    errorCodes.validationFailed,
-    errorCodes.unauthorized,
-    errorCodes.invalidCredentials,
-    errorCodes.rateLimited,
-    errorCodes.roomNotFound,
-    errorCodes.roomClosed,
-    errorCodes.peerUnavailable,
-    errorCodes.chunkMissing,
-    errorCodes.playbackOutOfSync,
-    errorCodes.realtimeUnavailable,
-    errorCodes.playbackVersionConflict,
-    errorCodes.trackOwnerOffline,
-    errorCodes.unauthorizedRoomAction,
-    errorCodes.neteaseDisabled,
-    errorCodes.neteaseAccountRequired,
-    errorCodes.neteaseAuthExpired,
-    errorCodes.neteaseQrExpired,
-    errorCodes.neteaseTrackNotFound,
-    errorCodes.neteaseAudioUnsupported,
-    errorCodes.neteaseImportTooLarge,
-    errorCodes.neteaseUnavailable,
-    errorCodes.recommendationUnavailable,
-    errorCodes.qqMusicDisabled,
-    errorCodes.qqMusicAccountRequired,
-    errorCodes.qqMusicAuthExpired,
-    errorCodes.qqMusicQrExpired,
-    errorCodes.qqMusicTrackNotFound,
-    errorCodes.qqMusicAudioUnsupported,
-    errorCodes.qqMusicImportTooLarge,
-    errorCodes.qqMusicUnavailable,
-    errorCodes.bilibiliTrackNotFound,
-    errorCodes.bilibiliUnavailable
-  ]),
+  code: z.enum(errorCodeValues),
   message: z.string(),
   details: z.unknown().optional()
 });
 
-export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes];
 export type ApiErrorResponse = z.infer<typeof apiErrorResponseSchema>;
 
 export function createApiErrorResponse(

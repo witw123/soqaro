@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import type { Playlist } from "@soqaro/shared";
 import type { LocalPlaylistRecord, LocalPlaylistTrackRecord } from "@/features/playlist/local-playlist";
-import { toProviderTrackRecord, upsertLocalPlaylistTrack } from "@/features/playlist/local-playlist";
+import { toProviderTrackRecord } from "@/features/playlist/local-playlist";
 import { soqaroApi } from "@/lib/network/soqaro-api";
 
 export type NetworkPlaylistSource = { provider: "netease" | "qqmusic" | "bilibili"; playlistId: string };
@@ -89,64 +89,6 @@ export function uniqueArtworkUrls(urls: readonly (string | null | undefined)[]) 
     if (secureUrl !== url && !result.includes(url)) result.push(url);
   }
   return result;
-}
-
-export async function resolveLegacyNetworkPlaylistArtwork(
-  playlist: Playlist,
-  roomTrackIndex: ReadonlyMap<string, LocalPlaylistTrackRecord>
-) {
-  const sources = playlist.trackIds
-    .map((trackId) => parseProviderTrackSource(trackId))
-    .filter((source): source is { provider: "netease" | "qqmusic" | "bilibili"; trackId: string } => !!source)
-    .slice(0, 4);
-  if (sources.length === 0) return [];
-
-  const resolvedArtwork = await Promise.all(
-    sources.map(async (source) => {
-      const cached = [...roomTrackIndex.values()].find(
-        (track) => track.provider === source.provider && track.providerTrackId === source.trackId
-      );
-      if (cached?.artworkUrl) return cached.artworkUrl;
-      try {
-        const track =
-          source.provider === "netease"
-            ? await soqaroApi.getNeteaseTrack(source.trackId)
-            : source.provider === "qqmusic"
-              ? await soqaroApi.getQqMusicTrack(source.trackId)
-              : await soqaroApi.getBilibiliView(source.trackId.split(":")[0]!).then((v) => ({
-                  provider: "bilibili" as const,
-                  providerTrackId: source.trackId,
-                  bvid: v.bvid,
-                  title: v.title,
-                  artist: v.ownerName,
-                  album: null,
-                  durationMs: v.duration * 1000,
-                  artworkUrl: v.pic,
-                  access: "free" as const,
-                  quality: "exhigh" as const
-                }));
-        const resolved = toProviderTrackRecord(track, cached);
-        if (resolved.artworkUrl) {
-          try {
-            await upsertLocalPlaylistTrack(resolved);
-          } catch {
-            // The remote candidate is still usable for the current render.
-          }
-        }
-        return resolved.artworkUrl;
-      } catch {
-        return null;
-      }
-    })
-  );
-  return uniqueArtworkUrls(resolvedArtwork);
-}
-
-export function parseProviderTrackSource(trackId: string) {
-  const [, provider, ...trackIdParts] = trackId.split(":");
-  if (provider !== "netease" && provider !== "qqmusic" && provider !== "bilibili") return null;
-  const resolvedTrackId = trackIdParts.join(":").trim();
-  return resolvedTrackId ? { provider, trackId: resolvedTrackId } : null;
 }
 
 export function getNetworkPlaylistSource(playlist: Playlist): NetworkPlaylistSource | null {

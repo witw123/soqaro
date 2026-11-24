@@ -95,9 +95,23 @@ export const adminOverviewSchema = z.object({
     playbackConflicts: z.number().int().nonnegative(),
     iceFailures: z.number().int().nonnegative()
   }),
-  users: z.object({ total: z.number().int().nonnegative(), online: z.number().int().nonnegative(), disabled: z.number().int().nonnegative() }),
-  rooms: z.object({ total: z.number().int().nonnegative(), active: z.number().int().nonnegative(), healthy: z.number().int().nonnegative(), degraded: z.number().int().nonnegative(), critical: z.number().int().nonnegative(), unknown: z.number().int().nonnegative() }),
-  playback: z.object({ active: z.number().int().nonnegative(), paused: z.number().int().nonnegative() }),
+  users: z.object({
+    total: z.number().int().nonnegative(),
+    online: z.number().int().nonnegative(),
+    disabled: z.number().int().nonnegative()
+  }),
+  rooms: z.object({
+    total: z.number().int().nonnegative(),
+    active: z.number().int().nonnegative(),
+    healthy: z.number().int().nonnegative(),
+    degraded: z.number().int().nonnegative(),
+    critical: z.number().int().nonnegative(),
+    unknown: z.number().int().nonnegative()
+  }),
+  playback: z.object({
+    active: z.number().int().nonnegative(),
+    paused: z.number().int().nonnegative()
+  }),
   openIncidents: z.number().int().nonnegative(),
   instances: z.number().int().nonnegative()
 });

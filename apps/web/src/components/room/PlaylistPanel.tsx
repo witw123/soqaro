@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  AuthSession,
   BilibiliTrackCandidate,
   NeteaseTrackCandidate,
   Playlist,
@@ -39,10 +38,7 @@ type PlaylistTrackInfo = Pick<TrackMeta, "id" | "title" | "artist" | "album" | "
 type PlaylistPanelProps = {
   playlists: Playlist[];
   tracks: TrackMeta[];
-  activeSession: AuthSession | null;
   canManageLibrary: boolean;
-  canCreatePlaylist: boolean;
-  onSavePlaylistFromQueue: (title: string) => Promise<void>;
   onLoadPlaylistIntoRoom: (playlistId: string) => Promise<void>;
   onImportNeteaseTrack: (track: NeteaseTrackCandidate) => Promise<void>;
   onImportQqMusicTrack: (track: QqMusicTrackCandidate) => Promise<void>;
@@ -50,9 +46,6 @@ type PlaylistPanelProps = {
   onImportNeteaseTracks: (tracks: NeteaseTrackCandidate[]) => Promise<void>;
   onImportQqMusicTracks: (tracks: QqMusicTrackCandidate[]) => Promise<void>;
   onImportBilibiliTracks?: (tracks: BilibiliTrackCandidate[]) => Promise<void>;
-  onUpdatePlaylistTitle: (playlistId: string, title: string) => Promise<void>;
-  onUpdatePlaylistTracks: (playlistId: string, trackIds: string[]) => Promise<void>;
-  onDeletePlaylist: (playlistId: string) => Promise<void>;
   currentRoomId?: string | null;
   roomPlaylists?: Playlist[];
   onRefreshRoom?: () => Promise<unknown>;
@@ -61,10 +54,7 @@ type PlaylistPanelProps = {
 export function PlaylistPanel({
   playlists,
   tracks,
-  activeSession: _activeSession,
   canManageLibrary,
-  canCreatePlaylist: _canCreatePlaylist,
-  onSavePlaylistFromQueue: _onSavePlaylistFromQueue,
   onLoadPlaylistIntoRoom,
   onImportNeteaseTrack,
   onImportQqMusicTrack,
@@ -72,7 +62,6 @@ export function PlaylistPanel({
   onImportNeteaseTracks,
   onImportQqMusicTracks,
   onImportBilibiliTracks,
-  onDeletePlaylist: _onDeletePlaylist,
   currentRoomId,
   roomPlaylists,
   onRefreshRoom

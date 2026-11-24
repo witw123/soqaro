@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useRef, type MutableRefObject } from "react";
+import { useCallback, useRef } from "react";
 import type { PeerDiagnosticsSnapshot } from "@soqaro/shared";
 import type { PeerConnectionStatsSample } from "@/features/p2p/connection-stats";
 import {
@@ -11,24 +11,7 @@ import {
   toSupervisorDiagnosticPatch,
   type PeerConnectionSupervisorState
 } from "@/features/p2p";
-import type {
-  ConnectionSupervisorSignalStateInput,
-  PlaybackRecoveryRecommendation
-} from "./room-runtime-types";
-
-export type SourceRecoveryCoordinatorState = {
-  actionKey: string | null;
-  action: "soft" | "hard-recreate" | "full-resubscribe" | null;
-  startedAtMs: number | null;
-};
-
-export function shouldRunMediaPeerRecovery() {
-  return false;
-}
-
-export function shouldSuppressSourceRecoveryDuringGenerationBootstrap() {
-  return false;
-}
+import type { ConnectionSupervisorSignalStateInput } from "./room-runtime-types";
 
 export function withResolvedTransportHealth(
   snapshot: PeerDiagnosticsSnapshot
@@ -46,16 +29,8 @@ export function withSupervisorDiagnosticPatch(
   return state ? { ...snapshot, ...toSupervisorDiagnosticPatch(state) } : snapshot;
 }
 
-export function useRoomConnectionSupervisor(input: {
-  roomId?: string | null;
-  lastSubscribeAckAtRef: MutableRefObject<number | null>;
-}) {
+export function useRoomConnectionSupervisor(input: { roomId?: string | null } = {}) {
   const connectionSupervisorStatesRef = useRef<Map<string, PeerConnectionSupervisorState>>(new Map());
-  const sourceRecoveryCoordinatorRef = useRef<SourceRecoveryCoordinatorState>({
-    actionKey: null,
-    action: null,
-    startedAtMs: null
-  });
 
   const ensureConnectionSupervisorState = useCallback((peerId: string) => {
     const existing = connectionSupervisorStatesRef.current.get(peerId);
@@ -91,45 +66,6 @@ export function useRoomConnectionSupervisor(input: {
         mediaConnectionState: value.mediaConnectionState,
         mediaIceState: value.mediaIceState,
         lastFailureReason: value.lastFailureReason
-      });
-      return commitConnectionSupervisorState(next);
-    },
-    [commitConnectionSupervisorState, ensureConnectionSupervisorState]
-  );
-
-  const updateConnectionSupervisorTransport = useCallback(
-    (value: {
-      peerId: string;
-      dataChannelState?: string | null;
-      dataConnectionState?: string | null;
-      dataIceState?: string | null;
-      bytesReceived?: number | null;
-      bytesSent?: number | null;
-      bufferedAmountBytes?: number | null;
-      now?: number;
-    }) => {
-      const state = ensureConnectionSupervisorState(value.peerId);
-      const next = observePeerTransport({
-        state,
-        sample: {
-          candidateType: null,
-          protocol: null,
-          currentRoundTripTimeMs: null,
-          availableOutgoingBitrateKbps: null,
-          packetLossRate: null,
-          packetsLost: null,
-          jitterMs: null,
-          mediaReceiveBitrateKbps: null,
-          mediaSendBitrateKbps: null
-        },
-        diagnostics: {
-          dataChannelState: value.dataChannelState ?? null,
-          dataConnectionState: value.dataConnectionState ?? null,
-          dataIceState: value.dataIceState ?? null,
-          mediaConnectionState: null,
-          mediaIceState: null
-        },
-        now: value.now
       });
       return commitConnectionSupervisorState(next);
     },
@@ -180,52 +116,11 @@ export function useRoomConnectionSupervisor(input: {
     [commitConnectionSupervisorState, ensureConnectionSupervisorState]
   );
 
-  const updateConnectionSupervisorPlayout = useCallback(() => null, []);
-
-  const resolveCurrentAudibleSource = useCallback(
-    (isSourceOwner = true) => isSourceOwner ? "segmented-opus-local" as const : "webrtc-opus-remote" as const,
-    []
-  );
-  const resolveSourceContinuityState = useCallback(
-    (isSourceOwner = true) => ({
-      playbackTransport: isSourceOwner ? "segmented-opus-local" as const : "webrtc-opus-remote" as const,
-      bufferingWhileAudible: false,
-      recentAudioProgress: true,
-      recentTransportProgress: true,
-      consecutiveNoProgressMs: null,
-      consecutiveDataNoProgressMs: null
-    }),
-    []
-  );
-  const resolveSourceRecoverySuppressedReason = useCallback((now = Date.now()) => {
-    const lastSubscribeAckAt = input.lastSubscribeAckAtRef.current;
-    return typeof lastSubscribeAckAt === "number" && now - lastSubscribeAckAt < 2_000
-      ? "recent-subscribe"
-      : null;
-  }, [input.lastSubscribeAckAtRef]);
-
-  const beginSourceHardRecoveryAction = useCallback(() => false, []);
-  const clearSourceHardRecoveryAction = useCallback(() => undefined, []);
-
   return {
     connectionSupervisorStatesRef,
-    sourceRecoveryCoordinatorRef,
-    beginSourceHardRecoveryAction,
-    clearSourceHardRecoveryAction,
-    resolveCurrentAudibleSource,
-    resolveSourceContinuityState,
-    resolveSourceRecoverySuppressedReason,
     ensureConnectionSupervisorState,
     commitConnectionSupervisorState,
     updateConnectionSupervisorSignalState,
-    updateConnectionSupervisorTransport,
-    updateConnectionSupervisorTransportStats,
-    updateConnectionSupervisorPlayout
+    updateConnectionSupervisorTransportStats
   };
-}
-
-export function useRoomConnectionSupervisorRuntime(input: {
-  queuePlaybackRecoveryRecommendation?: (recommendation: PlaybackRecoveryRecommendation) => void;
-}) {
-  void input;
 }

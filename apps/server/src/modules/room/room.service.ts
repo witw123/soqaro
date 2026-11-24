@@ -85,7 +85,7 @@ export class RoomService {
     }
 
     if (!this.prisma.isAvailable()) return 0;
-    const reactionModel = (this.prisma as PrismaService & { roomReaction: { create: (args: unknown) => Promise<unknown>; count: (args: unknown) => Promise<number> } }).roomReaction;
+    const reactionModel = this.prisma.roomReaction;
     await reactionModel.create({
       data: {
         id: `reaction_${randomUUID()}`,

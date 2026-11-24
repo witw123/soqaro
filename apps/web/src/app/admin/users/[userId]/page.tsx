@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { adminApi, AdminApiError, ADMIN_CONFIRM_REASON, type AdminUserDetail } from "@/lib/network/admin-api";
+import {
+  DataList,
+  DataPanel,
+  DetailRow,
+  InfoPanel,
+  Metric,
+  PanelHeader,
+  formatDateTime,
+  translateAction
+} from "../../ui";
 
 export default function AdminUserDetailPage() {
   const params = useParams<{ userId: string }>();
@@ -133,11 +143,10 @@ export default function AdminUserDetailPage() {
 
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         <div>
-          <span className="text-xs font-mono font-medium text-[var(--accent,#3b82f6)]">用户治理 / 账户档案</span>
-          <div className="flex items-baseline gap-3 mt-1">
+          <div className="flex items-baseline gap-3">
             <h1 className="text-xl font-semibold tracking-tight text-foreground">{user.nickname}</h1>
             <span className="text-sm font-mono text-foreground-muted">{user.username}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-mono border ${isAdmin ? "border-[var(--accent,#3b82f6)]/40 bg-[var(--accent,#3b82f6)]/10 text-[var(--accent,#3b82f6)]" : "border-surface-border bg-surface-border/20 text-foreground-muted"}`}>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-mono border-[0.5px] ${isAdmin ? "border-radix-amber-6 bg-radix-amber-3 text-radix-amber-11" : "border-[var(--slate-6)] bg-surface text-foreground-muted"}`}>
               {isAdmin ? "管理员" : "普通用户"}
             </span>
           </div>
@@ -152,9 +161,9 @@ export default function AdminUserDetailPage() {
         </section>
 
         {/* 账号控制台 */}
-        <section className="rounded-lg border border-surface-border bg-surface p-4">
+        <section className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface overflow-hidden">
           <PanelHeader title="账号治理与权限控制" hint="状态流转、角色调整与凭据重置" />
-          <div className="mt-3.5 space-y-3">
+          <div className="p-3.5 space-y-3">
             {generatedPassword ? (
               <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs flex flex-col gap-2">
                 <div className="flex items-center justify-between">
@@ -384,74 +393,4 @@ export default function AdminUserDetailPage() {
       </div>
     </main>
   );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-surface-border bg-surface p-3.5">
-      <div className="text-xs font-mono text-foreground-muted">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-foreground tracking-tight">{value}</div>
-    </div>
-  );
-}
-
-function PanelHeader({ title, hint }: { title: string; hint?: string }) {
-  return (
-    <div className="flex items-center justify-between border-b border-surface-border pb-3">
-      <h2 className="text-xs font-semibold text-foreground tracking-tight">{title}</h2>
-      {hint ? <span className="text-xs font-mono text-foreground-muted">{hint}</span> : null}
-    </div>
-  );
-}
-
-function InfoPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-surface-border bg-surface p-4">
-      <PanelHeader title={title} />
-      <div className="mt-3 divide-y divide-surface-border/50">{children}</div>
-    </section>
-  );
-}
-
-function DataPanel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-surface-border bg-surface p-4 overflow-hidden">
-      <PanelHeader title={title} hint={hint} />
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
-
-function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between py-2 text-xs">
-      <span className="text-foreground-muted">{label}</span>
-      <span className={`text-foreground font-medium ${mono ? "font-mono" : ""}`}>{value}</span>
-    </div>
-  );
-}
-
-function DataList<T>({ rows, empty, render }: { rows: T[]; empty: string; render: (item: T, index: number) => ReactNode }) {
-  if (!rows.length) {
-    return <div className="p-6 text-center text-xs text-foreground-muted">{empty}</div>;
-  }
-  return <div className="divide-y divide-surface-border/50">{rows.map((row, index) => render(row, index))}</div>;
-}
-
-function translateAction(value: string) {
-  const labels: Record<string, string> = {
-    "user.disable": "禁用用户",
-    "user.enable": "启用用户",
-    "user.set_role": "修改用户角色",
-    "user.reset_password": "重置密码",
-    "user.sessions.revoke": "撤销会话",
-    "admin.login": "管理员登录"
-  };
-  return labels[value] ?? value;
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }

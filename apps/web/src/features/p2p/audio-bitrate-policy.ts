@@ -1,6 +1,5 @@
 export const minimumAudioBitrateKbps = 64;
 export const audioBitrateStepKbps = 8;
-export const degradedAudioBitrateKbps = 288;
 export const maximumAudioBitrateKbps = 510;
 
 // A source sends one RTP stream per listener. Keep the normal target below the
@@ -53,38 +52,6 @@ export function resolveFanoutAudioBitrateKbps(input: FanoutAudioBitrateInput) {
         : minimumAudioBitrateKbps;
   const budgetShareKbps = sourceAudioUploadBudgetKbps / input.fanout;
   return quantizeBitrate(Math.min(requestedKbps, fanoutTierKbps, budgetShareKbps));
-}
-
-export type AdaptiveAudioBitrateInput = {
-  lossRate: number;
-  jitterMs: number;
-  availableOutgoingBitrateKbps: number | null;
-  /** The stable configured target; retained for compatibility with callers. */
-  requestedKbps?: number | null;
-  fanout?: number;
-};
-
-/**
- * Compatibility resolver for callers that still pass transport statistics.
- * Network health is intentionally ignored: a room playback sender keeps its
- * stable configured target for the lifetime of the topology.
- */
-export function resolveAdaptiveAudioBitrateKbps(input: AdaptiveAudioBitrateInput) {
-  const requestedKbps = normalizeBitrate(input.requestedKbps ?? preferredAudioRtpBitrateKbps);
-  if (requestedKbps === null) {
-    return null;
-  }
-
-  const fanoutTargetKbps = typeof input.fanout === "number"
-    ? resolveFanoutAudioBitrateKbps({
-        fanout: input.fanout,
-        requestedKbps
-      })
-    : requestedKbps;
-  if (fanoutTargetKbps === null) {
-    return null;
-  }
-  return fanoutTargetKbps;
 }
 
 function normalizeBitrate(value: number | null) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import type {
   AuthSession,
   BilibiliTrackCandidate,
@@ -9,7 +9,6 @@ import type {
   PeerDiagnosticsSnapshot,
   PeerRecentEvent,
   RoomMemberPermissions,
-  RoomMediaConnectionState,
   RoomSnapshot,
   QqMusicTrackCandidate,
   TrackMeta,
@@ -17,7 +16,7 @@ import type {
 } from "@soqaro/shared";
 import type { RoomSocket } from "@/lib/network/ws-client";
 import { EmptyRoomState, RoomTransitionState } from "@/components/room/RoomPageStates";
-import { InteractiveRoomView } from "@/components/room/InteractiveRoomView";
+import { RoomDashboardView } from "@/components/room/RoomDashboardView";
 import { RequestRoomView } from "@/components/room/RequestRoomView";
 import { RadioRoomView } from "@/components/room/RadioRoomView";
 import type { CachedLibraryTrack, UploadedTrack } from "@/features/library/audio-utils";
@@ -41,11 +40,8 @@ type RoomWorkspaceProps = {
   uploadedTracks: Record<string, UploadedTrack>;
   localStorageSummary: LocalStorageSummary;
   playlists: Playlist[];
-  onCleanLocalStorage: () => Promise<void>;
-  onRefreshLocalStorage: () => Promise<void>;
   onImportCachedTrack: (track: CachedLibraryTrack) => Promise<void>;
   onSaveTrackToLocal: (track: TrackMeta) => Promise<void>;
-  onSavePlaylistFromQueue: (title: string) => Promise<void>;
   onLoadPlaylistIntoRoom: (playlistId: string) => Promise<void>;
   onImportNeteaseTrack: (track: NeteaseTrackCandidate) => Promise<void>;
   onImportQqMusicTrack: (track: QqMusicTrackCandidate) => Promise<void>;
@@ -53,15 +49,10 @@ type RoomWorkspaceProps = {
   onImportNeteaseTracks: (tracks: NeteaseTrackCandidate[]) => Promise<void>;
   onImportQqMusicTracks: (tracks: QqMusicTrackCandidate[]) => Promise<void>;
   onImportBilibiliTracks?: (tracks: BilibiliTrackCandidate[]) => Promise<void>;
-  onUpdatePlaylistTitle: (playlistId: string, title: string) => Promise<void>;
-  onUpdatePlaylistTracks: (playlistId: string, trackIds: string[]) => Promise<void>;
   onUpdateRoom: (input: UpdateRoomRequest) => Promise<boolean>;
   onUpdateMemberPermissions: (memberId: string, permissions: RoomMemberPermissions) => Promise<boolean>;
   onRemoveMember: (memberId: string) => Promise<boolean>;
   onDeletePlaylist: (playlistId: string) => Promise<void>;
-  connectedPeersCount: number;
-  mediaConnectionState: RoomMediaConnectionState;
-  mediaConnectedPeersCount: number;
   peerDiagnostics: PeerDiagnosticsSnapshot[];
   peerRecentEvents: PeerRecentEvent[];
   localMemberState: LocalMemberPanelState | null;
@@ -99,7 +90,6 @@ type RoomWorkspaceProps = {
   onDiagnosticsVisibilityChange: (open: boolean) => void;
   onSeek: (positionMs: number) => void;
   socket: RoomSocket | null;
-  playerSlot: ReactNode;
 };
 
 function RoomWorkspaceBase({
@@ -116,11 +106,8 @@ function RoomWorkspaceBase({
   uploadedTracks,
   localStorageSummary,
   playlists,
-  onCleanLocalStorage,
-  onRefreshLocalStorage,
   onImportCachedTrack,
   onSaveTrackToLocal,
-  onSavePlaylistFromQueue,
   onLoadPlaylistIntoRoom,
   onImportNeteaseTrack,
   onImportQqMusicTrack,
@@ -128,15 +115,10 @@ function RoomWorkspaceBase({
   onImportNeteaseTracks,
   onImportQqMusicTracks,
   onImportBilibiliTracks,
-  onUpdatePlaylistTitle,
-  onUpdatePlaylistTracks,
   onUpdateRoom,
   onUpdateMemberPermissions,
   onRemoveMember,
   onDeletePlaylist,
-  connectedPeersCount,
-  mediaConnectionState,
-  mediaConnectedPeersCount,
   peerDiagnostics,
   peerRecentEvents,
   localMemberState,
@@ -174,8 +156,7 @@ function RoomWorkspaceBase({
   onDiagnosticsVisibilityChange,
   onSeek,
   currentPlaybackPositionRef,
-  socket,
-  playerSlot
+  socket
 }: RoomWorkspaceProps) {
   const playback = roomSnapshot?.room.playback;
   const host = roomSnapshot?.room.members.find((member) => member.role === "host");
@@ -187,7 +168,7 @@ function RoomWorkspaceBase({
     ? RequestRoomView
     : roomSnapshot?.room.roomType === "radio"
       ? RadioRoomView
-      : InteractiveRoomView;
+      : RoomDashboardView;
 
   return (
     <main className="relative box-border flex h-[calc(100*var(--app-dvh))] max-h-[calc(100*var(--app-dvh))] min-h-0 flex-col overflow-hidden bg-background pb-[var(--room-mobile-bottom-inset)] md:pl-60 lg:pb-[var(--room-desktop-bottom-inset)]" data-custom-layout-room-host="true">
@@ -245,11 +226,8 @@ function RoomWorkspaceBase({
               uploadedTracks={uploadedTracks}
               localStorageSummary={localStorageSummary}
               playlists={playlists}
-              onCleanLocalStorage={onCleanLocalStorage}
-              onRefreshLocalStorage={onRefreshLocalStorage}
               onImportCachedTrack={onImportCachedTrack}
               onSaveTrackToLocal={onSaveTrackToLocal}
-              onSavePlaylistFromQueue={onSavePlaylistFromQueue}
               onLoadPlaylistIntoRoom={onLoadPlaylistIntoRoom}
               onImportNeteaseTrack={onImportNeteaseTrack}
               onImportQqMusicTrack={onImportQqMusicTrack}
@@ -257,15 +235,10 @@ function RoomWorkspaceBase({
               onImportNeteaseTracks={onImportNeteaseTracks}
               onImportQqMusicTracks={onImportQqMusicTracks}
               onImportBilibiliTracks={onImportBilibiliTracks}
-              onUpdatePlaylistTitle={onUpdatePlaylistTitle}
-              onUpdatePlaylistTracks={onUpdatePlaylistTracks}
               onUpdateRoom={onUpdateRoom}
               onUpdateMemberPermissions={onUpdateMemberPermissions}
               onRemoveMember={onRemoveMember}
               onDeletePlaylist={onDeletePlaylist}
-              connectedPeersCount={connectedPeersCount}
-              mediaConnectionState={mediaConnectionState}
-              mediaConnectedPeersCount={mediaConnectedPeersCount}
               peerDiagnostics={peerDiagnostics}
               peerRecentEvents={peerRecentEvents}
               localMemberState={localMemberState}
@@ -312,8 +285,6 @@ function RoomWorkspaceBase({
           )}
         </div>
       </div>
-
-      {playerSlot}
     </main>
   );
 }

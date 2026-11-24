@@ -42,7 +42,6 @@ type RoomAppShellProps = {
   roomSnapshot: RoomSnapshot | null;
   playbackBarrier?: RoomPlaybackBarrierClock | null;
   isRoomAway: boolean;
-  awayRoomId: string | null;
   onAwayRoom: () => void;
   onRetryRecovery?: () => void;
   socket: RoomSocket | null;
@@ -71,7 +70,6 @@ export function RoomAppShell({
   roomSnapshot,
   playbackBarrier,
   isRoomAway,
-  awayRoomId,
   onAwayRoom,
   onRetryRecovery,
   socket,
@@ -142,7 +140,6 @@ export function RoomAppShell({
         <RoomWorkspaceSection
           activeSession={activeSession}
           authEntryHref={authEntryHref}
-          awayRoomId={awayRoomId}
           canControlPlayback={canControlPlayback}
           canDeleteRoom={canDeleteRoom}
           canReorderQueue={canReorderQueue}
@@ -152,7 +149,6 @@ export function RoomAppShell({
           initialRoomId={initialRoomId}
           isNavigatingRoomExit={pageState.isNavigatingRoomExit}
           isRecoveringRoom={pageState.isRecoveringRoom}
-          mediaConnectionState={pageState.mediaConnectionState}
           onAwayRoom={onAwayRoom}
           onRetryRecovery={onRetryRecovery}
           onDiagnosticsVisibilityChange={pageState.setIsDiagnosticsPanelOpen}

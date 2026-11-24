@@ -113,7 +113,6 @@ export function useRoomRuntimeLifecycle(input: {
   setIceConfig: Dispatch<SetStateAction<IceConfigResponse | null>>;
   setIceConfigResolved: Dispatch<SetStateAction<boolean>>;
   setIsPageVisible: Dispatch<SetStateAction<boolean>>;
-  setSchedulerMode: Dispatch<SetStateAction<"normal" | "conservative" | "idle">>;
   dispatchRoomStateEvent: Dispatch<RoomStateEvent>;
   deleteRoomTrackArtifacts: (trackIds: string[], roomId?: string, deleteRoomSnapshot?: boolean) => Promise<void> | void;
   recordPeerDiagnostic: PeerDiagnosticRecorder;
@@ -152,7 +151,6 @@ export function useRoomRuntimeLifecycle(input: {
     setIsPageVisible,
     setIsRecoveringRoom,
     setPeerId,
-    setSchedulerMode,
     setStatusMessage,
     setSuppressRoomRecovery,
     suppressRoomRecovery,
@@ -260,7 +258,6 @@ export function useRoomRuntimeLifecycle(input: {
       }
 
       setIsPageVisible(true);
-      setSchedulerMode((current) => (current === "idle" ? "normal" : current));
       recoverRealtimeSession();
     };
 
@@ -285,7 +282,6 @@ export function useRoomRuntimeLifecycle(input: {
     emitPresence,
     requestRoomSnapshotResync,
     setIsPageVisible,
-    setSchedulerMode,
     resubscribeRoomRef
   ]);
 

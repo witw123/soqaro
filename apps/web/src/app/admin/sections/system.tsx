@@ -86,7 +86,7 @@ export function System({ overview }: { overview: AdminOverview | null }) {
             ) : null}
           </div>
           <button
-            className="hover:underline text-[11px]"
+            className="hover:underline text-xs"
             onClick={() => setMaintenanceResult(null)}
           >
             关闭

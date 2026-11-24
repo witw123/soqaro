@@ -135,6 +135,42 @@ describe("AdminService directories", () => {
     const deleted = await service.deleteAnnouncement(admin, "anno_test", fakeReq);
     expect(deleted.ok).toBe(true);
   });
+
+  it("counts track source distribution using sourceType", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        tracks: [
+          { sourceType: "bilibili" },
+          { sourceType: "netease" },
+          { sourceType: "qqmusic" },
+          { sourceType: "local_upload" },
+          { sourceType: "alist" },
+          {}
+        ]
+      }
+    ]);
+    const service = buildService(
+      {
+        ensureAvailable: jest.fn().mockResolvedValue(true),
+        roomState: { findMany }
+      },
+      { isAvailable: () => false },
+      {}
+    );
+
+    const stats = await service.getTrackStats();
+    expect(stats).toEqual({
+      totalTracks: 6,
+      sourceDistribution: {
+        bilibili: 1,
+        netease: 1,
+        qqmusic: 1,
+        local_upload: 1,
+        alist: 1,
+        other: 1
+      }
+    });
+  });
 });
 
 describe("AdminService security hardening", () => {

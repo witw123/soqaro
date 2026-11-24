@@ -74,16 +74,6 @@ export function createRoomRealtimeEventGate(initialSnapshot?: RoomSnapshot | nul
     }
   };
 }
-export function isSocketDisconnectGraceActive(disconnectGraceUntilMs: number | null, now = Date.now()) {
-  return typeof disconnectGraceUntilMs === "number" && disconnectGraceUntilMs > now;
-}
-
-export function shouldSuppressPlaybackWatchdogEscalation(input: {
-  recoverySuppressedReason: string | null;
-  socketDisconnectGraceActive: boolean;
-}) {
-  return input.recoverySuppressedReason !== null || input.socketDisconnectGraceActive;
-}
 
 export function shouldResyncSnapshotForPlaybackPatch(input: {
   currentSnapshot: RoomSnapshot | null | undefined;
@@ -130,13 +120,11 @@ export function shouldExitRoomOnSnapshotMissing(input: {
 export function resolveRoomRealtimeSnapshotInputs(input: {
   roomSnapshot: RoomSnapshot | null;
   activeSessionId: string | null | undefined;
-  fallbackUploadedTrackIds: string[];
 }) {
   const localMemberPresence =
     input.roomSnapshot?.room.members.find((member) => member.id === input.activeSessionId) ??
     null;
-  const snapshotTrackIds =
-    input.roomSnapshot?.tracks.map((track) => track.id) ?? input.fallbackUploadedTrackIds;
+  const snapshotTrackIds = input.roomSnapshot?.tracks.map((track) => track.id) ?? [];
 
   return {
     snapshotRoomId: input.roomSnapshot?.room.id ?? null,

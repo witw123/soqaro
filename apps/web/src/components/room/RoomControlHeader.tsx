@@ -5,9 +5,7 @@ import { createPortal } from "react-dom";
 import { getNewMemberPermissions } from "@soqaro/shared";
 import type {
   RoomMember,
-  RoomMediaConnectionState,
   RoomSnapshot,
-  TrackMeta,
   UpdateRoomRequest
 } from "@soqaro/shared";
 import { Button } from "@/components/ui/button";
@@ -29,29 +27,6 @@ import {
 } from "@/components/icons/DiscoverIcons";
 import { MemberPermissionControls } from "./MembersPanel";
 
-export function getSourceModeLabel(
-  mediaConnectionState: RoomMediaConnectionState,
-  currentTrack: TrackMeta | null
-) {
-  if (!currentTrack) {
-    return "未选择歌曲";
-  }
-
-  if (!currentTrack.playbackAsset) {
-    return "不支持的旧版曲目";
-  }
-  if (mediaConnectionState === "failed") {
-    return "音源暂不可用";
-  }
-  if (mediaConnectionState === "connecting" || mediaConnectionState === "reconnecting") {
-    return "正在连接音源";
-  }
-  if (mediaConnectionState === "buffering") {
-    return "等待 RTP Opus 媒体轨道";
-  }
-  return "WebRTC RTP Opus 播放";
-}
-
 function buildRoomEditForm(roomSnapshot: RoomSnapshot): UpdateRoomRequest {
   return {
     visibility: roomSnapshot.room.visibility,
@@ -64,8 +39,6 @@ function buildRoomEditForm(roomSnapshot: RoomSnapshot): UpdateRoomRequest {
 
 export type RoomControlHeaderProps = {
   roomSnapshot: RoomSnapshot;
-  mediaConnectionState?: RoomMediaConnectionState;
-  currentTrack?: TrackMeta | null;
   host?: RoomMember;
   canDeleteRoom?: boolean;
   canDisbandRoom?: boolean;
@@ -83,8 +56,6 @@ export type RoomControlHeaderProps = {
 
 export function RoomControlHeader({
   roomSnapshot,
-  mediaConnectionState: _mediaConnectionState = "live",
-  currentTrack: _currentTrack = null,
   host: propHost,
   canDeleteRoom = false,
   canDisbandRoom = false,

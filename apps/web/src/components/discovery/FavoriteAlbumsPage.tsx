@@ -533,9 +533,42 @@ function FavoriteArtistsSection({
   onRemove: (artist: ProviderArtistFavorite) => Promise<void>;
 }) {
   if (artists.length === 0) {
-    return <div className="mt-6 flex min-h-64 flex-col items-center justify-center border border-dashed border-surface-border px-6 text-center"><p className="text-sm font-medium text-foreground-muted">还没有收藏歌手</p><p className="mt-2 text-xs text-foreground-muted">可在设置中选择导入平台关注的歌手。</p></div>;
+    return (
+      <div className="mt-6 flex min-h-64 flex-col items-center justify-center border border-dashed border-surface-border px-6 text-center">
+        <p className="text-sm font-medium text-foreground-muted">还没有收藏歌手</p>
+        <p className="mt-2 text-xs text-foreground-muted">可在设置中选择导入平台关注的歌手。</p>
+      </div>
+    );
   }
-  return <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">{artists.map((artist) => <article className="group relative min-w-0" key={artist.id}><div className="aspect-square overflow-hidden rounded-full border border-surface-border bg-surface"><AlbumArtwork alt={artist.name} className="h-full w-full" src={artist.artworkUrl} /></div><strong className="mt-3 block truncate text-center text-sm font-semibold text-foreground">{artist.name}</strong><p className="mt-1 text-center text-xs text-foreground-muted">{artist.provider === "netease" ? "网易云音乐" : "QQ 音乐"}</p><Button aria-label={`取消收藏 ${artist.name}`} className="absolute right-1 top-1 h-10 w-10 bg-black/60 text-white/80 opacity-100 backdrop-blur-sm transition-opacity hover:bg-red-500/80 hover:text-white focus-visible:opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100" disabled={pending !== null} onClick={() => void onRemove(artist)} size="icon" title="取消收藏" type="button" variant="ghost"><HeartIcon filled /></Button></article>)}</section>;
+  return (
+    <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
+      {artists.map((artist) => (
+        <article className="group relative min-w-0" key={artist.id}>
+          <div className="aspect-square overflow-hidden rounded-full border border-surface-border bg-surface">
+            <AlbumArtwork alt={artist.name} className="h-full w-full" src={artist.artworkUrl} />
+          </div>
+          <strong className="mt-3 block truncate text-center text-sm font-semibold text-foreground">
+            {artist.name}
+          </strong>
+          <p className="mt-1 text-center text-xs text-foreground-muted">
+            {artist.provider === "netease" ? "网易云音乐" : "QQ 音乐"}
+          </p>
+          <Button
+            aria-label={`取消收藏 ${artist.name}`}
+            className="absolute right-1 top-1 h-10 w-10 bg-black/60 text-white/80 opacity-100 backdrop-blur-sm transition-opacity hover:bg-red-500/80 hover:text-white focus-visible:opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100"
+            disabled={pending !== null}
+            onClick={() => void onRemove(artist)}
+            size="icon"
+            title="取消收藏"
+            type="button"
+            variant="ghost"
+          >
+            <HeartIcon filled />
+          </Button>
+        </article>
+      ))}
+    </section>
+  );
 }
 
 function FavoriteTracksSection({

@@ -267,15 +267,11 @@ export function SoqaroApp({
     resetPeerDiagnostics,
     roomSnapshot,
     setAvailableRooms: pageState.setAvailableRooms,
-    setBufferHealth: pageState.setBufferHealth,
     setIsNavigatingRoomExit: pageState.setIsNavigatingRoomExit,
     setMediaConnectedPeers: pageState.setMediaConnectedPeers,
-    setMediaConnectionState: pageState.setMediaConnectionState,
     setPeerId,
-    setPlaybackStartRequest: pageState.setPlaybackStartRequest,
     setPlayerResetEpoch: pageState.setPlayerResetEpoch,
     setPlaylists: pageState.setPlaylists,
-    setRoomRecoveryState: pageState.setRoomRecoveryState,
     setStatusMessage,
     setSuppressRoomRecovery: pageState.setSuppressRoomRecovery,
   });
@@ -297,10 +293,8 @@ export function SoqaroApp({
     currentRoomRef: appRefs.currentRoomRef,
     peerId,
     setPeerId,
-    connectedPeers: pageState.connectedPeers,
     setConnectedPeers: pageState.setConnectedPeers,
     setMediaConnectedPeers: pageState.setMediaConnectedPeers,
-    setPlaybackReadiness: pageState.setPlaybackReadiness,
     suppressRoomRecovery: pageState.suppressRoomRecovery,
     setSuppressRoomRecovery: pageState.setSuppressRoomRecovery,
     setIsRecoveringRoom: pageState.setIsRecoveringRoom,
@@ -312,14 +306,7 @@ export function SoqaroApp({
     setIceConfigResolved: pageState.setIceConfigResolved,
     isPageVisible: pageState.isPageVisible,
     setIsPageVisible: pageState.setIsPageVisible,
-    schedulerMode: pageState.schedulerMode,
-    setSchedulerMode: pageState.setSchedulerMode,
-    bufferHealth: pageState.bufferHealth,
-    audioUnlocked: pageState.audioUnlocked,
-    roomRecoveryState: pageState.roomRecoveryState,
-    setRoomRecoveryState: pageState.setRoomRecoveryState,
     recordPeerDiagnostic,
-    deleteUploadedTrackArtifacts: uploads.deleteUploadedTrackArtifacts,
     deleteRoomTrackArtifacts: uploads.deleteRoomTrackArtifacts,
     socketRef: appRefs.socketRef,
     localAudibleRef,
@@ -340,13 +327,9 @@ export function SoqaroApp({
     restartMediaPeer: roomRuntime.restartMediaPeer,
     subscribeRemoteAudioTrack: roomRuntime.subscribeRemoteAudioTrack,
     onPlaybackEnded: roomActions.nextTrack,
-    setMediaConnectionState: pageState.setMediaConnectionState,
-    setSourceStartState: pageState.setSourceStartState,
-    setLastSourceStartError: pageState.setLastSourceStartError,
     setStatusMessage,
     recordPeerDiagnostic,
     audibleRef: localAudibleRef,
-    playbackReadiness: pageState.playbackReadiness,
     publishPlaybackReadiness,
     activeSessionId: activeSession?.userId ?? null
   });
@@ -361,9 +344,6 @@ export function SoqaroApp({
     audioRef: appRefs.audioRef,
     roomSnapshot,
     currentPlaybackTrackId: pageDerived.currentPlaybackTrackId,
-    playbackMediaEpoch: pageDerived.playbackMediaEpoch,
-    playbackQueueVersion: pageDerived.playbackQueueVersion,
-    playbackRevision: pageDerived.playbackRevision,
     playbackStatus: pageDerived.playbackStatus,
     isCurrentSourceOwner: pageDerived.isCurrentSourceOwner,
     audioUnlocked: pageState.audioUnlocked,
@@ -376,8 +356,6 @@ export function SoqaroApp({
     recordPeerDiagnostic,
     setAudioBlockedOverlay: pageState.setAudioBlockedOverlay,
     setAudioUnlocked: pageState.setAudioUnlocked,
-    setLastSourceStartError: pageState.setLastSourceStartError,
-    setPlaybackStartRequest: pageState.setPlaybackStartRequest,
     setStatusMessage
   });
   useRoomPlaybackEffects({
@@ -430,7 +408,6 @@ export function SoqaroApp({
       playbackBarrier={segmentedPlayback.playbackBarrier}
       socket={appRefs.socketRef.current}
       isRoomAway={isRoomAway}
-      awayRoomId={isRoomAway ? currentRoomId : null}
       onAwayRoom={handleAwayRoom}
       onRetryRecovery={roomRuntime.retryRoomRecovery}
       statusMessage={statusMessage}

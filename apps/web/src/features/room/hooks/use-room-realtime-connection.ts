@@ -6,15 +6,13 @@ export {
   buildRoomSubscribePayload,
   createRoomRealtimeEventGate,
   isSoloRoomPlaybackOverdue,
-  isSocketDisconnectGraceActive,
   resolvePresenceRepairAction,
   resolveRoomRealtimeSnapshotInputs,
   resolveRoomSnapshotWatchdogAction,
   shouldAcceptIncomingPeerSignal,
   shouldExitRoomOnSnapshotMissing,
   shouldResubscribeAfterPresenceOutcome,
-  shouldResyncSnapshotForPlaybackPatch,
-  shouldSuppressPlaybackWatchdogEscalation
+  shouldResyncSnapshotForPlaybackPatch
 } from "./room-realtime-policy";
 export {
   createRoomRealtimeRuntime,

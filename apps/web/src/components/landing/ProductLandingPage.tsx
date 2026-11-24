@@ -48,7 +48,7 @@ const roomModes = [
     subtitle: "Radio / On-Air Broadcast",
     badge: "广播策展",
     badgeTone: "border-teal-500/30 bg-teal-500/10 text-teal-400",
-    description: "适合个人音乐广播、深夜声波漫游与策展分享。房主独占播控权并开启自动续播探索，全员沉浸在连续不间断的流动声波中，支持实时打 Call 互动互动。",
+    description: "适合个人音乐广播、深夜声波漫游与策展分享。房主独占播控权并开启自动续播探索，全员沉浸在连续不间断的流动声波中，支持实时打 Call 互动。",
     highlights: [
       "主理人广播策展，智能自动续播",
       "轻量打 Call 浮动粒子实时同屏反馈",

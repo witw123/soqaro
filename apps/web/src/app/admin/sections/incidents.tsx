@@ -125,7 +125,7 @@ export function Incidents({ rows, onRefresh }: { rows: AdminIncident[]; onRefres
               <tr key={row.id} className="hover:bg-surface-border/15 transition-colors">
                 <td className="py-2 px-3">
                   <span
-                    className={`inline-block px-1.5 py-0.2 rounded text-[11px] font-mono border-[0.5px] ${
+                    className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono border-[0.5px] ${
                       row.severity === "CRITICAL"
                         ? "border-radix-red-6 bg-radix-red-3 text-radix-red-11"
                         : "border-radix-amber-6 bg-radix-amber-3 text-radix-amber-11"

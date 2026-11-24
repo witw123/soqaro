@@ -105,7 +105,7 @@ export function Overview({
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-foreground-muted">{item.label}</span>
-                  <span className={`px-1.5 py-0.2 rounded text-[11px] font-mono border-[0.5px] ${item.badgeColor}`}>
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-mono border-[0.5px] ${item.badgeColor}`}>
                     {percentage}%
                   </span>
                 </div>

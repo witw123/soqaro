@@ -179,7 +179,7 @@ export function ProviderSearchPage({
   }, [initialProvider]);
 
   useEffect(() => {
-    if (!searchSuggestionsOpen) {
+    if (!searchSuggestionsOpen || provider === "bilibili") {
       setRemoteSuggestions([]);
       setRemoteHotWords([]);
       return;

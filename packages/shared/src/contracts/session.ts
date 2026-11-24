@@ -19,6 +19,3 @@ export const authSessionSchema = z.object({
 
 export type UserProfile = z.infer<typeof userProfileSchema>;
 export type AuthSession = z.infer<typeof authSessionSchema>;
-
-// Legacy alias kept to reduce migration churn across internal modules.
-export type GuestSession = AuthSession;

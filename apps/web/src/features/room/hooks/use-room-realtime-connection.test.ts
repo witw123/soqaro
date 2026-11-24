@@ -8,14 +8,12 @@ import {
   createRoomRealtimeEventGate,
   createRoomRealtimeRuntime,
   isSoloRoomPlaybackOverdue,
-  isSocketDisconnectGraceActive,
   shouldExitRoomOnSnapshotMissing,
   resolvePresenceRepairAction,
   resolveRoomRealtimeSnapshotInputs,
   resolveRoomSnapshotWatchdogAction,
   shouldResubscribeAfterPresenceOutcome,
-  shouldResyncSnapshotForPlaybackPatch,
-  shouldSuppressPlaybackWatchdogEscalation
+  shouldResyncSnapshotForPlaybackPatch
 } from "./use-room-realtime-connection";
 import { resolveRoomSnapshotWatchdogAction as resolveRoomSnapshotWatchdogActionFromPolicy } from "./room-realtime-policy";
 import { createRoomRealtimeRuntime as createRoomRealtimeRuntimeFromRuntime } from "./room-realtime-runtime";
@@ -88,44 +86,6 @@ describe("room realtime event gate", () => {
     expect(gate.acceptPresenceRevision(10, currentSnapshot, false, 0)).toBe(false);
     expect(gate.acceptPlayback(newerPlayback, currentSnapshot).accepted).toBe(true);
     expect(gate.acceptPlayback(stalePlayback, currentSnapshot).accepted).toBe(false);
-  });
-});
-describe("isSocketDisconnectGraceActive", () => {
-  it("stays active before the grace window expires", () => {
-    expect(isSocketDisconnectGraceActive(12_000, 10_000)).toBe(true);
-  });
-
-  it("stops being active after the grace window expires", () => {
-    expect(isSocketDisconnectGraceActive(12_000, 12_001)).toBe(false);
-    expect(isSocketDisconnectGraceActive(null, 12_001)).toBe(false);
-  });
-});
-describe("shouldSuppressPlaybackWatchdogEscalation", () => {
-  it("suppresses watchdog escalation while the page is backgrounded", () => {
-    expect(
-      shouldSuppressPlaybackWatchdogEscalation({
-        recoverySuppressedReason: "page-hidden",
-        socketDisconnectGraceActive: false
-      })
-    ).toBe(true);
-  });
-
-  it("suppresses watchdog escalation during socket disconnect grace", () => {
-    expect(
-      shouldSuppressPlaybackWatchdogEscalation({
-        recoverySuppressedReason: null,
-        socketDisconnectGraceActive: true
-      })
-    ).toBe(true);
-  });
-
-  it("allows escalation once no suppression signal remains", () => {
-    expect(
-      shouldSuppressPlaybackWatchdogEscalation({
-        recoverySuppressedReason: null,
-        socketDisconnectGraceActive: false
-      })
-    ).toBe(false);
   });
 });
 
@@ -296,14 +256,12 @@ describe("resolveRoomRealtimeSnapshotInputs", () => {
     expect(
       resolveRoomRealtimeSnapshotInputs({
         roomSnapshot: clonedSnapshot,
-        activeSessionId: "user_1",
-        fallbackUploadedTrackIds: []
+        activeSessionId: "user_1"
       })
     ).toEqual(
       resolveRoomRealtimeSnapshotInputs({
         roomSnapshot: snapshot,
-        activeSessionId: "user_1",
-        fallbackUploadedTrackIds: []
+        activeSessionId: "user_1"
       })
     );
   });

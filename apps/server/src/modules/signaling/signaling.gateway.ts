@@ -227,7 +227,10 @@ export class SignalingGateway implements OnGatewayInit, OnGatewayConnection, OnG
     await this.assertRoomMemberForSocket(report.roomId, report.sessionId);
     const rateKey = `${report.roomId}:${report.peerId}`;
     const now = Date.now();
-    if (now - (this.telemetryLastReportAt.get(rateKey) ?? 0) < 5_000) { this.metrics.incrementDiagnosticsRateLimited(); return { ok: false, rateLimited: true }; }
+    if (now - (this.telemetryLastReportAt.get(rateKey) ?? 0) < 5_000) {
+      this.metrics.incrementDiagnosticsRateLimited();
+      return { ok: false, rateLimited: true };
+    }
     if (this.telemetryLastReportAt.size >= 4_096) {
       // Entries are only ever written; without a sweep the map grows with
       // every room/peer combination the process has ever seen.

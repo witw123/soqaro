@@ -13,7 +13,6 @@ import {
   NetworkPlaylistCard,
   PlaylistDetailView,
   tracksForLocalPlaylist,
-  resolveLegacyNetworkPlaylistArtwork,
   getPlaylistArtworkCandidates,
   uniqueArtworkUrls,
   getNetworkPlaylistSource,
@@ -359,12 +358,10 @@ export function PlaylistsWorkspacePage({
               ...cachedArtwork
             ]);
           } catch {
-            const legacyArtwork = await resolveLegacyNetworkPlaylistArtwork(playlist, roomTrackIndex);
-            artworkUrls = uniqueArtworkUrls([...cachedArtwork, ...legacyArtwork]);
+            artworkUrls = uniqueArtworkUrls(cachedArtwork);
           }
         } else {
-          const legacyArtwork = await resolveLegacyNetworkPlaylistArtwork(playlist, roomTrackIndex);
-          artworkUrls = uniqueArtworkUrls([...cachedArtwork, ...legacyArtwork]);
+          artworkUrls = uniqueArtworkUrls(cachedArtwork);
         }
 
         if (!cancelled && artworkUrls.length > 0) {

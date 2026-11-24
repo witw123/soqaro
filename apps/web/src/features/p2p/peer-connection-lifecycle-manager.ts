@@ -2037,15 +2037,10 @@ export class PeerConnectionLifecycleManager {
     // for diagnostics and recovery, but must not make a playing room silently
     // change its audio quality from one stats window to the next.
     if (localSourceIsActive && entry.audioSender) {
-      entry.adaptiveAudioMaxBitrateKbps = null;
       const stableBitrateKbps = this.resolveLocalAudioBitrateKbps();
       if (entry.appliedAudioBitrateKbps !== stableBitrateKbps) {
         void this.applyAudioSenderParameters(entry.audioSender, stableBitrateKbps);
       }
-    } else if (entry.adaptiveAudioMaxBitrateKbps !== null) {
-      // The local source is no longer sending to this peer; drop the override
-      // so the next reconcile returns to the stable room target.
-      entry.adaptiveAudioMaxBitrateKbps = null;
     }
     const reason = (
       (receivePacketOutage && state.noPacketWindows >= mediaNoReceiveRecoveryWindows) ||

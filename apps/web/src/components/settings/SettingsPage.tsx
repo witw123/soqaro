@@ -1350,7 +1350,7 @@ export function SettingsPage() {
             type="button"
           >
             <span>全部结果</span>
-            <span className="rounded-full bg-surface-hover px-1.5 py-0.2 text-xs tabular-nums font-mono">
+            <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-xs tabular-nums font-mono">
               {matchingItems.length}
             </span>
           </button>
@@ -1384,7 +1384,7 @@ export function SettingsPage() {
               <cat.icon className="h-3.5 w-3.5" />
               <span>{cat.label}</span>
               {isSearching ? (
-                <span className="rounded-full bg-surface-hover px-1.5 py-0.2 text-xs tabular-nums font-mono">
+                <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-xs tabular-nums font-mono">
                   {matchCount}
                 </span>
               ) : null}

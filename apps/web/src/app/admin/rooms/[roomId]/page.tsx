@@ -1,9 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { RoomChatMessage } from "@soqaro/shared";
 import { adminApi, AdminApiError, ADMIN_CONFIRM_REASON, type AdminRoomDetail } from "@/lib/network/admin-api";
+import {
+  DataList,
+  DataPanel,
+  DetailRow,
+  HealthText,
+  InfoPanel,
+  Metric,
+  PanelHeader,
+  formatDateTime,
+  translatePlayback,
+  translateStatus
+} from "../../ui";
 
 type RoomMember = { id?: string; nickname?: string; peerId?: string | null; presenceState?: string; role?: string; joinedAt?: string };
 type JsonRecord = Record<string, unknown>;
@@ -129,7 +141,7 @@ export default function AdminRoomDetailPage() {
   if (error) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-xs text-red-400 flex flex-col gap-2 max-w-md">
+        <div className="rounded-lg border-[0.5px] border-radix-red-6 bg-radix-red-3 p-4 text-xs text-radix-red-11 flex flex-col gap-2 max-w-md">
           <p>{error}</p>
           <button className="underline hover:no-underline text-left text-foreground font-medium" onClick={() => void load()}>
             重新尝试
@@ -157,7 +169,7 @@ export default function AdminRoomDetailPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="h-12 border-b border-surface-border px-6 flex items-center justify-between bg-surface/50 backdrop-blur-sm sticky top-0 z-20">
+      <header className="h-12 border-b-[0.5px] border-[var(--slate-6)] px-6 flex items-center justify-between bg-surface/50 backdrop-blur-sm sticky top-0 z-20">
         <button
           className="inline-flex items-center gap-1.5 text-xs text-foreground-muted hover:text-foreground transition-colors"
           onClick={() => router.back()}
@@ -166,11 +178,11 @@ export default function AdminRoomDetailPage() {
         </button>
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 text-xs font-mono text-foreground-muted">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-radix-green-9" />
             {refreshing ? "同步中" : "实时数据"}
           </span>
           <button
-            className="h-7 px-2.5 rounded border border-surface-border bg-surface hover:bg-surface-border/40 text-xs text-foreground transition-colors disabled:opacity-50"
+            className="h-7 px-2.5 rounded border-[0.5px] border-[var(--slate-6)] bg-surface hover:bg-surface-border/40 text-xs text-foreground transition-colors disabled:opacity-50"
             onClick={() => void load()}
             disabled={refreshing}
           >
@@ -181,8 +193,7 @@ export default function AdminRoomDetailPage() {
 
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         <div>
-          <span className="text-xs font-mono font-medium text-[var(--accent,#3b82f6)]">房间监测 / 治理控制</span>
-          <div className="flex items-baseline gap-3 mt-1">
+          <div className="flex items-baseline gap-3">
             <h1 className="text-xl font-mono font-semibold tracking-tight text-foreground">{room.joinCode}</h1>
             <span className="text-sm text-foreground-muted">{room.name ?? "未命名房间"}</span>
           </div>
@@ -197,18 +208,18 @@ export default function AdminRoomDetailPage() {
         </section>
 
         {controlMessage ? (
-          <div className="rounded-lg border border-surface-border bg-surface-border/20 p-2.5 text-xs text-foreground" role="status">
+          <div className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface-border/20 p-2.5 text-xs text-foreground" role="status">
             {controlMessage}
           </div>
         ) : null}
 
         {/* 房间治理与播放控制 */}
-        <section className="rounded-lg border border-surface-border bg-surface p-4">
+        <section className="rounded-lg border-[0.5px] border-[var(--slate-6)] bg-surface overflow-hidden">
           <PanelHeader title="房间管控与干预" hint="远程播放调度、违规清理与解散" />
-          <div className="mt-3.5 space-y-3">
+          <div className="p-3.5 space-y-3">
             <div className="flex flex-wrap items-center gap-2.5">
               <button
-                className="h-7 px-3 rounded border border-surface-border bg-surface hover:bg-surface-border/40 text-xs text-foreground transition-colors disabled:opacity-50"
+                className="h-7 px-3 rounded border-[0.5px] border-[var(--slate-6)] bg-surface hover:bg-surface-border/40 text-xs text-foreground transition-colors disabled:opacity-50"
                 onClick={() => void runPlaybackControl(isPlaying ? "pause" : "play")}
                 disabled={playbackBusy}
               >
@@ -216,7 +227,7 @@ export default function AdminRoomDetailPage() {
               </button>
 
               <button
-                className="h-7 px-3 rounded border border-surface-border bg-surface hover:bg-surface-border/40 text-xs text-foreground transition-colors disabled:opacity-50"
+                className="h-7 px-3 rounded border-[0.5px] border-[var(--slate-6)] bg-surface hover:bg-surface-border/40 text-xs text-foreground transition-colors disabled:opacity-50"
                 onClick={() => void runPlaybackControl("next")}
                 disabled={playbackBusy}
               >
@@ -224,17 +235,17 @@ export default function AdminRoomDetailPage() {
               </button>
 
               <button
-                className="h-7 px-3 rounded border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs transition-colors disabled:opacity-50"
+                className="h-7 px-3 rounded border-[0.5px] border-radix-amber-6 bg-radix-amber-3 hover:opacity-90 text-radix-amber-11 text-xs transition-colors disabled:opacity-50"
                 onClick={() => void runPlaybackControl("clear-queue")}
                 disabled={playbackBusy}
               >
                 清空队列
               </button>
 
-              <div className="h-4 w-px bg-surface-border mx-1" />
+              <div className="h-4 w-px bg-[var(--slate-6)] mx-1" />
 
               <button
-                className="h-7 px-3 rounded border border-red-500/30 hover:bg-red-500/10 text-red-400 text-xs font-medium transition-colors"
+                className="h-7 px-3 rounded border-[0.5px] border-radix-red-6 hover:bg-radix-red-3 text-radix-red-11 text-xs font-medium transition-colors"
                 onClick={() => { setAction("terminate"); setActionError(""); }}
               >
                 结束房间
@@ -242,25 +253,25 @@ export default function AdminRoomDetailPage() {
             </div>
 
             {action === "terminate" ? (
-              <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3.5 flex flex-col gap-3">
+              <div className="rounded-md border-[0.5px] border-radix-red-6 bg-radix-red-3/50 p-3.5 flex flex-col gap-3">
                 <div>
-                  <strong className="text-xs font-semibold text-red-400">确认永久结束此房间</strong>
+                  <strong className="text-xs font-semibold text-radix-red-11">确认永久结束此房间</strong>
                   <p className="mt-0.5 text-xs text-foreground-muted">结束后会清理房间状态、播放队列，并通知在线成员断开退出。</p>
                 </div>
                 <div className="text-xs text-foreground-muted">
                   目标房间：<span className="font-mono font-medium text-foreground">{room.joinCode}</span> / {room.name ?? "未命名房间"}
                 </div>
-                {actionError ? <p className="text-xs text-red-400">{actionError}</p> : null}
+                {actionError ? <p className="text-xs text-radix-red-11">{actionError}</p> : null}
                 <div className="flex items-center gap-2">
                   <button
-                    className="h-7 px-3 rounded border border-surface-border bg-surface hover:bg-surface-border/40 text-xs transition-colors"
+                    className="h-7 px-3 rounded border-[0.5px] border-[var(--slate-6)] bg-surface hover:bg-surface-border/40 text-xs transition-colors"
                     onClick={() => { setAction(null); setActionError(""); }}
                     disabled={actionBusy}
                   >
                     取消
                   </button>
                   <button
-                    className="h-7 px-3 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors disabled:opacity-50"
+                    className="h-7 px-3 rounded bg-radix-red-9 hover:opacity-90 text-white text-xs font-medium transition-colors disabled:opacity-50"
                     onClick={() => void confirmTerminate()}
                     disabled={actionBusy}
                   >
@@ -314,14 +325,14 @@ export default function AdminRoomDetailPage() {
                       <div className="font-medium text-foreground">{member.nickname ?? member.id ?? "未知"}</div>
                       <div className="text-xs font-mono text-foreground-muted">{member.id ?? "-"}</div>
                     </td>
-                    <td className="py-2.5 px-3"><State value={member.presenceState ?? "offline"} /></td>
+                    <td className="py-2.5 px-3"><HealthText value={member.presenceState ?? "offline"} /></td>
                     <td className="py-2.5 px-3 font-mono text-foreground-muted">{member.peerId ?? "-"}</td>
                     <td className="py-2.5 px-3 font-mono text-foreground-muted">{member.role === "host" ? "房主" : "成员"}</td>
                     <td className="py-2.5 px-3 font-mono text-foreground-muted">{formatDateTime(member.joinedAt)}</td>
                     <td className="py-2.5 px-3 text-right">
                       {member.id ? (
                         <button
-                          className="rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                          className="rounded border-[0.5px] border-radix-red-6 bg-radix-red-3 px-2 py-0.5 text-xs text-radix-red-11 hover:opacity-90 transition-colors disabled:opacity-50"
                           onClick={() => void kickMember(member.id!)}
                           disabled={kickingMemberId === member.id}
                         >
@@ -342,7 +353,7 @@ export default function AdminRoomDetailPage() {
 
         {/* 房间聊天内容审查面板 */}
         <DataPanel title="房间聊天审查" hint={`最近 ${chatMessages.length} 条发言`}>
-          <div className="divide-y divide-surface-border/50 max-h-72 overflow-y-auto">
+          <div className="divide-y divide-[var(--slate-6)]/60 max-h-72 overflow-y-auto">
             {chatMessages.length ? (
               chatMessages.map((msg) => (
                 <div key={msg.id} className="p-3 flex items-start justify-between gap-3 text-xs hover:bg-surface-border/10 transition-colors">
@@ -356,7 +367,7 @@ export default function AdminRoomDetailPage() {
                     <p className="mt-1 text-xs text-foreground-muted break-words">{msg.content}</p>
                   </div>
                   <button
-                    className="rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors shrink-0 disabled:opacity-50"
+                    className="rounded border-[0.5px] border-radix-red-6 bg-radix-red-3 px-2 py-0.5 text-xs text-radix-red-11 hover:opacity-90 transition-colors shrink-0 disabled:opacity-50"
                     onClick={() => void deleteChatMessage(msg.id)}
                     disabled={deletingMessageId === msg.id}
                   >
@@ -405,92 +416,6 @@ export default function AdminRoomDetailPage() {
       </div>
     </main>
   );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-surface-border bg-surface p-3.5">
-      <div className="text-xs font-mono text-foreground-muted">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-foreground tracking-tight">{value}</div>
-    </div>
-  );
-}
-
-function PanelHeader({ title, hint }: { title: string; hint?: string }) {
-  return (
-    <div className="flex items-center justify-between border-b border-surface-border pb-3">
-      <h2 className="text-xs font-semibold text-foreground tracking-tight">{title}</h2>
-      {hint ? <span className="text-xs font-mono text-foreground-muted">{hint}</span> : null}
-    </div>
-  );
-}
-
-function InfoPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-surface-border bg-surface p-4">
-      <PanelHeader title={title} />
-      <div className="mt-3 divide-y divide-surface-border/50">{children}</div>
-    </section>
-  );
-}
-
-function DataPanel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-surface-border bg-surface p-4 overflow-hidden">
-      <PanelHeader title={title} hint={hint} />
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
-
-function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between py-2 text-xs">
-      <span className="text-foreground-muted">{label}</span>
-      <span className={`text-foreground font-medium ${mono ? "font-mono" : ""}`}>{value}</span>
-    </div>
-  );
-}
-
-function DataList<T>({ rows, empty, render }: { rows: T[]; empty: string; render: (item: T, index: number) => ReactNode }) {
-  if (!rows.length) {
-    return <div className="p-6 text-center text-xs text-foreground-muted">{empty}</div>;
-  }
-  return <div className="divide-y divide-surface-border/50">{rows.map((row, index) => render(row, index))}</div>;
-}
-
-function State({ value }: { value: string }) {
-  const isOnline = value === "online";
-  const isReconnecting = value === "reconnecting";
-  return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-xs">
-      <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-500" : isReconnecting ? "bg-amber-500" : "bg-zinc-500"}`} />
-      <span className={isOnline ? "text-emerald-400" : isReconnecting ? "text-amber-400" : "text-foreground-muted"}>
-        {translatePresence(value)}
-      </span>
-    </span>
-  );
-}
-
-function translatePresence(value: string) {
-  const labels: Record<string, string> = { online: "在线", reconnecting: "重连中", offline: "离线" };
-  return labels[value.toLowerCase()] ?? value;
-}
-
-function translateStatus(value: string) {
-  const labels: Record<string, string> = { healthy: "健康", degraded: "降级", critical: "严重", unknown: "未知" };
-  return labels[value.toLowerCase()] ?? value;
-}
-
-function translatePlayback(value: string) {
-  const labels: Record<string, string> = { playing: "播放中", paused: "已暂停", stopped: "已停止", idle: "空闲" };
-  return labels[value.toLowerCase()] ?? value;
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function asRecord(value: unknown): JsonRecord {

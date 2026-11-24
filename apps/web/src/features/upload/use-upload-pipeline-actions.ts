@@ -1,7 +1,7 @@
 import { useCallback, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type {
+  AuthSession,
   BilibiliTrackCandidate,
-  GuestSession,
   NeteaseTrackCandidate,
   ProviderTrackCandidate,
   QqMusicTrackCandidate,
@@ -48,7 +48,7 @@ import { importProviderTracks } from "./provider-import-pipeline";
 import { importTaskStore, mapAssetPreparationProgress } from "./import-task-store";
 
 type UploadPipelineActionsInput = {
-  activeSession: GuestSession | null;
+  activeSession: AuthSession | null;
   dispatchRoomStateEvent: Dispatch<RoomStateEvent>;
   inFlightUploadHashesRef: MutableRefObject<Set<string>>;
   refreshCacheLibrary: () => Promise<void>;
@@ -57,7 +57,6 @@ type UploadPipelineActionsInput = {
   setUploadedTracks: Dispatch<
     SetStateAction<Record<string, UploadedTrack>>
   >;
-  uploadedTracks: Record<string, UploadedTrack>;
 };
 
 export function useUploadPipelineActions({

@@ -247,7 +247,7 @@ export function Users({ users, onRefresh }: { users: AdminUserSummary[]; onRefre
                   </td>
                   <td className="py-2 px-3">
                     <span
-                      className={`inline-block px-1.5 py-0.2 rounded text-[11px] font-mono border-[0.5px] ${
+                      className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono border-[0.5px] ${
                         isAdmin
                           ? "border-radix-amber-6 bg-radix-amber-3 text-radix-amber-11"
                           : "border-[var(--slate-6)] bg-surface text-foreground-muted"

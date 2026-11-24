@@ -79,12 +79,12 @@ describe("BilibiliApiClient SSRF protections", () => {
       expect.any(Object),
       expect.any(Number),
       isAllowedBilibiliSubtitleHost,
-      { maxRedirects: 2 }
+      { maxRedirects: 2, allowSyntheticDns: true }
     );
   });
 
   it("rejects non-200/206 responses in fetchAudioStream instead of returning error bodies", async () => {
-    jest
+    const spy = jest
       .spyOn(providerFetch, "fetchProviderUrl")
       .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
       .mockResolvedValueOnce(new Response("still forbidden", { status: 403 }));
@@ -93,5 +93,12 @@ describe("BilibiliApiClient SSRF protections", () => {
     await expect(
       client.fetchAudioStream(["http://upos-sz-mirrorcos.bilivideo.com/track.m4s"])
     ).rejects.toThrow("non-200/206");
+    expect(spy).toHaveBeenCalledWith(
+      new URL("https://upos-sz-mirrorcos.bilivideo.com/track.m4s"),
+      expect.any(Object),
+      expect.any(Number),
+      expect.any(Function),
+      { maxRedirects: 3, allowNonStandardPorts: true, allowSyntheticDns: true }
+    );
   });
 });

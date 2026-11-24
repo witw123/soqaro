@@ -447,6 +447,56 @@ export async function getRoomLocalAudioFile(input: {
   return null;
 }
 
+/**
+ * Evict disposable browser/directory cache entries for a room track (for example
+ * when an earlier provider download cached a 30s VIP trial preview). Never
+ * deletes formally saved user library files.
+ */
+export async function evictRoomLocalAudioCache(input: {
+  fileHash: string;
+  provider?: "netease" | "qqmusic" | "bilibili" | "alist";
+  providerTrackId?: string | null;
+}) {
+  const candidateHashes = new Set<string>();
+  if (input.fileHash) {
+    candidateHashes.add(input.fileHash);
+  }
+  if (input.provider && input.providerTrackId) {
+    const [providerSummary, providerCache] = await Promise.all([
+      typeof getCachedLibraryTrackSummaryByProviderTrack === "function"
+        ? getCachedLibraryTrackSummaryByProviderTrack(
+            input.provider,
+            input.providerTrackId
+          ).catch(() => null)
+        : Promise.resolve(null),
+      getCachedLibraryTrackByProviderTrack(
+        input.provider,
+        input.providerTrackId
+      ).catch(() => null)
+    ]);
+    if (providerSummary?.fileHash) {
+      candidateHashes.add(providerSummary.fileHash);
+    }
+    if (providerCache?.fileHash) {
+      candidateHashes.add(providerCache.fileHash);
+    }
+  }
+
+  const repository = await getConfiguredLocalRepository();
+  for (const hash of candidateHashes) {
+    await deleteLocalAudioCacheFile(hash, {
+      repository: repository ?? undefined,
+      requestPermission: false
+    }).catch(() => undefined);
+    const hasSavedFile = Boolean(await getLocalAudioFileRecord(hash, "saved").catch(() => null));
+    if (hasSavedFile) {
+      await deleteCachedLibraryTrackFile(hash).catch(() => undefined);
+    } else {
+      await deleteCachedLibraryTrack(hash).catch(() => undefined);
+    }
+  }
+}
+
 export async function getLocalAudioCacheFile(fileHash: string, openedRepository?: LocalRepository | null) {
   const [directory, fileRecord] = await Promise.all([
     getLocalAudioDirectory(),

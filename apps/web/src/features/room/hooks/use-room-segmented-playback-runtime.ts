@@ -18,7 +18,10 @@ import { roomMediaPlaybackStore } from "@/features/room/playback/room-media-play
 import { createPlaybackMediaSession } from "@/features/playback/playback-media-session";
 import { roomAudioOutput } from "@/features/playback/room-audio-output";
 import { getRoomPlaybackClockNowMs } from "@/features/playback/room-playback-clock";
-import { getRoomLocalAudioFile } from "@/features/library/local-audio-storage";
+import {
+  evictRoomLocalAudioCache,
+  getRoomLocalAudioFile
+} from "@/features/library/local-audio-storage";
 import { cacheLibraryChangedEventName } from "@/features/library/cache-library";
 import { storageRootChangedEvent } from "@/features/library/storage-root-events";
 import { ensureOfflineProviderPlaybackAsset } from "@/features/playback/offline-source-fallback";
@@ -52,6 +55,7 @@ import {
   hasCurrentLocalAudio,
   isNativeLocalAudioAtNaturalEnd,
   isRecoverableLocalAudioError,
+  isTruncatedNativeLocalAudio,
   localAudioSeekToleranceSeconds,
   playbackEndedRetryCooldownMs,
   resolveCacheReadinessReport,
@@ -160,6 +164,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
     };
     const handleStorageRootChange = () => {
       failedLocalAudioKeysRef.current.clear();
+      evictedTruncatedLocalAudioKeysRef.current.clear();
       localAudioPreloader.clear();
       setCacheRevision((rev) => rev + 1);
     };
@@ -373,6 +378,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   triggerPlaybackEndedRef.current = triggerPlaybackEnded;
   const skippedUnavailableStreamingTimelineRef = useRef<string | null>(null);
   const failedLocalAudioKeysRef = useRef<Set<string>>(new Set());
+  const evictedTruncatedLocalAudioKeysRef = useRef<Set<string>>(new Set());
   const localAudioResolutionRef = useRef(localAudioResolution);
   localAudioResolutionRef.current = localAudioResolution;
   const syncMediaRef = useRef<(() => Promise<void>) | null>(null);
@@ -874,6 +880,32 @@ export function useRoomSegmentedPlaybackRuntime(input: {
       : current);
   }, []);
 
+  const evictTruncatedLocalAudio = useCallback((key: string, track: TrackMeta | null) => {
+    localAudioPreloader.clear();
+    if (track) {
+      const source = resolveProviderTrackSource(track);
+      void evictRoomLocalAudioCache({
+        fileHash: track.fileHash,
+        provider: source?.provider,
+        providerTrackId: source?.trackId ?? null
+      }).catch(() => undefined);
+    }
+    if (evictedTruncatedLocalAudioKeysRef.current.has(key)) {
+      markLocalAudioUnavailable(key, "本地音频时长与曲目不符，已切换为房间流式播放。");
+      return;
+    }
+    evictedTruncatedLocalAudioKeysRef.current.add(key);
+    setStatusMessage("检测到不完整的本地缓存音频，已自动清理并切换完整音源。");
+    setLocalAudioResolution((current) => current.key === key
+      ? {
+        key,
+        status: "missing",
+        file: null,
+        error: "检测到不完整的本地缓存音频。"
+      }
+      : current);
+  }, [localAudioPreloader, markLocalAudioUnavailable, setStatusMessage]);
+
   const playback = useSegmentedOpusPlayback({
     roomSnapshot: input.roomSnapshot,
     currentTrack: input.currentTrack,
@@ -1304,6 +1336,16 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           }
           if (audio.error) {
             throw new Error("本地音频文件无法解码。");
+          }
+          if (
+            isTruncatedNativeLocalAudio({
+              audioDurationSeconds: audio.duration,
+              trackDurationMs: activeRuntime.currentTrack?.durationMs
+            })
+          ) {
+            clearLocalAudioSource(audio);
+            evictTruncatedLocalAudio(localAudioKey, activeRuntime.currentTrack);
+            return;
           }
 
           const timelineKey = resolveLocalAudioTimelineKey(
@@ -2003,6 +2045,7 @@ export function useRoomSegmentedPlaybackRuntime(input: {
   }, [
     audioRef,
     clearLocalAudioSource,
+    evictTruncatedLocalAudio,
     markLocalAudioUnavailable,
     setAudioUnlocked,
     setMediaPlayback,
@@ -2150,7 +2193,8 @@ export function useRoomSegmentedPlaybackRuntime(input: {
           appliedTimelineKey: localAudioTimelineKeyRef.current,
           expectedTimelineKey,
           elementDurationSeconds,
-          targetPositionSeconds
+          targetPositionSeconds,
+          trackDurationMs: runtime.currentTrack?.durationMs
         })
       ) {
         return;

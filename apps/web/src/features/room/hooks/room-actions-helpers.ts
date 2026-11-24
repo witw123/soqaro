@@ -12,6 +12,7 @@ export type PlaybackMutationTarget = Pick<
 export type PlaybackMutationOptions = {
   refreshSnapshotOnSuccess?: boolean;
   requireSameTimelineAnchor?: boolean;
+  preserveExpectedVersion?: boolean;
   silentOnConflictSkip?: boolean;
   returnSnapshotOnConflictSkip?: boolean;
   expectedPlayback?: PlaybackSnapshot;
@@ -25,7 +26,7 @@ export function resolvePlaybackMutationPreflight(input: {
   expectedVersion: number;
   latestPlayback: PlaybackSnapshot | null;
   retryTarget?: PlaybackMutationTarget;
-  options?: Pick<PlaybackMutationOptions, "requireSameTimelineAnchor">;
+  options?: Pick<PlaybackMutationOptions, "requireSameTimelineAnchor" | "preserveExpectedVersion">;
 }): PlaybackMutationPreflightResult {
   if (input.options?.requireSameTimelineAnchor && input.retryTarget) {
     if (
@@ -38,6 +39,13 @@ export function resolvePlaybackMutationPreflight(input: {
     ) {
       return { action: "skip" };
     }
+    return {
+      action: "proceed",
+      expectedVersion: input.expectedVersion
+    };
+  }
+
+  if (input.options?.preserveExpectedVersion) {
     return {
       action: "proceed",
       expectedVersion: input.expectedVersion

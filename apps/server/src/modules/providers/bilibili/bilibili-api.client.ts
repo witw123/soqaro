@@ -556,7 +556,7 @@ export class BilibiliApiClient {
           },
           UPSTREAM_HEADER_TIMEOUT_MS,
           isAllowedBilibiliSubtitleHost,
-          { maxRedirects: 2 }
+          { maxRedirects: 2, allowSyntheticDns: true }
         )
       );
       if (!res.ok) {
@@ -776,7 +776,7 @@ export class BilibiliApiClient {
         { headers },
         UPSTREAM_HEADER_TIMEOUT_MS,
         isAllowedBilibiliAudioHost,
-        { maxRedirects: 3, allowNonStandardPorts: true }
+        { maxRedirects: 3, allowNonStandardPorts: true, allowSyntheticDns: true }
       )
     );
   }

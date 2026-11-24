@@ -472,18 +472,31 @@ export class NeteaseService {
   ) {
     const cookie = await this.getOptionalCookie(userId);
     const bitrates = this.bitratesForQuality(quality);
-    let audio: { url: string; type?: string | null } | null = null;
+    let audio: { url: string; type?: string | null; isTrial?: boolean } | null = null;
+    let sawTrialOnly = false;
     for (const candidateBitrate of bitrates) {
       const response = await this.callProvider(userId, () =>
         this.api.getAudioUrl({ trackId, bitrate: candidateBitrate, cookie })
       );
-      audio = readAudioRecord(response);
-      if (audio?.url) break;
+      const candidate = readAudioRecord(response);
+      if (candidate?.url) {
+        if (candidate.isTrial) {
+          sawTrialOnly = true;
+          continue;
+        }
+        audio = candidate;
+        break;
+      }
     }
 
     if (!audio?.url) {
       throw new HttpException(
-        createApiErrorResponse(errorCodes.neteaseTrackNotFound, "NetEase audio is unavailable."),
+        createApiErrorResponse(
+          errorCodes.neteaseTrackNotFound,
+          sawTrialOnly
+            ? "NetEase only returned a VIP trial preview."
+            : "NetEase audio is unavailable."
+        ),
         HttpStatus.NOT_FOUND
       );
     }

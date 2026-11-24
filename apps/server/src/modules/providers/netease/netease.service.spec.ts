@@ -262,4 +262,60 @@ describe("NeteaseService", () => {
       collectedPlaylists: [{ providerPlaylistId: "11" }]
     });
   });
+
+  it("rejects NetEase VIP trial-only preview URLs instead of serving truncated 30s audio", async () => {
+    process.env.NETEASE_ENABLED = "true";
+    const api = {
+      getAudioUrl: jest.fn().mockResolvedValue({
+        code: 200,
+        data: [{
+          url: "http://m10.music.126.net/trial-30s.mp3",
+          type: "mp3",
+          freeTrialInfo: { start: 0, end: 30 }
+        }]
+      })
+    };
+    const accounts = {
+      getCookieOrThrow: jest.fn().mockResolvedValue("")
+    };
+    const service = new NeteaseService(api as never, accounts as never, {} as never);
+
+    await expect(service.resolveAudio("user_1", "150667", "exhigh")).rejects.toThrow(
+      "NetEase only returned a VIP trial preview."
+    );
+    expect(api.getAudioUrl).toHaveBeenCalledTimes(3);
+  });
+
+  it("falls back to a lower NetEase bitrate when a higher bitrate returns a VIP trial preview", async () => {
+    process.env.NETEASE_ENABLED = "true";
+    const api = {
+      getAudioUrl: jest
+        .fn()
+        .mockResolvedValueOnce({
+          code: 200,
+          data: [{
+            url: "http://m10.music.126.net/trial.mp3",
+            type: "mp3",
+            freeTrialInfo: { start: 0, end: 30 }
+          }]
+        })
+        .mockResolvedValueOnce({
+          code: 200,
+          data: [{
+            url: "http://m10.music.126.net/full.mp3",
+            type: "mp3",
+            freeTrialInfo: null
+          }]
+        })
+    };
+    const accounts = {
+      getCookieOrThrow: jest.fn().mockResolvedValue("cookie")
+    };
+    const service = new NeteaseService(api as never, accounts as never, {} as never);
+
+    await expect(service.resolveAudio("user_1", "150667", "exhigh")).resolves.toMatchObject({
+      url: "https://m10.music.126.net/full.mp3",
+      mimeType: "audio/mpeg"
+    });
+  });
 });

@@ -174,10 +174,12 @@ export function readAudioRecord(value: unknown) {
   const data = Array.isArray(body?.data) ? body.data : [];
   const item = asRecord(data[0]);
   const url = readString(item?.url);
+  const freeTrialInfo = asRecord(item?.freeTrialInfo);
   return url
     ? {
         url,
-        type: readString(item?.type)
+        type: readString(item?.type),
+        isTrial: freeTrialInfo !== null
       }
     : null;
 }

@@ -14,6 +14,7 @@ import {
   resolveCacheReadinessReport,
   hasCurrentLocalAudio,
   isNativeLocalAudioAtNaturalEnd,
+  isTruncatedNativeLocalAudio,
   resolveLocalAudioTimelineKey,
   resolvePlaybackEndedTimelineKey,
   resolveRoomAudioPath,
@@ -904,6 +905,42 @@ describe("media playback identity scoping and native ended guards", () => {
       shouldAcceptNativeLocalAudioEnded({
         ...baseInput,
         readyKey: null
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAcceptNativeLocalAudioEnded({
+        ...baseInput,
+        elementDurationSeconds: 30.04,
+        targetPositionSeconds: 30.04,
+        trackDurationMs: 242_626
+      })
+    ).toBe(false);
+  });
+
+  it("detects 30s/45s VIP trial previews as truncated while permitting normal VBR variance", () => {
+    expect(
+      isTruncatedNativeLocalAudio({
+        audioDurationSeconds: 30.04,
+        trackDurationMs: 242_626
+      })
+    ).toBe(true);
+    expect(
+      isTruncatedNativeLocalAudio({
+        audioDurationSeconds: 45.03,
+        trackDurationMs: 366_640
+      })
+    ).toBe(true);
+    expect(
+      isTruncatedNativeLocalAudio({
+        audioDurationSeconds: 240.5,
+        trackDurationMs: 242_626
+      })
+    ).toBe(false);
+    expect(
+      isTruncatedNativeLocalAudio({
+        audioDurationSeconds: 30,
+        trackDurationMs: 45_000
       })
     ).toBe(false);
   });

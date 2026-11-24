@@ -124,7 +124,8 @@ export const neteaseAudioUrlBodySchema = z
         z
           .object({
             url: z.string().url().optional().nullable(),
-            type: z.string().optional().nullable()
+            type: z.string().optional().nullable(),
+            freeTrialInfo: z.unknown().optional().nullable()
           })
           .strip()
       )

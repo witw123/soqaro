@@ -614,7 +614,8 @@ export function useRoomActions({
             expectedVersion
           });
         },
-        currentPlayback
+        currentPlayback,
+        { preserveExpectedVersion: true }
       );
     },
     [
@@ -957,7 +958,8 @@ export function useRoomActions({
             expectedVersion
           });
         },
-        currentPlayback
+        currentPlayback,
+        { preserveExpectedVersion: true }
       );
     },
     [

@@ -339,6 +339,23 @@ describe("resolvePlaybackMutationPreflight", () => {
     ).toEqual({ action: "proceed", expectedVersion: 10 });
   });
 
+  it("preserves expectedVersion when preserveExpectedVersion is set for optimistic pause/seek", () => {
+    expect(
+      resolvePlaybackMutationPreflight({
+        expectedVersion: 501,
+        latestPlayback: {
+          ...basePlayback,
+          status: "paused",
+          startAt: null,
+          startedAt: null,
+          playbackRevision: 502
+        },
+        retryTarget: basePlayback,
+        options: { preserveExpectedVersion: true }
+      })
+    ).toEqual({ action: "proceed", expectedVersion: 501 });
+  });
+
   it("upgrades expectedVersion to latest playbackRevision for non-pinned mutations", () => {
     expect(
       resolvePlaybackMutationPreflight({

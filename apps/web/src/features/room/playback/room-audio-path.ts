@@ -109,6 +109,31 @@ export function resolveVisibleMediaPlayback(
   return mediaPlayback;
 }
 
+const truncatedAudioMinTrackSeconds = 60;
+const truncatedAudioMinShortfallSeconds = 15;
+const truncatedAudioMinDurationRatio = 0.75;
+
+export function isTruncatedNativeLocalAudio(input: {
+  audioDurationSeconds: number;
+  trackDurationMs: number | null | undefined;
+}): boolean {
+  const trackDurationSeconds =
+    typeof input.trackDurationMs === "number" && input.trackDurationMs > 0
+      ? input.trackDurationMs / 1000
+      : 0;
+  if (
+    trackDurationSeconds < truncatedAudioMinTrackSeconds ||
+    !Number.isFinite(input.audioDurationSeconds) ||
+    input.audioDurationSeconds <= 0
+  ) {
+    return false;
+  }
+  return (
+    trackDurationSeconds - input.audioDurationSeconds >= truncatedAudioMinShortfallSeconds &&
+    input.audioDurationSeconds < trackDurationSeconds * truncatedAudioMinDurationRatio
+  );
+}
+
 export function shouldAcceptNativeLocalAudioEnded(input: {
   usesNativeLocalAudio: boolean;
   status: PlaybackSnapshot["status"] | null | undefined;
@@ -123,6 +148,7 @@ export function shouldAcceptNativeLocalAudioEnded(input: {
   expectedTimelineKey: string | null | undefined;
   elementDurationSeconds: number;
   targetPositionSeconds: number;
+  trackDurationMs?: number | null;
 }): boolean {
   if (
     !input.usesNativeLocalAudio ||
@@ -135,7 +161,11 @@ export function shouldAcceptNativeLocalAudioEnded(input: {
     input.audioSrc !== input.boundObjectUrl ||
     input.readyKey !== input.activeLocalAudioKey ||
     !input.expectedTimelineKey ||
-    input.appliedTimelineKey !== input.expectedTimelineKey
+    input.appliedTimelineKey !== input.expectedTimelineKey ||
+    isTruncatedNativeLocalAudio({
+      audioDurationSeconds: input.elementDurationSeconds,
+      trackDurationMs: input.trackDurationMs
+    })
   ) {
     return false;
   }

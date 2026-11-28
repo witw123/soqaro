@@ -66,6 +66,50 @@ describe("BilibiliApiClient SSRF protections", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("does not cache buvid-less fallback cookies when homepage and spi fail to return buvid3", async () => {
+    const client = new BilibiliApiClient();
+    const fetchSpy = jest
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("home failed"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: -1 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("", { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { b_3: "REAL_B3", b_4: "REAL_B4" } }), { status: 200 }));
+
+    const first = await client.getGuestCookies();
+    expect(first).toContain("buvid3=auto");
+    // Second call must hit upstream again rather than reusing an unauthenticated fallback.
+    const second = await client.getGuestCookies();
+    expect(second).toContain("buvid3=REAL_B3");
+    expect(second).toContain("buvid4=REAL_B4");
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it("refreshes guest cookies and retries searchVideo on HTTP 412", async () => {
+    const client = new BilibiliApiClient();
+    const guestSpy = jest
+      .spyOn(client, "getGuestCookies")
+      .mockResolvedValueOnce("buvid3=stale")
+      .mockResolvedValueOnce("buvid3=fresh");
+    const fetchSpy = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("blocked", { status: 412 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: { result: [{ bvid: "BV1SearchOk", title: "晴天", author: "周杰伦", duration: "04:29", pic: "" }], numResults: 1 }
+          }),
+          { status: 200 }
+        )
+      );
+
+    const result = await client.searchVideo("晴天", 1, 10);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.bvid).toBe("BV1SearchOk");
+    expect(guestSpy).toHaveBeenNthCalledWith(2, true);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("routes subtitle fetches through fetchProviderUrl with https upgrade and allowlist", async () => {
     const spy = jest.spyOn(providerFetch, "fetchProviderUrl").mockResolvedValueOnce(
       new Response(JSON.stringify({ body: [{ from: 0, to: 1, content: "line" }] }), { status: 200 })

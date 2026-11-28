@@ -652,14 +652,23 @@ export async function downloadDirectTrack(input: DirectAudioDownloadInput): Prom
       .map((url) => upgradeDirectUrl(url));
 
     // 1. 本地直连并发分段拉取（对网易云等允许 CORS 的 CDN，在用户本地端极速拉取并拥有实时平滑进度）
-    // 过滤掉浏览器/Webview 无法发送自定义 Referer 防盗链请求头的 CDN 域名（如 bilibili / bilivideo）
+    // 过滤掉浏览器/Webview 无法发送自定义 Referer 防盗链请求头的 CDN 域名（含 B 站与 PCDN 域名）
+    const refererProtectedSuffixes = [
+      "bilivideo.com",
+      "bilivideo.cn",
+      "hdslb.com",
+      "bilibili.com",
+      "mountaintoys.cn",
+      "szbdyd.com",
+      "akamaized.net",
+      "biliapi.net",
+      "acgvideo.com"
+    ];
     const directProbeableCandidates = candidates.filter((url) => {
       try {
         const hostname = new URL(url).hostname.toLowerCase();
-        return (
-          !hostname.endsWith("bilivideo.com") &&
-          !hostname.endsWith("hdslb.com") &&
-          !hostname.endsWith("bilibili.com")
+        return !refererProtectedSuffixes.some(
+          (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
         );
       } catch {
         return false;

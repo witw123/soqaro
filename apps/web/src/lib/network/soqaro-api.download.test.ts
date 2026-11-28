@@ -289,4 +289,27 @@ describe("downloadWithDirectFallback", () => {
 
     await expect(pending).rejects.toThrow("Download aborted");
   });
+
+  it("skips direct browser probing for referer-protected Bilibili PCDN hosts", async () => {
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("should not probe referer-protected host in browser");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await downloadWithDirectFallback({
+      resolve: async () => ({
+        url: "https://upos-sz-mirrorhw.bilivideo.com/audio.m4s",
+        urls: [
+          "https://upos-sz-mirrorhw.bilivideo.com/audio.m4s",
+          "https://b-baacc4.edge.mountaintoys.cn:4483/audio.m4s",
+          "https://mcdn.bilivideo.cn/audio.m4s"
+        ],
+        mimeType: "audio/mp4"
+      }),
+      fallback: async () => ({ blob: new Blob([mp4Bytes(48)]), contentType: "audio/mp4" })
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.blob.size).toBe(48);
+  });
 });

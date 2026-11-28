@@ -320,11 +320,66 @@ describe("BilibiliService and Utilities", () => {
     });
   });
 
+  describe("search", () => {
+    it("filters out unplayable empty-bvid results and decodes HTML entities", async () => {
+      mockClient.searchVideo.mockResolvedValueOnce({
+        total: 2,
+        items: [
+          {
+            id: 1,
+            type: "ketang",
+            author: "课程号",
+            mid: 1,
+            typeid: "",
+            typename: "",
+            arcurl: "",
+            aid: 0,
+            bvid: "",
+            title: "无效课堂条目",
+            description: "",
+            pic: "",
+            play: 0,
+            video_review: 0,
+            favorites: 0,
+            tag: "",
+            duration: "01:00"
+          },
+          {
+            id: 2,
+            type: "video",
+            author: "UP&amp;Main",
+            mid: 2,
+            typeid: "3",
+            typename: "音乐",
+            arcurl: "",
+            aid: 2,
+            bvid: "BV1ValidSong",
+            title: "<em class=\"keyword\">晴天</em> &quot;特别版&quot;",
+            description: "",
+            pic: "//i0.hdslb.com/cover.jpg",
+            play: 100,
+            video_review: 1,
+            favorites: 1,
+            tag: "",
+            duration: "04:29"
+          }
+        ]
+      });
+
+      const res = await service.search("晴天", 1, 10);
+      expect(res.items).toHaveLength(1);
+      expect(res.items[0]?.bvid).toBe("BV1ValidSong");
+      expect(res.items[0]?.title).toBe("晴天 \"特别版\"");
+      expect(res.items[0]?.artist).toBe("UP&Main");
+    });
+  });
+
   describe("importFavorite", () => {
     it("extracts mediaId and returns mapped candidate tracks", async () => {
       expect(extractBilibiliMediaId("https://www.bilibili.com/medialist/detail/ml12345678")).toBe("12345678");
       expect(extractBilibiliMediaId("ml87654321")).toBe("87654321");
       expect(extractBilibiliMediaId("99887766")).toBe("99887766");
+      expect(extractBilibiliMediaId("https://www.bilibili.com/video/BV197Yw65E4p")).toBe("");
 
       mockClient.getFavoriteResources.mockResolvedValueOnce({
         title: "我的宝藏歌单",

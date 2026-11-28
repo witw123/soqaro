@@ -318,11 +318,18 @@ export class BilibiliApiClient {
           map.set(k.trim(), v.join("=").trim());
         }
       }
+      const hasRealBuvid = map.has("buvid3") || map.has("buvid4");
+      if (!hasRealBuvid) {
+        // Avoid caching a buvid-less cookie string for 6h, which triggers Bilibili 412 WAF.
+        this.invalidateGuestCookies();
+        return "buvid3=auto; buvid4=auto; CURRENT_FNVAL=4048;";
+      }
+
       const combined = Array.from(map.entries())
         .map(([k, v]) => `${k}=${v}`)
         .join("; ");
 
-      this.cachedCookies = combined || "buvid3=auto; buvid4=auto; CURRENT_FNVAL=4048;";
+      this.cachedCookies = combined;
       // 缓存 6 小时
       this.cookiesExpiresAt = now + 6 * 3600 * 1000;
       return this.cachedCookies;
@@ -330,7 +337,47 @@ export class BilibiliApiClient {
       this.logger.warn(`Failed to fetch guest SPI cookie: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    this.invalidateGuestCookies();
     return "buvid3=auto; buvid4=auto; CURRENT_FNVAL=4048;";
+  }
+
+  private async fetchWebApiJson<T>(
+    url: string,
+    label: string
+  ): Promise<{ code: number; message?: string; data?: T }> {
+    let cookie = await this.getGuestCookies();
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const res = await fetchUpstream(url, {
+        headers: {
+          "User-Agent": BILIBILI_UA,
+          Referer: BILIBILI_REFERER,
+          Cookie: cookie
+        }
+      });
+
+      if (!res.ok) {
+        const shouldRetry = attempt === 0 && (res.status === 412 || res.status === 403);
+        await res.body?.cancel().catch(() => {});
+        if (shouldRetry) {
+          this.invalidateGuestCookies();
+          cookie = await this.getGuestCookies(true);
+          continue;
+        }
+        throw new Error(`Bilibili ${label} API error: HTTP ${res.status}`);
+      }
+
+      const json = (await res.json()) as { code: number; message?: string; data?: T };
+      if (attempt === 0 && (json.code === -412 || json.code === -352 || json.code === -403)) {
+        this.invalidateGuestCookies();
+        cookie = await this.getGuestCookies(true);
+        continue;
+      }
+
+      return json;
+    }
+
+    throw new Error(`Bilibili ${label} API error: WAF blocked`);
   }
 
   async getVideoView(bvid: string): Promise<BilibiliViewData> {
@@ -340,19 +387,8 @@ export class BilibiliApiClient {
       return cached.data;
     }
 
-    const cookie = await this.getGuestCookies();
     const url = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`;
-    const res = await fetchUpstream(url, {
-      headers: {
-        "User-Agent": BILIBILI_UA,
-        Referer: BILIBILI_REFERER,
-        Cookie: cookie
-      }
-    });
-    if (!res.ok) {
-      throw new Error(`Bilibili view API error: HTTP ${res.status}`);
-    }
-    const json = (await res.json()) as { code: number; message: string; data?: BilibiliViewData };
+    const json = await this.fetchWebApiJson<BilibiliViewData>(url, "view");
     if (json.code !== 0 || !json.data) {
       throw new Error(`Bilibili video not found: ${json.message || "Unknown error"}`);
     }
@@ -578,28 +614,17 @@ export class BilibiliApiClient {
     tid?: number
   ): Promise<{ items: BilibiliSearchItem[]; total: number }> {
     const cleanKeyword = keyword.trim();
-    const cookie = await this.getGuestCookies();
     let url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(cleanKeyword)}&page=${page}&page_size=${pageSize}`;
     if (typeof tid === "number" && tid > 0) {
       url += `&tids=${tid}`;
     }
-    const res = await fetchUpstream(url, {
-      headers: {
-        "User-Agent": BILIBILI_UA,
-        Referer: BILIBILI_REFERER,
-        Cookie: cookie
-      }
-    });
-    if (!res.ok) {
-      throw new Error(`Bilibili search API error: HTTP ${res.status}`);
+    const json = await this.fetchWebApiJson<{
+      result?: BilibiliSearchItem[];
+      numResults?: number;
+    }>(url, "search");
+    if (json.code !== 0) {
+      throw new Error(`Bilibili search API error: ${json.message || json.code}`);
     }
-    const json = (await res.json()) as {
-      code: number;
-      data?: {
-        result?: BilibiliSearchItem[];
-        numResults?: number;
-      };
-    };
     return {
       items: json.data?.result ?? [],
       total: json.data?.numResults ?? 0
@@ -611,31 +636,14 @@ export class BilibiliApiClient {
     page = 1,
     pageSize = 20
   ): Promise<{ items: BilibiliFavoriteItem[]; hasMore: boolean; total: number; title?: string }> {
-    const cookie = await this.getGuestCookies();
     const cleanId = mediaId.replace(/^ml/i, "").trim();
     const url = `https://api.bilibili.com/x/v3/fav/resource/list?media_id=${encodeURIComponent(cleanId)}&pn=${page}&ps=${pageSize}&platform=web&order=mtime&type=0`;
 
-    const res = await fetchUpstream(url, {
-      headers: {
-        "User-Agent": BILIBILI_UA,
-        Referer: BILIBILI_REFERER,
-        Cookie: cookie
-      }
-    });
-
-    if (!res.ok) {
-      throw new Error(`Bilibili favorite API error: HTTP ${res.status}`);
-    }
-
-    const json = (await res.json()) as {
-      code: number;
-      message?: string;
-      data?: {
-        info?: { title?: string; media_count?: number };
-        medias?: BilibiliFavoriteItem[];
-        has_more?: boolean;
-      };
-    };
+    const json = await this.fetchWebApiJson<{
+      info?: { title?: string; media_count?: number };
+      medias?: BilibiliFavoriteItem[];
+      has_more?: boolean;
+    }>(url, "favorite");
 
     if (json.code !== 0 || !json.data) {
       throw new Error(`获取 B 站收藏夹失败: ${json.message || "未知错误"}`);
@@ -650,27 +658,14 @@ export class BilibiliApiClient {
   }
 
   async getMusicRanking(subType = "3"): Promise<BilibiliRankingItem[]> {
-    const cookie = await this.getGuestCookies();
     const url = `https://api.bilibili.com/x/web-interface/ranking/v2?rid=${encodeURIComponent(subType)}&type=all`;
-    const res = await fetchUpstream(url, {
-      headers: {
-        "User-Agent": BILIBILI_UA,
-        Referer: BILIBILI_REFERER,
-        Cookie: cookie
-      }
-    });
+    const json = await this.fetchWebApiJson<{
+      list?: BilibiliRankingItem[];
+    }>(url, "ranking");
 
-    if (!res.ok) {
-      throw new Error(`Bilibili ranking API error: HTTP ${res.status}`);
+    if (json.code !== 0) {
+      throw new Error(`Bilibili ranking API error: ${json.message || json.code}`);
     }
-
-    const json = (await res.json()) as {
-      code: number;
-      message?: string;
-      data?: {
-        list?: BilibiliRankingItem[];
-      };
-    };
 
     return json.data?.list ?? [];
   }

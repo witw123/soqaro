@@ -11,10 +11,36 @@ export function normalizeBilibiliPicUrl(rawUrl?: string | null): string | null {
   return trimmed;
 }
 
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": "\"",
+  "&#39;": "'",
+  "&apos;": "'",
+  "&nbsp;": " "
+};
+
+function decodeHtmlEntities(raw: string): string {
+  return raw.replace(
+    /&(?:amp|lt|gt|quot|apos|nbsp|#39|#(\d+)|#x([0-9a-fA-F]+));/g,
+    (entity, decDigits?: string, hexDigits?: string) => {
+      if (entity in HTML_ENTITY_MAP) {
+        return HTML_ENTITY_MAP[entity]!;
+      }
+      const codePoint = decDigits ? Number.parseInt(decDigits, 10) : Number.parseInt(hexDigits!, 16);
+      if (Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff) {
+        return String.fromCodePoint(codePoint);
+      }
+      return entity;
+    }
+  );
+}
+
 /** 搜索结果条目 → 曲库候选（含分 P 数量智能推断）。 */
 export function mapSearchItemToCandidate(item: BilibiliSearchItem): BilibiliTrackCandidate {
-  const cleanTitle = (item.title || "").replace(/<[^>]+>/g, "").trim();
-  const cleanAuthor = (item.author || "").replace(/<[^>]+>/g, "").trim();
+  const cleanTitle = decodeHtmlEntities((item.title || "").replace(/<[^>]+>/g, "")).trim();
+  const cleanAuthor = decodeHtmlEntities((item.author || "").replace(/<[^>]+>/g, "")).trim();
   const durationMs = parseDurationToMs(item.duration);
   const pic = normalizeBilibiliPicUrl(item.pic);
 
@@ -53,8 +79,8 @@ export function mapFavoriteItemToCandidate(item: BilibiliFavoriteItem): Bilibili
     provider: "bilibili",
     providerTrackId: item.bvid,
     bvid: item.bvid,
-    title: item.title,
-    artist: item.upper?.name || "未知UP主",
+    title: decodeHtmlEntities(item.title),
+    artist: decodeHtmlEntities(item.upper?.name || "未知UP主"),
     album: null,
     durationMs: item.duration * 1000,
     artworkUrl: pic,
@@ -69,8 +95,8 @@ export function mapRankingItemToCandidate(item: BilibiliRankingItem): BilibiliTr
     provider: "bilibili",
     providerTrackId: item.bvid,
     bvid: item.bvid,
-    title: item.title,
-    artist: item.owner?.name || "未知UP主",
+    title: decodeHtmlEntities(item.title),
+    artist: decodeHtmlEntities(item.owner?.name || "未知UP主"),
     album: null,
     durationMs: item.duration * 1000,
     artworkUrl: pic,

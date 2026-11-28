@@ -19,7 +19,7 @@ export function extractBilibiliMediaId(input: string): string {
   const numMatch = trimmed.match(/^\d+$/);
   if (numMatch) return numMatch[0];
 
-  return trimmed;
+  return "";
 }
 
 @Injectable()
@@ -389,7 +389,10 @@ export class BilibiliService {
 
   async search(keyword: string, page = 1, pageSize = 10, tid?: number): Promise<BilibiliSearchResponse> {
     const { items, total } = await this.client.searchVideo(keyword, page, pageSize, tid);
-    const candidates = items.map((item) => mapSearchItemToCandidate(item));
+    const validItems = items.filter(
+      (item) => typeof item.bvid === "string" && /^(?:BV[a-zA-Z0-9]+|av\d+)$/i.test(item.bvid.trim())
+    );
+    const candidates = validItems.map((item) => mapSearchItemToCandidate(item));
     return {
       items: candidates,
       total,

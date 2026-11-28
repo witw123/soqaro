@@ -189,6 +189,24 @@ describe("QqMusicService", () => {
     expect(api.getAudioUrl).not.toHaveBeenCalled();
   });
 
+  it("invalidates undecryptable QQ credentials and throws QQMUSIC_AUTH_EXPIRED instead of falling back to guest", async () => {
+    process.env.QQMUSIC_ENABLED = "true";
+    const api = {
+      getAudioUrl: jest.fn()
+    };
+    const accounts = {
+      getCookieOrThrow: jest.fn().mockRejectedValue(new Error("QQ Music account credentials are invalid.")),
+      invalidate: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new QqMusicService(api as never, accounts as never, {} as never);
+
+    await expect(service.resolveAudio("user_1", "song-mid", "exhigh")).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "QQMUSIC_AUTH_EXPIRED" })
+    });
+    expect(accounts.invalidate).toHaveBeenCalledWith("user_1");
+    expect(api.getAudioUrl).not.toHaveBeenCalled();
+  });
+
   it("exposes normalized lyrics, playlists, and albums", async () => {
     process.env.QQMUSIC_ENABLED = "true";
     const api = {

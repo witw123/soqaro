@@ -13,12 +13,35 @@ export class NeteaseAccountService {
 
   async getStatus(userId: string): Promise<NeteaseAccountStatus> {
     const account = await this.findAccount(userId);
+    if (!account) {
+      return {
+        connected: false,
+        neteaseUserId: null,
+        nickname: null,
+        avatarUrl: null,
+        lastValidatedAt: null
+      };
+    }
+
+    try {
+      this.crypto.decrypt(account.encryptedCookie, userId);
+    } catch {
+      await this.invalidate(userId).catch(() => undefined);
+      return {
+        connected: false,
+        neteaseUserId: null,
+        nickname: null,
+        avatarUrl: null,
+        lastValidatedAt: null
+      };
+    }
+
     return {
-      connected: !!account,
-      neteaseUserId: account?.neteaseUserId ?? null,
-      nickname: account?.nickname ?? null,
-      avatarUrl: account?.avatarUrl ?? null,
-      lastValidatedAt: account?.lastValidatedAt?.toISOString() ?? null
+      connected: true,
+      neteaseUserId: account.neteaseUserId ?? null,
+      nickname: account.nickname ?? null,
+      avatarUrl: account.avatarUrl ?? null,
+      lastValidatedAt: account.lastValidatedAt?.toISOString() ?? null
     };
   }
 

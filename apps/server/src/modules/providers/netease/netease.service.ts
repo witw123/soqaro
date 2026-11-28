@@ -529,8 +529,16 @@ export class NeteaseService {
     }
     try {
       return await this.accounts.getCookieOrThrow(userId);
-    } catch {
-      return "";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("required")) {
+        return "";
+      }
+      await this.accounts.invalidate(userId).catch(() => undefined);
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.neteaseAuthExpired, "The NetEase account needs to be bound again."),
+        HttpStatus.CONFLICT
+      );
     }
   }
 
@@ -545,6 +553,7 @@ export class NeteaseService {
           HttpStatus.CONFLICT
         );
       }
+      await this.accounts.invalidate(userId).catch(() => undefined);
       throw new HttpException(
         createApiErrorResponse(errorCodes.neteaseAuthExpired, "The NetEase account needs to be bound again."),
         HttpStatus.CONFLICT

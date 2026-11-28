@@ -13,12 +13,35 @@ export class QqMusicAccountService {
 
   async getStatus(userId: string): Promise<QqMusicAccountStatus> {
     const account = await this.findAccount(userId);
+    if (!account) {
+      return {
+        connected: false,
+        qqMusicUserId: null,
+        nickname: null,
+        avatarUrl: null,
+        lastValidatedAt: null
+      };
+    }
+
+    try {
+      this.crypto.decrypt(account.encryptedCookie, userId);
+    } catch {
+      await this.invalidate(userId).catch(() => undefined);
+      return {
+        connected: false,
+        qqMusicUserId: null,
+        nickname: null,
+        avatarUrl: null,
+        lastValidatedAt: null
+      };
+    }
+
     return {
-      connected: !!account,
-      qqMusicUserId: account?.qqMusicUserId ?? null,
-      nickname: account?.nickname ?? null,
-      avatarUrl: account?.avatarUrl ?? null,
-      lastValidatedAt: account?.lastValidatedAt?.toISOString() ?? null
+      connected: true,
+      qqMusicUserId: account.qqMusicUserId ?? null,
+      nickname: account.nickname ?? null,
+      avatarUrl: account.avatarUrl ?? null,
+      lastValidatedAt: account.lastValidatedAt?.toISOString() ?? null
     };
   }
 

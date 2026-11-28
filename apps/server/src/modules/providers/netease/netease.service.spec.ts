@@ -318,4 +318,43 @@ describe("NeteaseService", () => {
       mimeType: "audio/mpeg"
     });
   });
+
+  it("invalidates undecryptable NetEase credentials and throws NETEASE_AUTH_EXPIRED instead of falling back to guest", async () => {
+    process.env.NETEASE_ENABLED = "true";
+    const api = {
+      getAudioUrl: jest.fn()
+    };
+    const accounts = {
+      getCookieOrThrow: jest.fn().mockRejectedValue(new Error("NetEase account credentials are invalid.")),
+      invalidate: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new NeteaseService(api as never, accounts as never, {} as never);
+
+    await expect(service.resolveAudio("user_1", "25642214", "exhigh")).rejects.toMatchObject({
+      response: expect.objectContaining({ code: errorCodes.neteaseAuthExpired })
+    });
+    expect(accounts.invalidate).toHaveBeenCalledWith("user_1");
+    expect(api.getAudioUrl).not.toHaveBeenCalled();
+  });
+
+  it("proceeds anonymously when no NetEase account is bound", async () => {
+    process.env.NETEASE_ENABLED = "true";
+    const api = {
+      getAudioUrl: jest.fn().mockResolvedValue({
+        code: 200,
+        data: [{ url: "http://m10.music.126.net/free.mp3", type: "mp3", freeTrialInfo: null }]
+      })
+    };
+    const accounts = {
+      getCookieOrThrow: jest.fn().mockRejectedValue(new Error("NetEase account is required.")),
+      invalidate: jest.fn()
+    };
+    const service = new NeteaseService(api as never, accounts as never, {} as never);
+
+    await expect(service.resolveAudio("user_1", "123", "exhigh")).resolves.toMatchObject({
+      url: "https://m10.music.126.net/free.mp3"
+    });
+    expect(accounts.invalidate).not.toHaveBeenCalled();
+    expect(api.getAudioUrl).toHaveBeenCalledWith(expect.objectContaining({ cookie: "" }));
+  });
 });

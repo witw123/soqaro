@@ -573,16 +573,35 @@ export class QqMusicService {
     }
     try {
       return await this.accounts.getCookieOrThrow(userId);
-    } catch {
-      return "";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("required")) {
+        return "";
+      }
+      await this.accounts.invalidate(userId).catch(() => undefined);
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.qqMusicAuthExpired, "The QQ Music account needs to be bound again."),
+        HttpStatus.CONFLICT
+      );
     }
   }
 
   private async getCookie(userId: string) {
     try {
       return await this.accounts.getCookieOrThrow(userId);
-    } catch {
-      throw new HttpException(createApiErrorResponse(errorCodes.qqMusicAccountRequired, "QQ Music account is required."), HttpStatus.CONFLICT);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("required")) {
+        throw new HttpException(
+          createApiErrorResponse(errorCodes.qqMusicAccountRequired, "QQ Music account is required."),
+          HttpStatus.CONFLICT
+        );
+      }
+      await this.accounts.invalidate(userId).catch(() => undefined);
+      throw new HttpException(
+        createApiErrorResponse(errorCodes.qqMusicAuthExpired, "The QQ Music account needs to be bound again."),
+        HttpStatus.CONFLICT
+      );
     }
   }
 

@@ -494,13 +494,18 @@ export function useRoomPlayback(options: UseRoomPlaybackOptions) {
     playbackBarrier?.resumeAtMs
   ]);
 
+  const hasExplicitTrackLoudness = typeof progressTrack?.loudness?.gainDb === "number" &&
+    Number.isFinite(progressTrack.loudness.gainDb);
+
   useEffect(() => {
     roomAudioOutput.applyVolume({
       localAudio: audioRef.current,
       volume,
-      loudnessGainDb
+      // When normalization is enabled and track metadata lacks loudness, omit it
+      // so runtime-computed local audio loudness is not overwritten with 0 dB.
+      ...(!loudnessNormalization || hasExplicitTrackLoudness ? { loudnessGainDb } : {})
     });
-  }, [audioRef, loudnessGainDb, volume]);
+  }, [audioRef, hasExplicitTrackLoudness, loudnessGainDb, loudnessNormalization, volume]);
 
   function syncProgressFromAudio(event?: SyntheticEvent<HTMLAudioElement>) {
     const currentPlayback = acceptedPlaybackRef.current;

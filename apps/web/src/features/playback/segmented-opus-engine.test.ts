@@ -1213,4 +1213,52 @@ describe("SegmentedOpusEngine", () => {
     expect(ended.state).toBe("ended");
     engine.destroy();
   });
+
+  it("uses a linear-below-0.98 soft clipper instead of a pumping dynamics compressor", async () => {
+    const { context } = createContext();
+    const shapers: Array<{
+      curve: Float32Array | null;
+      oversample: OverSampleType;
+      connect: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+    }> = [];
+    const createDynamicsCompressor = vi.fn();
+    Object.assign(context, {
+      createDynamicsCompressor,
+      createWaveShaper: vi.fn(() => {
+        const shaper = {
+          curve: null as Float32Array | null,
+          oversample: "none" as OverSampleType,
+          connect: vi.fn(),
+          disconnect: vi.fn()
+        };
+        shapers.push(shaper);
+        return shaper;
+      })
+    });
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext").mockReturnValue(context);
+    const engine = new SegmentedOpusEngine();
+    const serverNowMs = Date.now();
+
+    await engine.sync({
+      manifest,
+      playback: playback(serverNowMs),
+      serverNowMs,
+      volume: 0.7,
+      getUnit: async (unitIndex) => unit(unitIndex)
+    });
+
+    expect(createDynamicsCompressor).not.toHaveBeenCalled();
+    expect(shapers).toHaveLength(1);
+    const curve = shapers[0]!.curve!;
+    expect(curve).toBeInstanceOf(Float32Array);
+    const mid = (curve.length - 1) / 2;
+    // Below 0.98 stays strictly unity (1:1 linear).
+    const linearSampleIdx = Math.round(mid + mid * 0.5);
+    expect(curve[linearSampleIdx]).toBeCloseTo((linearSampleIdx - mid) / mid, 5);
+    // Full-scale peak is softly limited below 1.0.
+    expect(curve[curve.length - 1]).toBeGreaterThan(0.98);
+    expect(curve[curve.length - 1]).toBeLessThan(1);
+    engine.destroy();
+  });
 });

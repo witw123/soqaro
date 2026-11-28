@@ -393,7 +393,7 @@ export function useSegmentedOpusPlayback(input: {
   ]);
 
   useEffect(() => {
-    engineRef.current?.setVolume(volume);
+    engineRef.current?.setVolume(volume * (roomAudioOutput.getSystemAudioScale?.() ?? 1));
   }, [volume]);
 
   useEffect(() => {

@@ -392,8 +392,17 @@ export class RoomAudioOutput {
   private setGraphLoudnessGain(graph: LocalAudioElementGraph, gain: number) {
     try {
       const now = graph.context.currentTime;
-      graph.normalizationGain.gain.cancelScheduledValues(now);
-      graph.normalizationGain.gain.setValueAtTime(gain, now);
+      const gainParam = graph.normalizationGain.gain;
+      gainParam.cancelScheduledValues(now);
+      if (typeof (gainParam as unknown as { linearRampToValueAtTime?: unknown }).linearRampToValueAtTime === "function") {
+        gainParam.setValueAtTime(gainParam.value, now);
+        (gainParam as unknown as { linearRampToValueAtTime: (v: number, t: number) => void }).linearRampToValueAtTime(
+          gain,
+          now + 0.15
+        );
+      } else {
+        gainParam.setValueAtTime(gain, now);
+      }
     } catch {
       graph.normalizationGain.gain.value = gain;
     }

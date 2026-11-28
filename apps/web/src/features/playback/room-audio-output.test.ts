@@ -251,4 +251,46 @@ describe("room audio output", () => {
     roomAudioOutput.setSystemAudioScale(1);
     expect(gain.gain.setValueAtTime).toHaveBeenLastCalledWith(0.8, 12);
   });
+
+  it("ramps graph loudness changes smoothly instead of stepping abruptly", () => {
+    const base = createAudioContextMock();
+    const normalizationGain = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      gain: {
+        value: 1,
+        cancelScheduledValues: vi.fn(),
+        setValueAtTime: vi.fn(),
+        linearRampToValueAtTime: vi.fn()
+      }
+    };
+    const localGain = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      gain: {
+        value: 0.72,
+        cancelScheduledValues: vi.fn(),
+        setValueAtTime: vi.fn(),
+        linearRampToValueAtTime: vi.fn()
+      }
+    };
+    let gainIndex = 0;
+    const context = {
+      ...base.context,
+      createGain: vi.fn(() => (gainIndex++ === 0 ? normalizationGain : localGain))
+    };
+    vi.spyOn(roomAudioOutput, "getSharedAudioContext")
+      .mockReturnValue(context as unknown as AudioContext);
+    const audio = { volume: 1 } as HTMLAudioElement;
+
+    roomAudioOutput.bindLocalAudioElement(audio, { broadcast: false, volume: 0.8 });
+    roomAudioOutput.applyVolume({ localAudio: audio, volume: 0.8, loudnessGainDb: -6 });
+
+    expect(normalizationGain.gain.cancelScheduledValues).toHaveBeenCalledWith(12);
+    expect(normalizationGain.gain.setValueAtTime).toHaveBeenCalledWith(1, 12);
+    expect(normalizationGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(
+      expect.closeTo(10 ** (-6 / 20), 4),
+      12.15
+    );
+  });
 });

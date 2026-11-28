@@ -64,7 +64,7 @@ export class SegmentedOpusEngine {
   private wasmDecoder: import("ogg-opus-decoder").OggOpusDecoder | null = null;
   private mixBus: GainNode | null = null;
   private playbackGate: GainNode | null = null;
-  private limiter: DynamicsCompressorNode | null = null;
+  private limiter: WaveShaperNode | null = null;
   private loudnessGain: GainNode | null = null;
   private masterGain: GainNode | null = null;
   private broadcastGain: GainNode | null = null;
@@ -1107,15 +1107,12 @@ export class SegmentedOpusEngine {
     this.playbackGate = context.createGain();
     this.playbackGate.gain.value = 0;
     this.mixBus.connect(this.playbackGate);
-    this.limiter = typeof context.createDynamicsCompressor === "function"
-      ? context.createDynamicsCompressor()
+    // Use a memoryless soft-clipping curve strictly linear below 0.98 (-0.17 dBFS)
+    // instead of a DynamicsCompressorNode, avoiding beat-by-beat gain pumping.
+    this.limiter = typeof context.createWaveShaper === "function"
+      ? createTransparentSafetyLimiter(context)
       : null;
     if (this.limiter) {
-      this.limiter.threshold.value = -1;
-      this.limiter.knee.value = 0;
-      this.limiter.ratio.value = 20;
-      this.limiter.attack.value = 0.003;
-      this.limiter.release.value = 0.05;
       if (typeof context.createAnalyser === "function") {
         this.limiterInputAnalyser = context.createAnalyser();
         this.limiterInputAnalyser.fftSize = 1024;
@@ -1425,6 +1422,29 @@ function normalizeGainDb(value: number) {
     return 1;
   }
   return Math.min(4, Math.max(0.063, 10 ** (value / 20)));
+}
+
+const SAFETY_LIMITER_LINEAR_CEILING = 0.98;
+const SAFETY_LIMITER_CURVE_SIZE = 4097;
+
+function createTransparentSafetyLimiter(context: AudioContext): WaveShaperNode {
+  const shaper = context.createWaveShaper();
+  const curve = new Float32Array(SAFETY_LIMITER_CURVE_SIZE);
+  const head = 1 - SAFETY_LIMITER_LINEAR_CEILING;
+  const midpoint = (SAFETY_LIMITER_CURVE_SIZE - 1) / 2;
+  for (let i = 0; i < SAFETY_LIMITER_CURVE_SIZE; i += 1) {
+    const x = (i - midpoint) / midpoint;
+    const absX = Math.abs(x);
+    if (absX <= SAFETY_LIMITER_LINEAR_CEILING) {
+      curve[i] = x;
+    } else {
+      const excess = (absX - SAFETY_LIMITER_LINEAR_CEILING) / head;
+      curve[i] = Math.sign(x) * (SAFETY_LIMITER_LINEAR_CEILING + head * Math.tanh(excess));
+    }
+  }
+  shaper.curve = curve;
+  shaper.oversample = "2x";
+  return shaper;
 }
 
 function unitKey(assetId: string, unitIndex: number) {
